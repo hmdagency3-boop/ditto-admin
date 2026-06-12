@@ -272,9 +272,7 @@ export default function Users() {
                         { label: 'رقم erban', value: String(platformUser.erbanNo) },
                         { label: 'الـ UID', value: String(platformUser.uid) },
                         { label: 'الجنس', value: genderLabel(platformUser.gender) },
-                        { label: 'العمر', value: platformUser.age ? `${platformUser.age} سنة` : '—' },
                         { label: 'الدولة', value: platformUser.country || '—' },
-                        { label: 'المدينة', value: platformUser.city || '—' },
                       ].map(({ label, value }) => (
                         <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--bg)', borderRadius: 6 }}>
                           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{label}</span>
@@ -295,8 +293,6 @@ export default function Users() {
                         { label: 'الحظر', value: dittoUser ? (dittoUser.ban === 1 ? 'محظور 🚫' : 'غير محظور ✅') : '—' },
                         { label: 'هدايا الدردشة', value: (dittoUser?.chatGift ?? platformUser.chatGift) === 1 ? 'مفعّل ✅' : 'معطّل ❌' },
                         { label: 'نطاق الدردشة', value: (dittoUser?.chatRange ?? platformUser.chatRange) === 1 ? 'عام 🌍' : 'خاص 🔒' },
-                        { label: 'مستوى السحر', value: platformUser.charmLevel ? String(platformUser.charmLevel) : '—' },
-                        { label: 'مستوى التجربة', value: platformUser.experLevel ? String(platformUser.experLevel) : '—' },
                       ].map(({ label, value }) => (
                         <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--bg)', borderRadius: 6 }}>
                           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{label}</span>
