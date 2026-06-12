@@ -14,6 +14,12 @@ type PlatformUser = {
   charmLevel: number | null; experLevel: number | null
 }
 
+type DittoUser = {
+  uid: number; erbanNo: number; nick: string; avatar: string
+  onLine: boolean; gender: number; ban: number
+  usersAvatarStatus: number; chatGift: number; chatRange: number
+}
+
 export default function Users() {
   const [users, setUsers]               = useState<User[]>([])
   const [filtered, setFiltered]         = useState<User[]>([])
@@ -32,7 +38,9 @@ export default function Users() {
   const [searchId, setSearchId]         = useState('')
   const [searching, setSearching]       = useState(false)
   const [platformUser, setPlatformUser] = useState<PlatformUser | null>(null)
+  const [dittoUser, setDittoUser]       = useState<DittoUser | null>(null)
   const [searchError, setSearchError]   = useState('')
+  const [searchStep, setSearchStep]     = useState('')
 
   const toast = useToast()
 
@@ -63,19 +71,33 @@ export default function Users() {
 
   const searchPlatformUser = async () => {
     if (!searchId.trim()) return
-    setSearching(true); setPlatformUser(null); setSearchError('')
+    setSearching(true); setPlatformUser(null); setDittoUser(null); setSearchError(''); setSearchStep('')
     try {
-      const res  = await fetch(`https://www.sayyouditto.com/pay/payermax/getInfo?no=${searchId.trim()}`)
-      const json = await res.json()
-      if (json.code === 200 && json.data?.uid) {
-        setPlatformUser(json.data)
-      } else {
+      // Step 1: get base info by erbanNo
+      setSearchStep('جاري جلب بيانات المستخدم...')
+      const res1  = await fetch(`https://www.sayyouditto.com/pay/payermax/getInfo?no=${searchId.trim()}`)
+      const json1 = await res1.json()
+      if (json1.code !== 200 || !json1.data?.uid) {
         setSearchError('لم يتم العثور على مستخدم بهذا الرقم')
+        setSearching(false); setSearchStep(''); return
+      }
+      setPlatformUser(json1.data)
+
+      // Step 2: fetch extended info by uid from second API
+      setSearchStep('جاري جلب البيانات التفصيلية...')
+      try {
+        const res2  = await fetch(`https://www.dittoparty.com/user/v4/get?uid=${json1.data.uid}`)
+        const json2 = await res2.json()
+        if (json2.code === 200 && json2.data) {
+          setDittoUser(json2.data)
+        }
+      } catch {
+        // second API failed silently — still show first API data
       }
     } catch {
       setSearchError('تعذّر الاتصال بالخادم، تأكد من الرقم وأعد المحاولة')
     }
-    setSearching(false)
+    setSearching(false); setSearchStep('')
   }
 
   const openAdd  = () => { setForm({ ...emptyForm }); setEditing(null); setModal(true) }
@@ -152,6 +174,14 @@ export default function Users() {
                 </button>
               </div>
 
+              {/* Step indicator while searching */}
+              {searching && searchStep && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
+                  <span className="spinner" style={{ width: 12, height: 12, borderWidth: 2, margin: 0 }} />
+                  {searchStep}
+                </div>
+              )}
+
               {searchError && (
                 <div style={{ background: '#fee2e2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', color: '#991b1b', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <AlertTriangle size={15} />{searchError}
@@ -164,40 +194,125 @@ export default function Users() {
             <div className="table-card">
               <div className="table-header">
                 <h2>بيانات المستخدم</h2>
-                <a href={`https://www.sayyouditto.com/pay/payermax/getInfo?no=${platformUser.erbanNo}`} target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-sm">
-                  <ExternalLink size={13} /> مصدر API
-                </a>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <a href={`https://www.sayyouditto.com/pay/payermax/getInfo?no=${platformUser.erbanNo}`} target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-sm">
+                    <ExternalLink size={13} /> Sayyouditto
+                  </a>
+                  {dittoUser && (
+                    <a href={`https://www.dittoparty.com/user/v4/get?uid=${platformUser.uid}`} target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-sm">
+                      <ExternalLink size={13} /> Dittoparty
+                    </a>
+                  )}
+                </div>
               </div>
-              <div style={{ padding: 24 }}>
-                <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                  {/* Avatar */}
-                  {platformUser.avatar
-                    ? <img src={platformUser.avatar} alt={platformUser.nick} style={{ width: 90, height: 90, borderRadius: 12, objectFit: 'cover', border: '2px solid var(--border)', flexShrink: 0 }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                    : <div style={{ width: 90, height: 90, borderRadius: 12, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, color: 'var(--primary)', flexShrink: 0 }}>{platformUser.nick?.[0] ?? '?'}</div>
-                  }
 
-                  {/* Info Grid */}
-                  <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 10 }}>
-                    {[
-                      { label: 'الاسم', value: platformUser.nick || '—', bold: true },
-                      { label: 'رقم المستخدم', value: String(platformUser.erbanNo), bold: true },
-                      { label: 'الـ UID', value: String(platformUser.uid) },
-                      { label: 'الجنس', value: genderLabel(platformUser.gender) },
-                      { label: 'العمر', value: platformUser.age ? `${platformUser.age} سنة` : '—' },
-                      { label: 'الدولة', value: platformUser.country || '—' },
-                      { label: 'المدينة', value: platformUser.city || '—' },
-                      { label: 'النبيل', value: platformUser.nobleName || '—' },
-                      { label: 'مستوى السحر', value: platformUser.charmLevel ? String(platformUser.charmLevel) : '—' },
-                      { label: 'مستوى التجربة', value: platformUser.experLevel ? String(platformUser.experLevel) : '—' },
-                      { label: 'هدايا الدردشة', value: platformUser.chatGift === 1 ? 'مفعّل' : 'معطّل' },
-                      { label: 'نطاق الدردشة', value: platformUser.chatRange === 1 ? 'عام' : 'خاص' },
-                    ].map(({ label, value, bold }) => (
-                      <div key={label} style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
-                        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>{label}</div>
-                        <div style={{ fontSize: bold ? 14 : 13, fontWeight: bold ? 700 : 500, color: 'var(--text)' }}>{value}</div>
-                      </div>
-                    ))}
+              <div style={{ padding: 24 }}>
+                {/* Header: avatar + name + status badges */}
+                <div style={{ display: 'flex', gap: 20, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
+                  <div style={{ position: 'relative', flexShrink: 0 }}>
+                    {(dittoUser?.avatar || platformUser.avatar)
+                      ? <img
+                          src={dittoUser?.avatar || platformUser.avatar}
+                          alt={platformUser.nick}
+                          style={{ width: 90, height: 90, borderRadius: 14, objectFit: 'cover', border: '3px solid var(--border)' }}
+                          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                        />
+                      : <div style={{ width: 90, height: 90, borderRadius: 14, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, color: 'var(--primary)' }}>
+                          {platformUser.nick?.[0] ?? '?'}
+                        </div>
+                    }
+                    {/* Online indicator */}
+                    {dittoUser && (
+                      <div style={{
+                        position: 'absolute', bottom: 4, left: 4,
+                        width: 14, height: 14, borderRadius: '50%',
+                        background: dittoUser.onLine ? '#10b981' : '#94a3b8',
+                        border: '2px solid white',
+                      }} title={dittoUser.onLine ? 'متصل' : 'غير متصل'} />
+                    )}
                   </div>
+
+                  <div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', marginBottom: 6 }}>{platformUser.nick || '—'}</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {dittoUser && (
+                        <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, fontWeight: 600, background: dittoUser.onLine ? '#d1fae5' : '#f1f5f9', color: dittoUser.onLine ? '#065f46' : '#64748b' }}>
+                          {dittoUser.onLine ? '🟢 متصل الآن' : '⚫ غير متصل'}
+                        </span>
+                      )}
+                      {dittoUser && dittoUser.ban === 1 && (
+                        <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, fontWeight: 600, background: '#fee2e2', color: '#991b1b' }}>
+                          🚫 محظور
+                        </span>
+                      )}
+                      {dittoUser && dittoUser.ban !== 1 && (
+                        <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, fontWeight: 600, background: '#d1fae5', color: '#065f46' }}>
+                          ✅ غير محظور
+                        </span>
+                      )}
+                      {platformUser.nobleName && (
+                        <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, fontWeight: 600, background: '#fef3c7', color: '#92400e' }}>
+                          👑 {platformUser.nobleName}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info sections */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+
+                  {/* Section 1: Basic Info */}
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid var(--border)' }}>
+                      المعلومات الأساسية
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {[
+                        { label: 'رقم erban', value: String(platformUser.erbanNo) },
+                        { label: 'الـ UID', value: String(platformUser.uid) },
+                        { label: 'الجنس', value: genderLabel(platformUser.gender) },
+                        { label: 'العمر', value: platformUser.age ? `${platformUser.age} سنة` : '—' },
+                        { label: 'الدولة', value: platformUser.country || '—' },
+                        { label: 'المدينة', value: platformUser.city || '—' },
+                      ].map(({ label, value }) => (
+                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--bg)', borderRadius: 6 }}>
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{label}</span>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Section 2: Platform Status */}
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid var(--border)' }}>
+                      حالة المنصة {dittoUser ? '' : <span style={{ color: '#f59e0b', fontSize: 10 }}>(بيانات جزئية)</span>}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {[
+                        { label: 'الحالة', value: dittoUser ? (dittoUser.onLine ? 'متصل 🟢' : 'غير متصل ⚫') : '—' },
+                        { label: 'الحظر', value: dittoUser ? (dittoUser.ban === 1 ? 'محظور 🚫' : 'غير محظور ✅') : '—' },
+                        { label: 'هدايا الدردشة', value: (dittoUser?.chatGift ?? platformUser.chatGift) === 1 ? 'مفعّل ✅' : 'معطّل ❌' },
+                        { label: 'نطاق الدردشة', value: (dittoUser?.chatRange ?? platformUser.chatRange) === 1 ? 'عام 🌍' : 'خاص 🔒' },
+                        { label: 'مستوى السحر', value: platformUser.charmLevel ? String(platformUser.charmLevel) : '—' },
+                        { label: 'مستوى التجربة', value: platformUser.experLevel ? String(platformUser.experLevel) : '—' },
+                      ].map(({ label, value }) => (
+                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--bg)', borderRadius: 6 }}>
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{label}</span>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Second API badge */}
+                <div style={{ marginTop: 14, fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {dittoUser
+                    ? <><span style={{ color: '#10b981', fontWeight: 700 }}>✓</span> تم جلب البيانات من كلا المصدرين (Sayyouditto + Dittoparty)</>
+                    : <><span style={{ color: '#f59e0b', fontWeight: 700 }}>⚠</span> تم جلب البيانات من Sayyouditto فقط — Dittoparty لم يستجب</>
+                  }
                 </div>
               </div>
             </div>
