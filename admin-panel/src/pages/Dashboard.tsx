@@ -1,18 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Building2, ShieldCheck, Users, Activity, AlertTriangle } from 'lucide-react'
-import { supabase } from '../lib/supabase'
-
-const isConfigured = () => {
-  const url = import.meta.env.VITE_SUPABASE_URL
-  return url && url !== '' && url !== 'YOUR_SUPABASE_URL'
-}
+import { Building2, ShieldCheck, Users, Activity } from 'lucide-react'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 
 export default function Dashboard() {
   const [stats, setStats] = useState({ agencies: 0, admins: 0, users: 0, active: 0 })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!isConfigured()) { setLoading(false); return }
+    if (!isSupabaseConfigured) { setLoading(false); return }
 
     const load = async () => {
       try {
@@ -43,19 +38,6 @@ export default function Dashboard() {
 
   return (
     <div>
-      {!isConfigured() && (
-        <div className="setup-banner">
-          <AlertTriangle />
-          <div className="setup-banner-text">
-            <h4>يجب ربط Supabase أولاً</h4>
-            <p>
-              أضف متغيرات البيئة التالية في إعدادات المشروع:<br />
-              <code>VITE_SUPABASE_URL</code> و <code>VITE_SUPABASE_ANON_KEY</code>
-            </p>
-          </div>
-        </div>
-      )}
-
       <div className="stats-grid">
         {cards.map(({ label, value, icon: Icon, color }) => (
           <div className="stat-card" key={label}>

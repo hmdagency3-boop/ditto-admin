@@ -1,17 +1,11 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabaseUrl = 'https://hijmdaiwxhcrvxqmgxsy.supabase.co'
+const supabaseAnonKey = 'sb_publishable_np8rx4Ve9Rs0NN9Q6MbiEg_vUCVxlAe'
 
-export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey)
+export const isSupabaseConfigured = true
 
-let _supabase: SupabaseClient | null = null
-
-if (isSupabaseConfigured) {
-  _supabase = createClient(supabaseUrl, supabaseAnonKey)
-}
-
-export const supabase = _supabase!
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 export type Agency = {
   id: string
