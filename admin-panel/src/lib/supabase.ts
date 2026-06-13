@@ -27,6 +27,14 @@ export type Admin = {
   agency_name?: string
   status: 'active' | 'inactive'
   created_at: string
+  // platform fields
+  uid: number | null
+  erban_no: number | null
+  avatar: string | null
+  country: string | null
+  gender: number | null
+  platform_ban: number | null
+  online_status: boolean | null
 }
 
 export type User = {
