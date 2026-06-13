@@ -1,0 +1,14 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "m8d8smGZ2kYkBy1nwy9oV"
+uri = "file://admin-panel.zip"
+type = "unspecified"
+title = "Sayyouditto Admin Panel"
+
+[[outputs]]
+id = "09pdBouHjyVtBKz9Dd2SL"
+uri = "file://admin-desk.zip"
+type = "unspecified"
+title = "AdminDesk"
