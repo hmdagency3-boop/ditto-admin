@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react'
-import { Plus, Search, Pencil, Trash2, Users as UsersIcon, X, UserSearch, ExternalLink, ToggleLeft, ToggleRight, Filter, AlertTriangle } from 'lucide-react'
+import { useEffect, useState, useCallback } from 'react'
+import { Plus, Search, Pencil, Trash2, Users as UsersIcon, X, UserSearch,
+         ExternalLink, ToggleLeft, ToggleRight, Filter, AlertTriangle,
+         List, LayoutGrid, Loader2 } from 'lucide-react'
 import { supabase, isSupabaseConfigured, type User, type Agency } from '../lib/supabase'
 import { ToastContainer, useToast } from '../components/Toast'
 import DbSetup from '../components/DbSetup'
@@ -8,18 +10,49 @@ const emptyForm = { name: '', email: '', phone: '', agency_id: '', status: 'acti
 
 type PlatformUser = {
   uid: number; erbanNo: number; nick: string; avatar: string
-  country: string | null; gender: number | null; age: number | null
-  city: string | null; chatGift: number | null; chatRange: number | null
+  country: string | null; gender: number | null
+  chatGift: number | null; chatRange: number | null
   nobleId: number | null; nobleName: string | null
-  charmLevel: number | null; experLevel: number | null
+}
+type DittoExtra = { onLine: boolean; ban: number }
+type MergedUser = PlatformUser & { ditto?: DittoExtra; error?: string }
+
+// ── helpers ─────────────────────────────────────────────────────────────────
+const genderLabel = (g: number | null) => g === 1 ? '♂ ذكر' : g === 2 ? '♀ أنثى' : '—'
+
+async function fetchOne(erban: number): Promise<MergedUser> {
+  const res1 = await fetch(`https://www.sayyouditto.com/pay/payermax/getInfo?no=${erban}`)
+  const j1   = await res1.json()
+  if (j1.code !== 200 || !j1.data?.uid) return { uid: 0, erbanNo: erban, nick: '—', avatar: '', country: null, gender: null, chatGift: null, chatRange: null, nobleId: null, nobleName: null, error: 'غير موجود' }
+  const base: PlatformUser = j1.data
+  try {
+    const res2 = await fetch(`https://www.dittoparty.com/user/v4/get?uid=${base.uid}`)
+    const j2   = await res2.json()
+    if (j2.code === 200 && j2.data) return { ...base, ditto: { onLine: j2.data.onLine, ban: j2.data.ban } }
+  } catch { /* silent */ }
+  return base
 }
 
-type DittoUser = {
-  uid: number; erbanNo: number; nick: string; avatar: string
-  onLine: boolean; gender: number; ban: number
-  usersAvatarStatus: number; chatGift: number; chatRange: number
+// concurrency limiter: run at most `limit` at a time
+async function fetchBatch(ids: number[], onProgress: (done: number) => void): Promise<MergedUser[]> {
+  const results: MergedUser[] = new Array(ids.length)
+  let done = 0
+  const limit = 5
+  const queue = [...ids.entries()]
+  const workers = Array.from({ length: Math.min(limit, ids.length) }, async () => {
+    while (queue.length) {
+      const entry = queue.shift()
+      if (!entry) break
+      const [i, id] = entry
+      results[i] = await fetchOne(id)
+      done++; onProgress(done)
+    }
+  })
+  await Promise.all(workers)
+  return results
 }
 
+// ── component ────────────────────────────────────────────────────────────────
 export default function Users() {
   const [users, setUsers]               = useState<User[]>([])
   const [filtered, setFiltered]         = useState<User[]>([])
@@ -34,13 +67,21 @@ export default function Users() {
   const [dbMissing, setDbMissing]       = useState(false)
   const [activeTab, setActiveTab]       = useState<'api' | 'local'>('api')
 
-  // API search
-  const [searchId, setSearchId]         = useState('')
-  const [searching, setSearching]       = useState(false)
-  const [platformUser, setPlatformUser] = useState<PlatformUser | null>(null)
-  const [dittoUser, setDittoUser]       = useState<DittoUser | null>(null)
-  const [searchError, setSearchError]   = useState('')
-  const [searchStep, setSearchStep]     = useState('')
+  // single search
+  const [searchId, setSearchId]           = useState('')
+  const [singleUser, setSingleUser]       = useState<MergedUser | null>(null)
+  const [singleError, setSingleError]     = useState('')
+  const [singleSearching, setSingleSearching] = useState(false)
+  const [singleStep, setSingleStep]       = useState('')
+
+  // batch search
+  const [batchMode, setBatchMode]         = useState(false)
+  const [batchInput, setBatchInput]       = useState('')
+  const [batchResults, setBatchResults]   = useState<MergedUser[]>([])
+  const [batchSearching, setBatchSearching] = useState(false)
+  const [batchDone, setBatchDone]         = useState(0)
+  const [batchTotal, setBatchTotal]       = useState(0)
+  const [batchView, setBatchView]         = useState<'grid' | 'table'>('grid')
 
   const toast = useToast()
 
@@ -52,70 +93,64 @@ export default function Users() {
       supabase.from('agencies').select('id, name').eq('status', 'active'),
     ])
     if (error?.code === '42P01') { setDbMissing(true); setLoading(false); return }
-    const mapped = (usersData ?? []).map((u: any) => ({ ...u, agency_name: u.agencies?.name ?? '' }))
-    setUsers(mapped)
+    setUsers((usersData ?? []).map((u: any) => ({ ...u, agency_name: u.agencies?.name ?? '' })))
     setAgencies(agenciesData ?? [])
     setLoading(false)
   }
-
   useEffect(() => { load() }, [])
 
   useEffect(() => {
     const q = search.toLowerCase()
     setFiltered(users.filter(u => {
-      const matchSearch = !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.phone.includes(q) || (u.agency_name ?? '').toLowerCase().includes(q)
-      const matchStatus = statusFilter === 'all' || u.status === statusFilter
-      return matchSearch && matchStatus
+      const ms = !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.phone.includes(q) || (u.agency_name ?? '').toLowerCase().includes(q)
+      const mst = statusFilter === 'all' || u.status === statusFilter
+      return ms && mst
     }))
   }, [search, statusFilter, users])
 
-  const searchPlatformUser = async () => {
+  // ── single search ──────────────────────────────────────────────
+  const doSingleSearch = async () => {
     if (!searchId.trim()) return
-    setSearching(true); setPlatformUser(null); setDittoUser(null); setSearchError(''); setSearchStep('')
+    setSingleSearching(true); setSingleUser(null); setSingleError(''); setSingleStep('')
+    setSingleStep('جاري جلب بيانات المستخدم...')
     try {
-      // Step 1: get base info by erbanNo
-      setSearchStep('جاري جلب بيانات المستخدم...')
-      const res1  = await fetch(`https://www.sayyouditto.com/pay/payermax/getInfo?no=${searchId.trim()}`)
-      const json1 = await res1.json()
-      if (json1.code !== 200 || !json1.data?.uid) {
-        setSearchError('لم يتم العثور على مستخدم بهذا الرقم')
-        setSearching(false); setSearchStep(''); return
-      }
-      setPlatformUser(json1.data)
-
-      // Step 2: fetch extended info by uid from second API
-      setSearchStep('جاري جلب البيانات التفصيلية...')
+      const res1 = await fetch(`https://www.sayyouditto.com/pay/payermax/getInfo?no=${searchId.trim()}`)
+      const j1   = await res1.json()
+      if (j1.code !== 200 || !j1.data?.uid) { setSingleError('لم يتم العثور على مستخدم بهذا الرقم'); setSingleSearching(false); setSingleStep(''); return }
+      let merged: MergedUser = j1.data
+      setSingleStep('جاري جلب البيانات التفصيلية...')
       try {
-        const res2  = await fetch(`https://www.dittoparty.com/user/v4/get?uid=${json1.data.uid}`)
-        const json2 = await res2.json()
-        if (json2.code === 200 && json2.data) {
-          setDittoUser(json2.data)
-        }
-      } catch {
-        // second API failed silently — still show first API data
-      }
-    } catch {
-      setSearchError('تعذّر الاتصال بالخادم، تأكد من الرقم وأعد المحاولة')
-    }
-    setSearching(false); setSearchStep('')
+        const res2 = await fetch(`https://www.dittoparty.com/user/v4/get?uid=${j1.data.uid}`)
+        const j2   = await res2.json()
+        if (j2.code === 200 && j2.data) merged = { ...merged, ditto: { onLine: j2.data.onLine, ban: j2.data.ban } }
+      } catch { /* silent */ }
+      setSingleUser(merged)
+    } catch { setSingleError('تعذّر الاتصال بالخادم') }
+    setSingleSearching(false); setSingleStep('')
   }
 
+  // ── batch search ───────────────────────────────────────────────
+  const doBatchSearch = useCallback(async () => {
+    const ids = batchInput.split(/[\n,\s]+/).map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0)
+    if (!ids.length) return
+    setBatchSearching(true); setBatchResults([]); setBatchDone(0); setBatchTotal(ids.length)
+    const results = await fetchBatch(ids, done => setBatchDone(done))
+    setBatchResults(results)
+    setBatchSearching(false)
+  }, [batchInput])
+
+  // ── local CRUD ─────────────────────────────────────────────────
   const openAdd  = () => { setForm({ ...emptyForm }); setEditing(null); setModal(true) }
-  const openEdit = (u: User) => {
-    setForm({ name: u.name, email: u.email, phone: u.phone, agency_id: u.agency_id ?? '', status: u.status })
-    setEditing(u.id); setModal(true)
-  }
+  const openEdit = (u: User) => { setForm({ name: u.name, email: u.email, phone: u.phone, agency_id: u.agency_id ?? '', status: u.status }); setEditing(u.id); setModal(true) }
 
   const save = async () => {
     if (!form.name.trim()) return
     setSaving(true)
     const payload = { ...form, agency_id: form.agency_id || null }
-    const { error } = editing
-      ? await supabase.from('users').update(payload).eq('id', editing)
-      : await supabase.from('users').insert(payload)
+    const { error } = editing ? await supabase.from('users').update(payload).eq('id', editing) : await supabase.from('users').insert(payload)
     setSaving(false)
     if (error) { toast.error('حدث خطأ، يرجى المحاولة مجدداً'); return }
-    toast.success(editing ? 'تم تعديل المستخدم بنجاح' : 'تم إضافة المستخدم بنجاح')
+    toast.success(editing ? 'تم تعديل المستخدم' : 'تم إضافة المستخدم')
     setModal(false); load()
   }
 
@@ -130,16 +165,14 @@ export default function Users() {
     const ns = u.status === 'active' ? 'inactive' : 'active'
     const { error } = await supabase.from('users').update({ status: ns }).eq('id', u.id)
     if (error) { toast.error('فشل تغيير الحالة'); return }
-    toast.success(ns === 'active' ? 'تم تفعيل المستخدم' : 'تم تعطيل المستخدم'); load()
+    toast.success(ns === 'active' ? 'تم التفعيل' : 'تم التعطيل'); load()
   }
-
-  const genderLabel = (g: number | null) => g === 1 ? '♂ ذكر' : g === 2 ? '♀ أنثى' : '—'
 
   return (
     <div>
       <ToastContainer toasts={toast.toasts} remove={toast.remove} />
 
-      {/* Tabs */}
+      {/* Main tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button className={`btn ${activeTab === 'api' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('api')}>
           <UserSearch size={16} /> البحث في المنصة
@@ -149,187 +182,135 @@ export default function Users() {
         </button>
       </div>
 
-      {/* ─── API Search Tab ─── */}
+      {/* ══════════════ API TAB ══════════════ */}
       {activeTab === 'api' && (
         <div>
+          {/* Search card */}
           <div className="table-card" style={{ marginBottom: 16 }}>
             <div className="table-header">
-              <h2>البحث عن مستخدم بالرقم</h2>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>منصة Sayyouditto</span>
-            </div>
-            <div style={{ padding: 20 }}>
-              <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-                <input
-                  type="number"
-                  placeholder="أدخل رقم المستخدم (erban) مثال: 6038733"
-                  value={searchId}
-                  onChange={e => setSearchId(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && searchPlatformUser()}
-                  style={{ flex: 1, padding: '10px 14px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', direction: 'ltr', outline: 'none' }}
-                />
-                <button className="btn btn-primary" onClick={searchPlatformUser} disabled={searching || !searchId.trim()}>
-                  {searching
-                    ? <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2, margin: 0 }} /> جاري البحث...</>
-                    : <><Search size={16} /> بحث</>}
+              <h2>البحث عن مستخدم</h2>
+              {/* Single / Batch toggle */}
+              <div style={{ display: 'flex', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                <button
+                  onClick={() => setBatchMode(false)}
+                  style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: !batchMode ? 'var(--primary)' : 'transparent', color: !batchMode ? 'white' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  <Search size={13} /> بحث فردي
+                </button>
+                <button
+                  onClick={() => setBatchMode(true)}
+                  style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: batchMode ? 'var(--primary)' : 'transparent', color: batchMode ? 'white' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  <List size={13} /> بحث جماعي
                 </button>
               </div>
+            </div>
 
-              {/* Step indicator while searching */}
-              {searching && searchStep && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
-                  <span className="spinner" style={{ width: 12, height: 12, borderWidth: 2, margin: 0 }} />
-                  {searchStep}
-                </div>
+            <div style={{ padding: 20 }}>
+              {/* ── Single ── */}
+              {!batchMode && (
+                <>
+                  <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+                    <input
+                      type="number"
+                      placeholder="أدخل رقم المستخدم (erban) مثال: 6038733"
+                      value={searchId}
+                      onChange={e => setSearchId(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && doSingleSearch()}
+                      style={{ flex: 1, padding: '10px 14px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', direction: 'ltr', outline: 'none' }}
+                    />
+                    <button className="btn btn-primary" onClick={doSingleSearch} disabled={singleSearching || !searchId.trim()}>
+                      {singleSearching ? <><Loader2 size={15} className="spin" /> بحث...</> : <><Search size={15} /> بحث</>}
+                    </button>
+                  </div>
+                  {singleSearching && singleStep && (
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className="spinner" style={{ width: 11, height: 11, borderWidth: 2, margin: 0 }} />{singleStep}
+                    </div>
+                  )}
+                  {singleError && (
+                    <div style={{ background: '#fee2e2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', color: '#991b1b', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <AlertTriangle size={15} />{singleError}
+                    </div>
+                  )}
+                </>
               )}
 
-              {searchError && (
-                <div style={{ background: '#fee2e2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', color: '#991b1b', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <AlertTriangle size={15} />{searchError}
-                </div>
+              {/* ── Batch ── */}
+              {batchMode && (
+                <>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+                    أدخل الأرقام بالسطر أو الفاصلة أو المسافة — يقبل حتى 100 رقم في المرة
+                  </p>
+                  <textarea
+                    placeholder={'6504715\n5263413\n6038733\n4107782\n...'}
+                    value={batchInput}
+                    onChange={e => setBatchInput(e.target.value)}
+                    rows={5}
+                    style={{ width: '100%', padding: '10px 14px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, fontFamily: 'monospace', direction: 'ltr', outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+                    <button className="btn btn-primary" onClick={doBatchSearch} disabled={batchSearching || !batchInput.trim()}>
+                      {batchSearching
+                        ? <><Loader2 size={15} className="spin" /> جاري البحث ({batchDone}/{batchTotal})...</>
+                        : <><Search size={15} /> بحث عن الكل</>}
+                    </button>
+                    {batchResults.length > 0 && !batchSearching && (
+                      <>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                          {batchResults.filter(r => !r.error).length} نتيجة ناجحة من {batchResults.length}
+                        </span>
+                        {/* Grid / Table toggle */}
+                        <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden', marginRight: 'auto' }}>
+                          <button onClick={() => setBatchView('grid')} style={{ padding: '4px 10px', border: 'none', cursor: 'pointer', background: batchView === 'grid' ? 'var(--primary)' : 'transparent', color: batchView === 'grid' ? 'white' : 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
+                            <LayoutGrid size={14} />
+                          </button>
+                          <button onClick={() => setBatchView('table')} style={{ padding: '4px 10px', border: 'none', cursor: 'pointer', background: batchView === 'table' ? 'var(--primary)' : 'transparent', color: batchView === 'table' ? 'white' : 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
+                            <List size={14} />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Progress bar */}
+                  {batchSearching && batchTotal > 0 && (
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ height: 6, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${Math.round((batchDone / batchTotal) * 100)}%`, background: 'linear-gradient(90deg,#1a56db,#7c3aed)', borderRadius: 4, transition: 'width 0.2s' }} />
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{batchDone} / {batchTotal}</div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
 
-          {platformUser && (
-            <div className="table-card">
-              <div className="table-header">
-                <h2>بيانات المستخدم</h2>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <a href={`https://www.sayyouditto.com/pay/payermax/getInfo?no=${platformUser.erbanNo}`} target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-sm">
-                    <ExternalLink size={13} /> Sayyouditto
-                  </a>
-                  {dittoUser && (
-                    <a href={`https://www.dittoparty.com/user/v4/get?uid=${platformUser.uid}`} target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-sm">
-                      <ExternalLink size={13} /> Dittoparty
-                    </a>
-                  )}
-                </div>
-              </div>
+          {/* ── Single result ── */}
+          {!batchMode && singleUser && <SingleResult user={singleUser} />}
 
-              <div style={{ padding: 24 }}>
-                {/* Header: avatar + name + status badges */}
-                <div style={{ display: 'flex', gap: 20, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
-                  <div style={{ position: 'relative', flexShrink: 0 }}>
-                    {(dittoUser?.avatar || platformUser.avatar)
-                      ? <img
-                          src={dittoUser?.avatar || platformUser.avatar}
-                          alt={platformUser.nick}
-                          style={{ width: 90, height: 90, borderRadius: 14, objectFit: 'cover', border: '3px solid var(--border)' }}
-                          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                        />
-                      : <div style={{ width: 90, height: 90, borderRadius: 14, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, color: 'var(--primary)' }}>
-                          {platformUser.nick?.[0] ?? '?'}
-                        </div>
-                    }
-                    {/* Online indicator */}
-                    {dittoUser && (
-                      <div style={{
-                        position: 'absolute', bottom: 4, left: 4,
-                        width: 14, height: 14, borderRadius: '50%',
-                        background: dittoUser.onLine ? '#10b981' : '#94a3b8',
-                        border: '2px solid white',
-                      }} title={dittoUser.onLine ? 'متصل' : 'غير متصل'} />
-                    )}
-                  </div>
-
-                  <div>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)', marginBottom: 6 }}>{platformUser.nick || '—'}</div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {dittoUser && (
-                        <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, fontWeight: 600, background: dittoUser.onLine ? '#d1fae5' : '#f1f5f9', color: dittoUser.onLine ? '#065f46' : '#64748b' }}>
-                          {dittoUser.onLine ? '🟢 متصل الآن' : '⚫ غير متصل'}
-                        </span>
-                      )}
-                      {dittoUser && dittoUser.ban === 1 && (
-                        <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, fontWeight: 600, background: '#fee2e2', color: '#991b1b' }}>
-                          🚫 محظور
-                        </span>
-                      )}
-                      {dittoUser && dittoUser.ban !== 1 && (
-                        <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, fontWeight: 600, background: '#d1fae5', color: '#065f46' }}>
-                          ✅ غير محظور
-                        </span>
-                      )}
-                      {platformUser.nobleName && (
-                        <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 20, fontWeight: 600, background: '#fef3c7', color: '#92400e' }}>
-                          👑 {platformUser.nobleName}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Info sections */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-
-                  {/* Section 1: Basic Info */}
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid var(--border)' }}>
-                      المعلومات الأساسية
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {[
-                        { label: 'رقم erban', value: String(platformUser.erbanNo) },
-                        { label: 'الـ UID', value: String(platformUser.uid) },
-                        { label: 'الجنس', value: genderLabel(platformUser.gender) },
-                        { label: 'الدولة', value: platformUser.country || '—' },
-                      ].map(({ label, value }) => (
-                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--bg)', borderRadius: 6 }}>
-                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{label}</span>
-                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Section 2: Platform Status */}
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid var(--border)' }}>
-                      حالة المنصة {dittoUser ? '' : <span style={{ color: '#f59e0b', fontSize: 10 }}>(بيانات جزئية)</span>}
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {[
-                        { label: 'الحالة', value: dittoUser ? (dittoUser.onLine ? 'متصل 🟢' : 'غير متصل ⚫') : '—' },
-                        { label: 'الحظر', value: dittoUser ? (dittoUser.ban === 1 ? 'محظور 🚫' : 'غير محظور ✅') : '—' },
-                        { label: 'هدايا الدردشة', value: (dittoUser?.chatGift ?? platformUser.chatGift) === 1 ? 'مفعّل ✅' : 'معطّل ❌' },
-                        { label: 'نطاق الدردشة', value: (dittoUser?.chatRange ?? platformUser.chatRange) === 1 ? 'عام 🌍' : 'خاص 🔒' },
-                      ].map(({ label, value }) => (
-                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--bg)', borderRadius: 6 }}>
-                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{label}</span>
-                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Second API badge */}
-                <div style={{ marginTop: 14, fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {dittoUser
-                    ? <><span style={{ color: '#10b981', fontWeight: 700 }}>✓</span> تم جلب البيانات من كلا المصدرين (Sayyouditto + Dittoparty)</>
-                    : <><span style={{ color: '#f59e0b', fontWeight: 700 }}>⚠</span> تم جلب البيانات من Sayyouditto فقط — Dittoparty لم يستجب</>
-                  }
-                </div>
-              </div>
-            </div>
+          {/* ── Batch results ── */}
+          {batchMode && batchResults.length > 0 && !batchSearching && (
+            batchView === 'grid'
+              ? <BatchGrid results={batchResults} />
+              : <BatchTable results={batchResults} />
           )}
 
-          {!platformUser && !searchError && !searching && (
-            <div className="empty-state">
-              <UserSearch />
-              <h3>ابحث عن مستخدم</h3>
-              <p>أدخل رقم المستخدم (erban) من منصة Sayyouditto</p>
-            </div>
+          {/* Empty state */}
+          {!batchMode && !singleUser && !singleError && !singleSearching && (
+            <div className="empty-state"><UserSearch /><h3>ابحث عن مستخدم</h3><p>أدخل رقم erban من منصة Sayyouditto</p></div>
+          )}
+          {batchMode && batchResults.length === 0 && !batchSearching && (
+            <div className="empty-state"><List /><h3>البحث الجماعي</h3><p>الصق الأرقام في الخانة أعلاه ثم اضغط بحث</p></div>
           )}
         </div>
       )}
 
-      {/* ─── Local Users Tab ─── */}
+      {/* ══════════════ LOCAL TAB ══════════════ */}
       {activeTab === 'local' && (
         <div>
           <DbSetup show={dbMissing} />
-
-          {/* Filters */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
             <Filter size={14} color="var(--text-muted)" />
             <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>الحالة:</span>
@@ -344,10 +325,7 @@ export default function Users() {
             <div className="table-header">
               <h2>المستخدمون ({filtered.length})</h2>
               <div className="table-controls">
-                <div className="search-box">
-                  <Search />
-                  <input type="text" placeholder="بحث بالاسم أو البريد أو الهاتف..." value={search} onChange={e => setSearch(e.target.value)} />
-                </div>
+                <div className="search-box"><Search /><input type="text" placeholder="بحث بالاسم أو البريد..." value={search} onChange={e => setSearch(e.target.value)} /></div>
                 <button className="btn btn-primary" onClick={openAdd}><Plus size={16} /> إضافة مستخدم</button>
               </div>
             </div>
@@ -355,25 +333,17 @@ export default function Users() {
             {loading ? (
               <div className="loading"><div className="spinner" /><p>جاري التحميل...</p></div>
             ) : filtered.length === 0 ? (
-              <div className="empty-state">
-                <UsersIcon />
-                <h3>{search ? 'لا توجد نتائج' : 'لا يوجد مستخدمون'}</h3>
-                <p>{search ? `لم يتم العثور على "${search}"` : 'أضف مستخدماً جديداً بالضغط على زر الإضافة'}</p>
-              </div>
+              <div className="empty-state"><UsersIcon /><h3>{search ? 'لا توجد نتائج' : 'لا يوجد مستخدمون'}</h3><p>{search ? `لم يتم العثور على "${search}"` : 'أضف مستخدماً جديداً'}</p></div>
             ) : (
               <table className="data-table">
-                <thead>
-                  <tr><th>#</th><th>الاسم</th><th>البريد</th><th>الهاتف</th><th>الوكالة</th><th>الحالة</th><th>التاريخ</th><th>الإجراءات</th></tr>
-                </thead>
+                <thead><tr><th>#</th><th>الاسم</th><th>البريد</th><th>الهاتف</th><th>الوكالة</th><th>الحالة</th><th>التاريخ</th><th>الإجراءات</th></tr></thead>
                 <tbody>
                   {filtered.map((u, i) => (
                     <tr key={u.id}>
                       <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{i + 1}</td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ width: 32, height: 32, background: '#d1fae5', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
-                            {u.name[0]}
-                          </div>
+                          <div style={{ width: 32, height: 32, borderRadius: 8, background: '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{u.name[0]}</div>
                           <strong>{u.name}</strong>
                         </div>
                       </td>
@@ -381,12 +351,7 @@ export default function Users() {
                       <td style={{ direction: 'ltr', textAlign: 'right' }}>{u.phone || '—'}</td>
                       <td>{u.agency_name || '—'}</td>
                       <td>
-                        <button
-                          onClick={() => toggleStatus(u)}
-                          className={`badge ${u.status === 'active' ? 'badge-success' : 'badge-danger'}`}
-                          style={{ cursor: 'pointer', border: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
-                          title="اضغط لتغيير الحالة"
-                        >
+                        <button onClick={() => toggleStatus(u)} className={`badge ${u.status === 'active' ? 'badge-success' : 'badge-danger'}`} style={{ cursor: 'pointer', border: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
                           {u.status === 'active' ? <ToggleRight size={13} /> : <ToggleLeft size={13} />}
                           {u.status === 'active' ? 'نشط' : 'معطّل'}
                         </button>
@@ -407,6 +372,7 @@ export default function Users() {
         </div>
       )}
 
+      {/* Modal */}
       {modal && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(false)}>
           <div className="modal">
@@ -415,19 +381,10 @@ export default function Users() {
               <button className="modal-close" onClick={() => setModal(false)}><X size={18} /></button>
             </div>
             <div className="modal-body">
-              <div className="form-group">
-                <label>الاسم الكامل *</label>
-                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="أدخل الاسم" />
-              </div>
+              <div className="form-group"><label>الاسم الكامل *</label><input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="أدخل الاسم" /></div>
               <div className="form-row">
-                <div className="form-group">
-                  <label>البريد الإلكتروني</label>
-                  <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="example@email.com" />
-                </div>
-                <div className="form-group">
-                  <label>رقم الهاتف</label>
-                  <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="05xxxxxxxx" />
-                </div>
+                <div className="form-group"><label>البريد الإلكتروني</label><input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="example@email.com" /></div>
+                <div className="form-group"><label>رقم الهاتف</label><input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="05xxxxxxxx" /></div>
               </div>
               <div className="form-row">
                 <div className="form-group">
@@ -448,13 +405,186 @@ export default function Users() {
             </div>
             <div className="modal-footer">
               <button className="btn btn-outline" onClick={() => setModal(false)}>إلغاء</button>
-              <button className="btn btn-primary" onClick={save} disabled={saving || !form.name.trim()}>
-                {saving ? 'جاري الحفظ...' : editing ? 'حفظ التعديلات' : 'إضافة المستخدم'}
-              </button>
+              <button className="btn btn-primary" onClick={save} disabled={saving || !form.name.trim()}>{saving ? 'جاري الحفظ...' : editing ? 'حفظ التعديلات' : 'إضافة المستخدم'}</button>
             </div>
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Single Result card ────────────────────────────────────────────────────────
+function SingleResult({ user }: { user: MergedUser }) {
+  return (
+    <div className="table-card">
+      <div className="table-header">
+        <h2>بيانات المستخدم</h2>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <a href={`https://www.sayyouditto.com/pay/payermax/getInfo?no=${user.erbanNo}`} target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-sm"><ExternalLink size={13} /> Sayyouditto</a>
+          {user.ditto && <a href={`https://www.dittoparty.com/user/v4/get?uid=${user.uid}`} target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-sm"><ExternalLink size={13} /> Dittoparty</a>}
+        </div>
+      </div>
+      <div style={{ padding: 24 }}>
+        <div style={{ display: 'flex', gap: 20, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            {user.avatar
+              ? <img src={user.avatar} alt={user.nick} style={{ width: 88, height: 88, borderRadius: 14, objectFit: 'cover', border: '3px solid var(--border)' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+              : <div style={{ width: 88, height: 88, borderRadius: 14, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, color: 'var(--primary)' }}>{user.nick?.[0] ?? '?'}</div>
+            }
+            {user.ditto && <div style={{ position: 'absolute', bottom: 4, left: 4, width: 14, height: 14, borderRadius: '50%', background: user.ditto.onLine ? '#10b981' : '#94a3b8', border: '2px solid white' }} />}
+          </div>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>{user.nick}</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {user.ditto && <StatusBadge online={user.ditto.onLine} />}
+              {user.ditto && <BanBadge ban={user.ditto.ban} />}
+              {user.nobleName && <span style={{ fontSize: 12, padding: '2px 10px', borderRadius: 20, fontWeight: 600, background: '#fef3c7', color: '#92400e' }}>👑 {user.nobleName}</span>}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <InfoSection title="المعلومات الأساسية" rows={[
+            { label: 'رقم erban', value: String(user.erbanNo) },
+            { label: 'الـ UID', value: String(user.uid) },
+            { label: 'الجنس', value: genderLabel(user.gender) },
+            { label: 'الدولة', value: user.country || '—' },
+          ]} />
+          <InfoSection title="حالة المنصة" rows={[
+            { label: 'الحالة', value: user.ditto ? (user.ditto.onLine ? 'متصل 🟢' : 'غير متصل ⚫') : '—' },
+            { label: 'الحظر', value: user.ditto ? (user.ditto.ban === 1 ? 'محظور 🚫' : 'غير محظور ✅') : '—' },
+            { label: 'هدايا الدردشة', value: user.chatGift === 1 ? 'مفعّل ✅' : 'معطّل ❌' },
+            { label: 'نطاق الدردشة', value: user.chatRange === 1 ? 'عام 🌍' : 'خاص 🔒' },
+          ]} />
+        </div>
+        <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text-muted)' }}>
+          {user.ditto ? '✓ تم جلب البيانات من كلا المصدرين' : '⚠ Dittoparty لم يستجب — بيانات جزئية'}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Batch Grid ───────────────────────────────────────────────────────────────
+function BatchGrid({ results }: { results: MergedUser[] }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
+      {results.map((u, i) => (
+        <div key={i} style={{
+          background: 'white', border: `1px solid ${u.error ? '#fecaca' : 'var(--border)'}`,
+          borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 10,
+          opacity: u.error ? 0.7 : 1,
+        }}>
+          {u.error ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 10, background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>?</div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#991b1b' }}>{u.erbanNo}</div>
+                <div style={{ fontSize: 11, color: '#ef4444' }}>{u.error}</div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  {u.avatar
+                    ? <img src={u.avatar} alt={u.nick} style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'cover', border: '1px solid var(--border)' }} onError={e => { (e.target as HTMLImageElement).style.display='none' }} />
+                    : <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: 'var(--primary)', fontWeight: 700 }}>{u.nick?.[0] ?? '?'}</div>
+                  }
+                  {u.ditto && <div style={{ position: 'absolute', bottom: -2, left: -2, width: 12, height: 12, borderRadius: '50%', background: u.ditto.onLine ? '#10b981' : '#94a3b8', border: '2px solid white' }} />}
+                </div>
+                <div style={{ flex: 1, overflow: 'hidden' }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.nick}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', direction: 'ltr' }}>{u.erbanNo}</div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                {u.country && <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 10, background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}>{u.country}</span>}
+                {u.ditto && <StatusBadge online={u.ditto.onLine} small />}
+                {u.ditto && <BanBadge ban={u.ditto.ban} small />}
+                {u.nobleName && <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 10, background: '#fef3c7', color: '#92400e' }}>👑</span>}
+              </div>
+
+              <div style={{ display: 'flex', gap: 5, marginTop: 'auto' }}>
+                <a href={`https://www.sayyouditto.com/pay/payermax/getInfo?no=${u.erbanNo}`} target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize: 10, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--border)', color: 'var(--text-muted)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}>
+                  <ExternalLink size={10} /> API
+                </a>
+              </div>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Batch Table ──────────────────────────────────────────────────────────────
+function BatchTable({ results }: { results: MergedUser[] }) {
+  return (
+    <div className="table-card">
+      <table className="data-table">
+        <thead>
+          <tr><th>#</th><th>المستخدم</th><th>رقم erban</th><th>الـ UID</th><th>الجنس</th><th>الدولة</th><th>الحالة</th><th>الحظر</th></tr>
+        </thead>
+        <tbody>
+          {results.map((u, i) => (
+            <tr key={i} style={{ opacity: u.error ? 0.5 : 1 }}>
+              <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{i + 1}</td>
+              <td>
+                {u.error ? (
+                  <span style={{ color: '#ef4444', fontSize: 12 }}>غير موجود</span>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                      {u.avatar
+                        ? <img src={u.avatar} alt={u.nick} style={{ width: 34, height: 34, borderRadius: 8, objectFit: 'cover', border: '1px solid var(--border)' }} onError={e => { (e.target as HTMLImageElement).style.display='none' }} />
+                        : <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', fontWeight: 700, fontSize: 13 }}>{u.nick?.[0] ?? '?'}</div>
+                      }
+                      {u.ditto && <div style={{ position: 'absolute', bottom: -1, left: -1, width: 10, height: 10, borderRadius: '50%', background: u.ditto.onLine ? '#10b981' : '#94a3b8', border: '2px solid white' }} />}
+                    </div>
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>{u.nick}</span>
+                  </div>
+                )}
+              </td>
+              <td style={{ direction: 'ltr', fontWeight: 600, fontSize: 12 }}>{u.erbanNo}</td>
+              <td style={{ direction: 'ltr', fontSize: 12, color: 'var(--text-muted)' }}>{u.uid || '—'}</td>
+              <td style={{ fontSize: 12 }}>{genderLabel(u.gender)}</td>
+              <td style={{ fontSize: 12 }}>{u.country || '—'}</td>
+              <td>{u.ditto ? <StatusBadge online={u.ditto.onLine} small /> : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}</td>
+              <td>{u.ditto ? <BanBadge ban={u.ditto.ban} small /> : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ── Small reusable badges ─────────────────────────────────────────────────────
+function StatusBadge({ online, small }: { online: boolean; small?: boolean }) {
+  const s = small ? { fontSize: 10, padding: '1px 7px' } : { fontSize: 12, padding: '2px 10px' }
+  return <span style={{ ...s, borderRadius: 20, fontWeight: 600, background: online ? '#d1fae5' : '#f1f5f9', color: online ? '#065f46' : '#64748b' }}>{online ? '🟢 متصل' : '⚫ غير متصل'}</span>
+}
+
+function BanBadge({ ban, small }: { ban: number; small?: boolean }) {
+  const s = small ? { fontSize: 10, padding: '1px 7px' } : { fontSize: 12, padding: '2px 10px' }
+  return <span style={{ ...s, borderRadius: 20, fontWeight: 600, background: ban === 1 ? '#fee2e2' : '#d1fae5', color: ban === 1 ? '#991b1b' : '#065f46' }}>{ban === 1 ? '🚫 محظور' : '✅ سليم'}</span>
+}
+
+function InfoSection({ title, rows }: { title: string; rows: { label: string; value: string }[] }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid var(--border)' }}>{title}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+        {rows.map(({ label, value }) => (
+          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--bg)', borderRadius: 6 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{label}</span>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{value}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
