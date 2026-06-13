@@ -420,10 +420,6 @@ function SingleResult({ user }: { user: MergedUser }) {
     <div className="table-card">
       <div className="table-header">
         <h2>بيانات المستخدم</h2>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <a href={`https://www.sayyouditto.com/pay/payermax/getInfo?no=${user.erbanNo}`} target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-sm"><ExternalLink size={13} /> Sayyouditto</a>
-          {user.ditto && <a href={`https://www.dittoparty.com/user/v4/get?uid=${user.uid}`} target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-sm"><ExternalLink size={13} /> Dittoparty</a>}
-        </div>
       </div>
       <div style={{ padding: 24 }}>
         <div style={{ display: 'flex', gap: 20, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
@@ -451,8 +447,8 @@ function SingleResult({ user }: { user: MergedUser }) {
             { label: 'الدولة', value: user.country || '—' },
           ]} />
           <InfoSection title="حالة المنصة" rows={[
-            { label: 'الحالة', value: user.ditto ? (user.ditto.onLine ? 'متصل 🟢' : 'غير متصل ⚫') : '—' },
-            { label: 'الحظر', value: user.ditto ? (user.ditto.ban === 1 ? 'محظور 🚫' : 'غير محظور ✅') : '—' },
+            { label: 'الحالة', value: user.ditto ? (user.ditto.onLine ? '🟢 متصل' : '—') : '—' },
+            { label: 'الحظر', value: user.ditto ? (user.ditto.ban === 1 ? '—' : '✅ سليم') : '—' },
             { label: 'هدايا الدردشة', value: user.chatGift === 1 ? 'مفعّل ✅' : 'معطّل ❌' },
             { label: 'نطاق الدردشة', value: user.chatRange === 1 ? 'عام 🌍' : 'خاص 🔒' },
           ]} />
@@ -506,12 +502,6 @@ function BatchGrid({ results }: { results: MergedUser[] }) {
                 {u.nobleName && <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 10, background: '#fef3c7', color: '#92400e' }}>👑</span>}
               </div>
 
-              <div style={{ display: 'flex', gap: 5, marginTop: 'auto' }}>
-                <a href={`https://www.sayyouditto.com/pay/payermax/getInfo?no=${u.erbanNo}`} target="_blank" rel="noopener noreferrer"
-                  style={{ fontSize: 10, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--border)', color: 'var(--text-muted)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}>
-                  <ExternalLink size={10} /> API
-                </a>
-              </div>
             </>
           )}
         </div>
@@ -564,13 +554,15 @@ function BatchTable({ results }: { results: MergedUser[] }) {
 
 // ── Small reusable badges ─────────────────────────────────────────────────────
 function StatusBadge({ online, small }: { online: boolean; small?: boolean }) {
+  if (!online) return null
   const s = small ? { fontSize: 10, padding: '1px 7px' } : { fontSize: 12, padding: '2px 10px' }
-  return <span style={{ ...s, borderRadius: 20, fontWeight: 600, background: online ? '#d1fae5' : '#f1f5f9', color: online ? '#065f46' : '#64748b' }}>{online ? '🟢 متصل' : '⚫ غير متصل'}</span>
+  return <span style={{ ...s, borderRadius: 20, fontWeight: 600, background: '#d1fae5', color: '#065f46' }}>🟢 متصل</span>
 }
 
 function BanBadge({ ban, small }: { ban: number; small?: boolean }) {
+  if (ban === 1) return null
   const s = small ? { fontSize: 10, padding: '1px 7px' } : { fontSize: 12, padding: '2px 10px' }
-  return <span style={{ ...s, borderRadius: 20, fontWeight: 600, background: ban === 1 ? '#fee2e2' : '#d1fae5', color: ban === 1 ? '#991b1b' : '#065f46' }}>{ban === 1 ? '🚫 محظور' : '✅ سليم'}</span>
+  return <span style={{ ...s, borderRadius: 20, fontWeight: 600, background: '#d1fae5', color: '#065f46' }}>✅ سليم</span>
 }
 
 function InfoSection({ title, rows }: { title: string; rows: { label: string; value: string }[] }) {
