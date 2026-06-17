@@ -35,6 +35,7 @@ interface UserInfo {
   full_name: string;
   role: string;
   status: string;
+  platform_id?: string;
   created_at: string;
   externalName?: string;
   externalImage?: string;
@@ -71,11 +72,10 @@ export default function SuperAdminDashboard() {
         const users = await usersRes.json();
         const approvedUsers = users.filter((u: UserInfo) => u.status === 'approved');
         const usersWithImages = await Promise.all(
-          approvedUsers.map(async (u: UserInfo) => ({
-            ...u,
-            externalName: (await fetchUserProfile(u.username))?.name,
-            externalImage: (await fetchUserProfile(u.username))?.image
-          }))
+          approvedUsers.map(async (u: UserInfo) => {
+            const profile = await fetchUserProfile(u.platform_id || u.username);
+            return { ...u, externalName: profile?.name, externalImage: profile?.image };
+          })
         );
         setRecentUsers(usersWithImages.slice(0, 5));
         setStats(prev => ({ ...prev, totalAdmins: approvedUsers.length }));
@@ -84,11 +84,10 @@ export default function SuperAdminDashboard() {
       if (pendingRes.ok) {
         const pending = await pendingRes.json();
         const pendingWithImages = await Promise.all(
-          pending.map(async (u: UserInfo) => ({
-            ...u,
-            externalName: (await fetchUserProfile(u.username))?.name,
-            externalImage: (await fetchUserProfile(u.username))?.image
-          }))
+          pending.map(async (u: UserInfo) => {
+            const profile = await fetchUserProfile(u.platform_id || u.username);
+            return { ...u, externalName: profile?.name, externalImage: profile?.image };
+          })
         );
         setPendingUsers(pendingWithImages.slice(0, 5));
         setStats(prev => ({ ...prev, pendingRequests: pending.length }));

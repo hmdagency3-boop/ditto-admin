@@ -12,6 +12,7 @@ export interface User {
   status: UserStatus;
   phone?: string;
   avatar_url?: string;
+  platform_id?: string;
   externalName?: string;
   externalImage?: string;
 }
@@ -57,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userData = await response.json();
         
         // Fetch external profile data
-        const externalData = await fetchUserProfile(userData.username || userData.id);
+        const externalData = await fetchUserProfile(userData.platform_id || userData.username || userData.id);
         
         setUser({
           ...userData,
@@ -97,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(data.token);
       
       // Fetch external profile data
-      const externalData = await fetchUserProfile(data.user.username || data.user.id);
+      const externalData = await fetchUserProfile(data.user.platform_id || data.user.username || data.user.id);
       
       setUser({
         ...data.user,

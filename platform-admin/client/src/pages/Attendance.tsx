@@ -80,7 +80,7 @@ export default function AttendancePage() {
           ...record,
           user: record.user ? {
             ...record.user,
-            externalImage: (await fetchUserProfile(record.user.username))?.image
+            externalImage: (await fetchUserProfile(record.user.platform_id || record.user.username))?.image
           } : undefined
         }))
       );

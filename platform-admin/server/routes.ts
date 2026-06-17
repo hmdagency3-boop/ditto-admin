@@ -189,6 +189,7 @@ export async function registerRoutes(
         status: user.status,
         phone: user.phone,
         avatar_url: user.avatar_url,
+        platform_id: (user as any).platform_id || null,
       });
     } catch (error) {
       console.error("Get user error:", error);

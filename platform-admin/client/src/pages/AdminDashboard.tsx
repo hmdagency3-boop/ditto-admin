@@ -78,7 +78,7 @@ export default function AdminDashboard() {
     if (user?.id) {
       // Fetch external profile data
       const fetchProfile = async () => {
-        const profile = await fetchUserProfile(user.username);
+        const profile = await fetchUserProfile(user.platform_id || user.username);
         setUserProfile(profile);
       };
       fetchProfile();

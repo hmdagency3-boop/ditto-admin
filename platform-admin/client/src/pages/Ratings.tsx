@@ -80,7 +80,7 @@ export default function Ratings() {
             ...rating,
             user: rating.user ? {
               ...rating.user,
-              externalImage: (await fetchUserProfile(rating.user.username))?.image
+              externalImage: (await fetchUserProfile(rating.user.platform_id || rating.user.username))?.image
             } : undefined
           }))
         );

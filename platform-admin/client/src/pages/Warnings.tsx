@@ -80,7 +80,7 @@ export default function Warnings() {
             ...warning,
             user: warning.user ? {
               ...warning.user,
-              externalImage: (await fetchUserProfile(warning.user.username))?.image
+              externalImage: (await fetchUserProfile(warning.user.platform_id || warning.user.username))?.image
             } : undefined
           }))
         );

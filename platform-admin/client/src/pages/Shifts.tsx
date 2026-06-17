@@ -81,7 +81,7 @@ export default function Shifts() {
 
         const adminsWithImages = await Promise.all(
           adminsData.map(async (admin) => {
-            const profile = await fetchUserProfile(admin.username);
+            const profile = await fetchUserProfile(admin.platform_id || admin.username);
             return { ...admin, externalName: profile?.name, externalImage: profile?.image };
           })
         );
