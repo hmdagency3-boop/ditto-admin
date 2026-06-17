@@ -12,3 +12,9 @@ id = "09pdBouHjyVtBKz9Dd2SL"
 uri = "file://admin-desk.zip"
 type = "unspecified"
 title = "AdminDesk"
+
+[[outputs]]
+id = "P_AxMf3BOMJs4JJD7yvS6"
+uri = "file://DEVNOTE.md"
+type = "text"
+title = "ملاحظات المطور — نظام إدارة المشرفين"

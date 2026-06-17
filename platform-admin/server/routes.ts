@@ -284,6 +284,38 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/users/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { full_name, phone, platform_id, password } = req.body;
+
+      const updates: Record<string, any> = {};
+      if (full_name  !== undefined) { updates.full_name  = full_name;  updates.name = full_name; }
+      if (phone      !== undefined)   updates.phone      = phone;
+      if (platform_id !== undefined)  updates.platform_id = platform_id;
+
+      if (password && password.trim().length > 0) {
+        const bcrypt = await import('bcryptjs');
+        updates.password = await bcrypt.hash(password, 10);
+      }
+
+      updates.updated_at = new Date().toISOString();
+
+      const { data, error } = await storage.supabase
+        .from('users')
+        .update(updates)
+        .eq('id', id)
+        .select('id, username, full_name, phone, platform_id, role, status')
+        .single();
+
+      if (error) throw error;
+      res.json({ message: "تم تحديث البيانات بنجاح", data });
+    } catch (error) {
+      console.error("Update user error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
   app.delete("/api/users/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { id } = req.params;
