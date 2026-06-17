@@ -42,6 +42,7 @@ export class SupabaseStorage implements IStorage {
           username: "admin",
           password: hashedPassword,
           full_name: "المسؤول الرئيسي",
+          name: "admin",
           role: "super_admin",
           status: "approved",
         });
@@ -94,6 +95,7 @@ export class SupabaseStorage implements IStorage {
       username: insertUser.username,
       password: hashedPassword,
       full_name: insertUser.full_name,
+      name: insertUser.username,
       role: "admin",
       status: "pending",
     };
