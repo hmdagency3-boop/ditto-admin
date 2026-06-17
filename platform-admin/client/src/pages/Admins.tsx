@@ -389,7 +389,12 @@ export default function Admins() {
                   </AvatarFallback>
                 </Avatar>
                 
-                <h3 className="text-lg font-semibold mb-1">{admin.full_name}</h3>
+                <h3 className="text-lg font-semibold mb-1">
+                  {admin.full_name}
+                  {admin.externalName && admin.externalName !== admin.full_name && (
+                    <span className="block text-sm font-normal text-primary/70 mt-0.5">({admin.externalName})</span>
+                  )}
+                </h3>
                 <p className="text-sm text-muted-foreground mb-1">@{admin.username}</p>
                 {admin.platform_id && (
                   <p className="text-xs text-muted-foreground/70 mb-2 flex items-center justify-center gap-1">

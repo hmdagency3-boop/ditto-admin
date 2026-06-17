@@ -28,6 +28,7 @@ interface UserInfo {
   full_name: string;
   role: string;
   externalImage?: string;
+  externalName?: string;
 }
 
 type AttendanceWithUser = Attendance & { user: UserInfo };
@@ -80,7 +81,7 @@ export default function AttendancePage() {
           ...record,
           user: record.user ? {
             ...record.user,
-            externalImage: (await fetchUserProfile(record.user.platform_id || record.user.username))?.image
+            ...await (async () => { const p = await fetchUserProfile(record.user.platform_id || record.user.username); return { externalImage: p?.image, externalName: p?.name }; })()
           } : undefined
         }))
       );
@@ -291,7 +292,12 @@ export default function AttendancePage() {
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <div className="font-medium">{record.user?.full_name || 'غير معروف'}</div>
+                            <div className="font-medium">
+                              {record.user?.full_name || 'غير معروف'}
+                              {record.user?.externalName && record.user.externalName !== record.user.full_name && (
+                                <span className="font-normal text-xs text-primary/70 mr-1">({record.user.externalName})</span>
+                              )}
+                            </div>
                             <div className="text-xs text-muted-foreground">@{record.user?.username}</div>
                           </div>
                         </div>

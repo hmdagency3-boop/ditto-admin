@@ -251,7 +251,12 @@ export default function Shifts() {
                                         {getInitials(admin.externalName || admin.full_name)}
                                       </AvatarFallback>
                                     </Avatar>
-                                    <span>{admin.externalName || admin.full_name}</span>
+                                    <span>
+                                      {admin.full_name}
+                                      {admin.externalName && admin.externalName !== admin.full_name && (
+                                        <span className="text-muted-foreground mr-1">({admin.externalName})</span>
+                                      )}
+                                    </span>
                                   </div>
                                 </SelectItem>
                               ))}
@@ -291,7 +296,10 @@ export default function Shifts() {
                           </AvatarFallback>
                         </Avatar>
                         <span className="font-medium">
-                          {shift.user?.externalName || shift.user?.full_name}
+                          {shift.user?.full_name}
+                          {shift.user?.externalName && shift.user.externalName !== shift.user.full_name && (
+                            <span className="font-normal opacity-70 mr-1">({shift.user.externalName})</span>
+                          )}
                         </span>
                         {isSuperAdmin && (
                           <button

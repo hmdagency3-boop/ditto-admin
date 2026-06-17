@@ -31,6 +31,7 @@ interface UserInfo {
   full_name: string;
   role: string;
   externalImage?: string;
+  externalName?: string;
 }
 
 const addRatingSchema = z.object({
@@ -80,7 +81,7 @@ export default function Ratings() {
             ...rating,
             user: rating.user ? {
               ...rating.user,
-              externalImage: (await fetchUserProfile(rating.user.platform_id || rating.user.username))?.image
+              ...await (async () => { const p = await fetchUserProfile(rating.user.platform_id || rating.user.username); return { externalImage: p?.image, externalName: p?.name }; })()
             } : undefined
           }))
         );
@@ -347,7 +348,12 @@ export default function Ratings() {
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold truncate">{rating.user?.full_name || 'غير معروف'}</h3>
+                    <h3 className="font-semibold">
+                      {rating.user?.full_name || 'غير معروف'}
+                      {rating.user?.externalName && rating.user.externalName !== rating.user.full_name && (
+                        <span className="font-normal text-sm text-primary/70 mr-1">({rating.user.externalName})</span>
+                      )}
+                    </h3>
                     <p className="text-sm text-muted-foreground">@{rating.user?.username}</p>
                     <div className="flex items-center gap-1 mt-2">
                       {renderStars(rating.score)}

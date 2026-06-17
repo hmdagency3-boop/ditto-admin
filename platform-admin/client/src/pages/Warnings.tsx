@@ -31,6 +31,7 @@ interface UserInfo {
   full_name: string;
   role: string;
   externalImage?: string;
+  externalName?: string;
 }
 
 const addWarningSchema = z.object({
@@ -80,7 +81,7 @@ export default function Warnings() {
             ...warning,
             user: warning.user ? {
               ...warning.user,
-              externalImage: (await fetchUserProfile(warning.user.platform_id || warning.user.username))?.image
+              ...await (async () => { const p = await fetchUserProfile(warning.user.platform_id || warning.user.username); return { externalImage: p?.image, externalName: p?.name }; })()
             } : undefined
           }))
         );
@@ -398,7 +399,12 @@ export default function Warnings() {
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold">{warning.user?.full_name || 'غير معروف'}</h3>
+                      <h3 className="font-semibold">
+                        {warning.user?.full_name || 'غير معروف'}
+                        {warning.user?.externalName && warning.user.externalName !== warning.user.full_name && (
+                          <span className="font-normal text-sm text-primary/70 mr-1">({warning.user.externalName})</span>
+                        )}
+                      </h3>
                       {getSeverityBadge(warning.severity)}
                     </div>
                     <p className="text-sm text-muted-foreground">@{warning.user?.username}</p>

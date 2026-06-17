@@ -243,7 +243,10 @@ export default function SuperAdminDashboard() {
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">
-                        {user.externalName || user.full_name}
+                        {user.full_name}
+                        {user.externalName && user.externalName !== user.full_name && (
+                          <span className="font-normal text-xs text-primary/70 mr-1">({user.externalName})</span>
+                        )}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         @{user.username}
@@ -296,7 +299,10 @@ export default function SuperAdminDashboard() {
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">
-                        {user.externalName || user.full_name}
+                        {user.full_name}
+                        {user.externalName && user.externalName !== user.full_name && (
+                          <span className="font-normal text-xs text-primary/70 mr-1">({user.externalName})</span>
+                        )}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         @{user.username}
