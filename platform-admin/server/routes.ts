@@ -197,6 +197,24 @@ export async function registerRoutes(
     }
   });
 
+  // Proxy endpoint for external platform profile API (avoids CORS) - no auth needed, data is public
+  app.get("/api/platform-profile/:identifier", async (req, res) => {
+    const { identifier } = req.params;
+    if (!identifier) return res.status(400).json({ message: "identifier required" });
+    try {
+      const response = await fetch(
+        `https://www.sayyouditto.com/pay/payermax/getInfo?no=${encodeURIComponent(identifier)}`,
+        { headers: { Accept: "application/json" } }
+      );
+      if (!response.ok) return res.status(502).json({ message: "External API error" });
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      console.error("Platform profile proxy error:", error);
+      res.status(502).json({ message: "Failed to reach external API" });
+    }
+  });
+
   app.get("/api/users", authenticateToken, async (req, res) => {
     try {
       const users = await storage.getAllUsers();
