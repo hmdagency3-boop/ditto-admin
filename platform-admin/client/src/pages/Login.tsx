@@ -316,9 +316,6 @@ export default function Login() {
             </CardContent>
           </Card>
           
-          <div className="mt-4 p-4 bg-muted rounded-lg text-center text-sm text-muted-foreground">
-            <p>للدخول كمسؤول: اسم المستخدم <strong>admin</strong> وكلمة المرور <strong>admin123</strong></p>
-          </div>
         </div>
       </main>
       
