@@ -1,12 +1,19 @@
-import { type User, type InsertUser } from "@shared/schema";
+import { type User, type InsertUser, users, attendance, shifts, ratings, warnings } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { eq, desc } from "drizzle-orm";
+import pg from "pg";
+
+const { Pool } = pg;
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const db = drizzle(pool);
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser & { full_name: string }): Promise<User>;
+  createUser(user: InsertUser & { full_name: string; device_fingerprint?: string | null; ip_address?: string | null }): Promise<User>;
   getAllUsers(): Promise<User[]>;
   getPendingUsers(): Promise<User[]>;
   approveUser(id: string, approvedBy: string): Promise<User | undefined>;
@@ -15,29 +22,17 @@ export interface IStorage {
   deleteUser(id: string): Promise<boolean>;
 }
 
-export class SupabaseStorage implements IStorage {
-  public supabase: SupabaseClient;
-
+export class DatabaseStorage implements IStorage {
   constructor() {
-    const supabaseUrl = 'https://wrtehkrbsewgcdbloddk.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndydGVoa3Jic2V3Z2NkYmxvZGRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxMjg2NjEsImV4cCI6MjA4MDcwNDY2MX0.jdgD0s0jcm-NqfI3LleQpn3WDKDaxzEQWQstHs6qmvM';
-
-    this.supabase = createClient(supabaseUrl, supabaseKey);
     this.initializeSuperAdmin();
   }
 
   private async initializeSuperAdmin() {
     try {
-      const { data: existingSuperAdmin } = await this.supabase
-        .from("users")
-        .select("*")
-        .eq("role", "super_admin")
-        .limit(1)
-        .single();
-
-      if (!existingSuperAdmin) {
+      const existing = await db.select().from(users).where(eq(users.role, "super_admin")).limit(1);
+      if (existing.length === 0) {
         const hashedPassword = await bcrypt.hash("admin123", 10);
-        const { error } = await this.supabase.from("users").insert({
+        await db.insert(users).values({
           id: randomUUID(),
           username: "admin",
           password: hashedPassword,
@@ -45,160 +40,84 @@ export class SupabaseStorage implements IStorage {
           role: "super_admin",
           status: "approved",
         });
-
-        if (error) {
-          console.error("Error creating super admin:", error.message);
-        } else {
-          console.log("Super admin created - Username: admin, Password: admin123");
-        }
+        console.log("Super admin created - Username: admin, Password: admin123");
       } else {
         console.log("Super admin already exists");
       }
     } catch (error) {
-      console.log("Waiting for users table to be created in Supabase...");
+      console.log("Waiting for database tables to be ready...", error);
     }
   }
 
   async getUser(id: string): Promise<User | undefined> {
-    const { data, error } = await this.supabase
-      .from("users")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (error || !data) return undefined;
-    return data as User;
+    const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    return result[0];
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const { data, error } = await this.supabase
-      .from("users")
-      .select("*")
-      .eq("username", username)
-      .single();
-
-    if (error || !data) return undefined;
-    return data as User;
+    const result = await db.select().from(users).where(eq(users.username, username)).limit(1);
+    return result[0];
   }
 
-  async createUser(insertUser: InsertUser & { 
+  async createUser(insertUser: InsertUser & {
     full_name: string;
     device_fingerprint?: string | null;
     ip_address?: string | null;
   }): Promise<User> {
     const id = randomUUID();
     const hashedPassword = await bcrypt.hash(insertUser.password, 10);
-    
-    const newUser = {
+
+    const result = await db.insert(users).values({
       id,
       username: insertUser.username,
       password: hashedPassword,
       full_name: insertUser.full_name,
       role: "admin",
       status: "pending",
-    };
+      device_fingerprint: insertUser.device_fingerprint ?? null,
+      ip_address: insertUser.ip_address ?? null,
+    }).returning();
 
-    const { data, error } = await this.supabase
-      .from("users")
-      .insert(newUser)
-      .select()
-      .single();
-
-    if (error) throw new Error(error.message);
-    return data as User;
+    return result[0];
   }
 
   async getAllUsers(): Promise<User[]> {
-    const { data, error } = await this.supabase
-      .from("users")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Error fetching users:", error.message);
-      return [];
-    }
-    return data as User[];
+    return db.select().from(users).orderBy(desc(users.created_at));
   }
 
   async getPendingUsers(): Promise<User[]> {
-    const { data, error } = await this.supabase
-      .from("users")
-      .select("*")
-      .eq("status", "pending")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Error fetching pending users:", error.message);
-      return [];
-    }
-    return data as User[];
+    return db.select().from(users).where(eq(users.status, "pending")).orderBy(desc(users.created_at));
   }
 
   async approveUser(id: string, approvedBy: string): Promise<User | undefined> {
-    const { data, error } = await this.supabase
-      .from("users")
-      .update({ 
-        status: "approved", 
-        approved_by: approvedBy, 
-        updated_at: new Date().toISOString() 
-      })
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Error approving user:", error.message);
-      return undefined;
-    }
-    return data as User;
+    const result = await db.update(users)
+      .set({ status: "approved", approved_by: approvedBy, updated_at: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return result[0];
   }
 
   async rejectUser(id: string): Promise<User | undefined> {
-    const { data, error } = await this.supabase
-      .from("users")
-      .update({ 
-        status: "rejected", 
-        updated_at: new Date().toISOString() 
-      })
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Error rejecting user:", error.message);
-      return undefined;
-    }
-    return data as User;
+    const result = await db.update(users)
+      .set({ status: "rejected", updated_at: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return result[0];
   }
 
   async updateUser(id: string, updateData: Partial<User>): Promise<User | undefined> {
-    const { data, error } = await this.supabase
-      .from("users")
-      .update({ ...updateData, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Error updating user:", error.message);
-      return undefined;
-    }
-    return data as User;
+    const result = await db.update(users)
+      .set({ ...updateData, updated_at: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return result[0];
   }
 
   async deleteUser(id: string): Promise<boolean> {
-    const { error } = await this.supabase
-      .from("users")
-      .delete()
-      .eq("id", id);
-
-    if (error) {
-      console.error("Error deleting user:", error.message);
-      return false;
-    }
-    return true;
+    const result = await db.delete(users).where(eq(users.id, id)).returning();
+    return result.length > 0;
   }
 }
 
-export const storage = new SupabaseStorage();
+export const storage = new DatabaseStorage();
+export { db as supabase };
