@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { RefreshCw, History, User, Hash, Image, Tag, AlertCircle } from 'lucide-react';
+import { RefreshCw, History, User, Hash, ImageIcon, Tag, AlertCircle } from 'lucide-react';
 
 interface ChangeLog {
   id: string;
@@ -19,7 +19,7 @@ const CHANGE_TYPE_LABELS: Record<string, { label: string; icon: React.ReactNode;
   name_change:       { label: 'تغيير الاسم',           icon: <User className="h-3.5 w-3.5" />,        color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' },
   platform_id_change:{ label: 'تغيير رقم المنصة',      icon: <Hash className="h-3.5 w-3.5" />,        color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
   nick_change:       { label: 'تغيير الاسم في المنصة', icon: <Tag className="h-3.5 w-3.5" />,         color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' },
-  avatar_change:     { label: 'تغيير الصورة',          icon: <Image className="h-3.5 w-3.5" />,       color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
+  avatar_change:     { label: 'تغيير الصورة',          icon: <ImageIcon className="h-3.5 w-3.5" />,   color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
   uid_mismatch:      { label: 'تغيير الرقم الثابت',    icon: <AlertCircle className="h-3.5 w-3.5" />, color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
 };
 

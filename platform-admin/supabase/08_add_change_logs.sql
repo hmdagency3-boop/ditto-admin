@@ -6,7 +6,7 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS platform_avatar TEXT;
 -- Create change_logs table
 CREATE TABLE IF NOT EXISTS public.change_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+  user_id TEXT REFERENCES public.users(id) ON DELETE CASCADE,
   user_full_name TEXT NOT NULL DEFAULT '',
   change_type TEXT NOT NULL,
   old_value TEXT,
