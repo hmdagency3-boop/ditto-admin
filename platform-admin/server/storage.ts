@@ -1,11 +1,7 @@
 import { type User, type InsertUser } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
-import { Pool } from "pg";
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -17,118 +13,73 @@ export interface IStorage {
   rejectUser(id: string): Promise<User | undefined>;
   updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
   deleteUser(id: string): Promise<boolean>;
-  query(sql: string, params?: any[]): Promise<any[]>;
 }
 
-export class PostgresStorage implements IStorage {
-  public pool: Pool;
+export class SupabaseStorage implements IStorage {
+  public supabase: SupabaseClient;
 
   constructor() {
-    this.pool = pool;
-    this.initializeSchema();
-  }
+    const supabaseUrl = process.env.SUPABASE_URL || 'https://hijmdaiwxhcrvxqmgxsy.supabase.co';
+    const supabaseKey = process.env.SUPABASE_ANON_KEY || 'sb_publishable_np8rx4Ve9Rs0NN9Q6MbiEg_vUCVxlAe';
 
-  async query(sql: string, params?: any[]): Promise<any[]> {
-    const result = await this.pool.query(sql, params);
-    return result.rows;
-  }
-
-  private async initializeSchema() {
-    try {
-      await this.pool.query(`
-        CREATE TABLE IF NOT EXISTS users (
-          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-          username TEXT NOT NULL UNIQUE,
-          password TEXT NOT NULL,
-          full_name TEXT NOT NULL,
-          name TEXT,
-          role TEXT NOT NULL DEFAULT 'admin',
-          status TEXT NOT NULL DEFAULT 'pending',
-          phone TEXT,
-          avatar_url TEXT,
-          platform_id TEXT,
-          device_fingerprint TEXT,
-          ip_address TEXT,
-          approved_by VARCHAR,
-          created_at TIMESTAMPTZ DEFAULT NOW(),
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        );
-
-        CREATE TABLE IF NOT EXISTS attendance (
-          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-          user_id VARCHAR NOT NULL REFERENCES users(id),
-          check_in TIMESTAMPTZ NOT NULL,
-          check_out TIMESTAMPTZ,
-          date TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'present',
-          notes TEXT,
-          created_at TIMESTAMPTZ DEFAULT NOW()
-        );
-
-        CREATE TABLE IF NOT EXISTS shifts (
-          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-          user_id VARCHAR NOT NULL REFERENCES users(id),
-          date TEXT NOT NULL DEFAULT '',
-          shift_number INTEGER NOT NULL,
-          created_by VARCHAR NOT NULL REFERENCES users(id),
-          created_at TIMESTAMPTZ DEFAULT NOW()
-        );
-
-        CREATE TABLE IF NOT EXISTS ratings (
-          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-          user_id VARCHAR NOT NULL REFERENCES users(id),
-          score INTEGER NOT NULL,
-          comment TEXT,
-          rated_by VARCHAR NOT NULL REFERENCES users(id),
-          created_at TIMESTAMPTZ DEFAULT NOW()
-        );
-
-        CREATE TABLE IF NOT EXISTS warnings (
-          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
-          user_id VARCHAR NOT NULL REFERENCES users(id),
-          severity TEXT NOT NULL,
-          reason TEXT NOT NULL,
-          issued_by VARCHAR NOT NULL REFERENCES users(id),
-          created_at TIMESTAMPTZ DEFAULT NOW()
-        );
-      `);
-
-      await this.initializeSuperAdmin();
-    } catch (error) {
-      console.error("Error initializing schema:", error);
-    }
+    this.supabase = createClient(supabaseUrl, supabaseKey);
+    this.initializeSuperAdmin();
   }
 
   private async initializeSuperAdmin() {
     try {
-      const result = await this.pool.query(
-        "SELECT id FROM users WHERE role = 'super_admin' LIMIT 1"
-      );
+      const { data: existingSuperAdmin } = await this.supabase
+        .from("users")
+        .select("*")
+        .eq("role", "super_admin")
+        .limit(1)
+        .single();
 
-      if (result.rows.length === 0) {
+      if (!existingSuperAdmin) {
         const hashedPassword = await bcrypt.hash("admin123", 10);
-        await this.pool.query(
-          `INSERT INTO users (id, username, password, full_name, name, role, status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [randomUUID(), "admin", hashedPassword, "المسؤول الرئيسي", "admin", "super_admin", "approved"]
-        );
-        console.log("Super admin created - Username: admin, Password: admin123");
+        const { error } = await this.supabase.from("users").insert({
+          id: randomUUID(),
+          username: "admin",
+          password: hashedPassword,
+          full_name: "المسؤول الرئيسي",
+          name: "admin",
+          role: "super_admin",
+          status: "approved",
+        });
+
+        if (error) {
+          console.error("Error creating super admin:", error.message);
+        } else {
+          console.log("Super admin created - Username: admin, Password: admin123");
+        }
       } else {
         console.log("Super admin already exists");
       }
     } catch (error) {
-      console.error("Error initializing super admin:", error);
+      console.log("Waiting for users table to be created in Supabase...");
     }
   }
 
   async getUser(id: string): Promise<User | undefined> {
-    const result = await this.pool.query("SELECT * FROM users WHERE id = $1", [id]);
-    return result.rows[0] as User | undefined;
+    const { data, error } = await this.supabase
+      .from("users")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error || !data) return undefined;
+    return data as User;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const result = await this.pool.query("SELECT * FROM users WHERE username = $1", [username]);
-    return result.rows[0] as User | undefined;
+    const { data, error } = await this.supabase
+      .from("users")
+      .select("*")
+      .eq("username", username)
+      .single();
+
+    if (error || !data) return undefined;
+    return data as User;
   }
 
   async createUser(insertUser: InsertUser & {
@@ -139,71 +90,117 @@ export class PostgresStorage implements IStorage {
     const id = randomUUID();
     const hashedPassword = await bcrypt.hash(insertUser.password, 10);
 
-    const result = await this.pool.query(
-      `INSERT INTO users (id, username, password, full_name, name, role, status, device_fingerprint, ip_address)
-       VALUES ($1, $2, $3, $4, $5, 'admin', 'pending', $6, $7)
-       RETURNING *`,
-      [id, insertUser.username, hashedPassword, insertUser.full_name, insertUser.username,
-       insertUser.device_fingerprint || null, insertUser.ip_address || null]
-    );
+    const newUser = {
+      id,
+      username: insertUser.username,
+      password: hashedPassword,
+      full_name: insertUser.full_name,
+      name: insertUser.username,
+      role: "admin",
+      status: "pending",
+    };
 
-    return result.rows[0] as User;
+    const { data, error } = await this.supabase
+      .from("users")
+      .insert(newUser)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data as User;
   }
 
   async getAllUsers(): Promise<User[]> {
-    const result = await this.pool.query("SELECT * FROM users ORDER BY created_at DESC");
-    return result.rows as User[];
+    const { data, error } = await this.supabase
+      .from("users")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching users:", error.message);
+      return [];
+    }
+    return data as User[];
   }
 
   async getPendingUsers(): Promise<User[]> {
-    const result = await this.pool.query(
-      "SELECT * FROM users WHERE status = 'pending' ORDER BY created_at DESC"
-    );
-    return result.rows as User[];
+    const { data, error } = await this.supabase
+      .from("users")
+      .select("*")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching pending users:", error.message);
+      return [];
+    }
+    return data as User[];
   }
 
   async approveUser(id: string, approvedBy: string): Promise<User | undefined> {
-    const result = await this.pool.query(
-      `UPDATE users SET status = 'approved', approved_by = $1, updated_at = NOW()
-       WHERE id = $2 RETURNING *`,
-      [approvedBy, id]
-    );
-    return result.rows[0] as User | undefined;
+    const { data, error } = await this.supabase
+      .from("users")
+      .update({
+        status: "approved",
+        approved_by: approvedBy,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error approving user:", error.message);
+      return undefined;
+    }
+    return data as User;
   }
 
   async rejectUser(id: string): Promise<User | undefined> {
-    const result = await this.pool.query(
-      `UPDATE users SET status = 'rejected', updated_at = NOW()
-       WHERE id = $1 RETURNING *`,
-      [id]
-    );
-    return result.rows[0] as User | undefined;
+    const { data, error } = await this.supabase
+      .from("users")
+      .update({
+        status: "rejected",
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error rejecting user:", error.message);
+      return undefined;
+    }
+    return data as User;
   }
 
   async updateUser(id: string, updateData: Partial<User>): Promise<User | undefined> {
-    const fields = Object.keys(updateData)
-      .filter(k => k !== 'id')
-      .map((k, i) => `${k} = $${i + 2}`)
-      .join(", ");
-    const values = Object.values(updateData).filter((_, i) => Object.keys(updateData)[i] !== 'id');
+    const { data, error } = await this.supabase
+      .from("users")
+      .update({ ...updateData, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select()
+      .single();
 
-    if (!fields) return this.getUser(id);
-
-    const result = await this.pool.query(
-      `UPDATE users SET ${fields}, updated_at = NOW() WHERE id = $1 RETURNING *`,
-      [id, ...values]
-    );
-    return result.rows[0] as User | undefined;
+    if (error) {
+      console.error("Error updating user:", error.message);
+      return undefined;
+    }
+    return data as User;
   }
 
   async deleteUser(id: string): Promise<boolean> {
-    await this.pool.query("DELETE FROM ratings WHERE user_id = $1 OR rated_by = $1", [id]);
-    await this.pool.query("DELETE FROM warnings WHERE user_id = $1 OR issued_by = $1", [id]);
-    await this.pool.query("DELETE FROM attendance WHERE user_id = $1", [id]);
-    await this.pool.query("DELETE FROM shifts WHERE user_id = $1 OR created_by = $1", [id]);
-    const result = await this.pool.query("DELETE FROM users WHERE id = $1", [id]);
-    return (result.rowCount ?? 0) > 0;
+    const { error } = await this.supabase
+      .from("users")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      console.error("Error deleting user:", error.message);
+      return false;
+    }
+    return true;
   }
 }
 
-export const storage = new PostgresStorage();
+export const storage = new SupabaseStorage();

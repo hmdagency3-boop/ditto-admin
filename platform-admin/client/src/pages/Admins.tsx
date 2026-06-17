@@ -11,7 +11,9 @@ import {
   UserCog,
   MoreVertical,
   Trash2,
-  Clock
+  Clock,
+  Pencil,
+  Link
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,7 +24,6 @@ import { fetchUserProfile } from '@/lib/userProfileService';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -36,7 +37,15 @@ const addAdminSchema = z.object({
   phone: z.string().optional(),
 });
 
+const editAdminSchema = z.object({
+  full_name: z.string().min(2, 'الاسم يجب أن يكون حرفين على الأقل'),
+  phone: z.string().optional(),
+  platform_id: z.string().optional(),
+  password: z.string().optional(),
+});
+
 type AddAdminFormData = z.infer<typeof addAdminSchema>;
+type EditAdminFormData = z.infer<typeof editAdminSchema>;
 
 interface UserInfo {
   id: string;
@@ -46,6 +55,7 @@ interface UserInfo {
   status: string;
   phone?: string;
   avatar_url?: string;
+  platform_id?: string;
   created_at: string;
   externalImage?: string;
 }
@@ -57,52 +67,41 @@ export default function Admins() {
   const [admins, setAdmins] = useState<UserInfo[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingAdmin, setEditingAdmin] = useState<UserInfo | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<AddAdminFormData>({
     resolver: zodResolver(addAdminSchema),
-    defaultValues: {
-      username: '',
-      password: '',
-      fullName: '',
-      phone: '',
-    },
+    defaultValues: { username: '', password: '', fullName: '', phone: '' },
   });
 
-  useEffect(() => {
-    fetchAdmins();
-  }, []);
+  const editForm = useForm<EditAdminFormData>({
+    resolver: zodResolver(editAdminSchema),
+    defaultValues: { full_name: '', phone: '', platform_id: '', password: '' },
+  });
+
+  useEffect(() => { fetchAdmins(); }, []);
 
   async function fetchAdmins() {
     try {
       const response = await fetch('/api/users', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-
       if (!response.ok) throw new Error('Failed to fetch users');
-
       const data = await response.json();
       const approvedAdmins = data.filter((u: UserInfo) => u.status === 'approved');
       
-      // Fetch external profile images for each admin
       const adminsWithImages = await Promise.all(
         approvedAdmins.map(async (admin: UserInfo) => {
-          const externalData = await fetchUserProfile(admin.username);
-          return {
-            ...admin,
-            externalImage: externalData?.image
-          };
+          const externalData = await fetchUserProfile(admin.platform_id || admin.username);
+          return { ...admin, externalImage: externalData?.image };
         })
       );
-      
       setAdmins(adminsWithImages);
     } catch (error) {
       console.error('Error fetching admins:', error);
-      toast({
-        title: 'خطأ',
-        description: 'حدث خطأ أثناء جلب بيانات المشرفين',
-        variant: 'destructive',
-      });
+      toast({ title: 'خطأ', description: 'حدث خطأ أثناء جلب بيانات المشرفين', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -114,31 +113,56 @@ export default function Admins() {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: data.username,
-          password: data.password,
-          full_name: data.fullName,
-        }),
+        body: JSON.stringify({ username: data.username, password: data.password, full_name: data.fullName }),
       });
-
       const result = await response.json();
-
       if (!response.ok) throw new Error(result.message);
-
-      toast({
-        title: 'تم إضافة المشرف',
-        description: 'تم إرسال طلب التسجيل. يمكنك الموافقة عليه من صفحة طلبات التسجيل.',
-      });
-
+      toast({ title: 'تم إضافة المشرف', description: 'تم إرسال طلب التسجيل. يمكنك الموافقة عليه من صفحة طلبات التسجيل.' });
       form.reset();
       setDialogOpen(false);
     } catch (error: any) {
-      console.error('Error adding admin:', error);
-      toast({
-        title: 'خطأ في إضافة المشرف',
-        description: error.message || 'حدث خطأ أثناء إضافة المشرف',
-        variant: 'destructive',
+      toast({ title: 'خطأ في إضافة المشرف', description: error.message || 'حدث خطأ أثناء إضافة المشرف', variant: 'destructive' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  function openEditDialog(admin: UserInfo) {
+    setEditingAdmin(admin);
+    editForm.reset({
+      full_name: admin.full_name,
+      phone: admin.phone || '',
+      platform_id: admin.platform_id || '',
+      password: '',
+    });
+    setEditDialogOpen(true);
+  }
+
+  async function onEditSubmit(data: EditAdminFormData) {
+    if (!editingAdmin) return;
+    setIsSubmitting(true);
+    try {
+      const body: Record<string, any> = {
+        full_name: data.full_name,
+        phone: data.phone || null,
+        platform_id: data.platform_id || null,
+      };
+      if (data.password && data.password.trim().length > 0) {
+        body.password = data.password;
+      }
+
+      const response = await fetch(`/api/users/${editingAdmin.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(body),
       });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+      toast({ title: 'تم التحديث', description: 'تم تحديث بيانات المشرف بنجاح' });
+      setEditDialogOpen(false);
+      fetchAdmins();
+    } catch (error: any) {
+      toast({ title: 'خطأ', description: error.message || 'حدث خطأ أثناء التحديث', variant: 'destructive' });
     } finally {
       setIsSubmitting(false);
     }
@@ -150,25 +174,14 @@ export default function Admins() {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.message);
       }
-
-      toast({
-        title: 'تم الحذف',
-        description: 'تم حذف المشرف بنجاح',
-      });
-
+      toast({ title: 'تم الحذف', description: 'تم حذف المشرف بنجاح' });
       fetchAdmins();
     } catch (error: any) {
-      console.error('Error deleting user:', error);
-      toast({
-        title: 'خطأ',
-        description: error.message || 'حدث خطأ أثناء حذف المشرف',
-        variant: 'destructive',
-      });
+      toast({ title: 'خطأ', description: error.message || 'حدث خطأ أثناء حذف المشرف', variant: 'destructive' });
     }
   }
 
@@ -177,14 +190,8 @@ export default function Admins() {
     admin.username.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const getInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map(part => part[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
-  };
+  const getInitials = (name: string) =>
+    name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase();
 
   if (loading) {
     return (
@@ -195,13 +202,11 @@ export default function Admins() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Card key={i}>
-              <CardContent className="p-6">
-                <Skeleton className="h-16 w-16 rounded-full mx-auto mb-4" />
-                <Skeleton className="h-5 w-32 mx-auto mb-2" />
-                <Skeleton className="h-4 w-40 mx-auto" />
-              </CardContent>
-            </Card>
+            <Card key={i}><CardContent className="p-6">
+              <Skeleton className="h-16 w-16 rounded-full mx-auto mb-4" />
+              <Skeleton className="h-5 w-32 mx-auto mb-2" />
+              <Skeleton className="h-4 w-40 mx-auto" />
+            </CardContent></Card>
           ))}
         </div>
       </div>
@@ -216,9 +221,7 @@ export default function Admins() {
             <Users className="h-8 w-8" />
             المشرفون
           </h1>
-          <p className="text-muted-foreground mt-1">
-            إدارة جميع المشرفين في النظام
-          </p>
+          <p className="text-muted-foreground mt-1">إدارة جميع المشرفين في النظام</p>
         </div>
         
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -231,81 +234,102 @@ export default function Admins() {
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>إضافة مشرف جديد</DialogTitle>
-              <DialogDescription>
-                أدخل بيانات المشرف الجديد. سيتم إنشاء طلب تسجيل يمكنك الموافقة عليه.
-              </DialogDescription>
+              <DialogDescription>أدخل بيانات المشرف الجديد. سيتم إنشاء طلب تسجيل يمكنك الموافقة عليه.</DialogDescription>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="fullName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>الاسم الكامل</FormLabel>
-                      <FormControl>
-                        <Input placeholder="أحمد محمد" data-testid="input-admin-name" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="username"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>اسم المستخدم</FormLabel>
-                      <FormControl>
-                        <Input placeholder="ahmed123" data-testid="input-admin-username" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>كلمة المرور</FormLabel>
-                      <FormControl>
-                        <Input type="password" placeholder="••••••••" data-testid="input-admin-password" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="phone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>رقم الهاتف (اختياري)</FormLabel>
-                      <FormControl>
-                        <Input placeholder="+966 5xxxxxxxx" data-testid="input-admin-phone" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
+                <FormField control={form.control} name="fullName" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>الاسم الكامل</FormLabel>
+                    <FormControl><Input placeholder="أحمد محمد" data-testid="input-admin-name" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="username" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>اسم المستخدم</FormLabel>
+                    <FormControl><Input placeholder="ahmed123" data-testid="input-admin-username" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="password" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>كلمة المرور</FormLabel>
+                    <FormControl><Input type="password" placeholder="••••••••" data-testid="input-admin-password" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="phone" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>رقم الهاتف (اختياري)</FormLabel>
+                    <FormControl><Input placeholder="+966 5xxxxxxxx" data-testid="input-admin-phone" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
                 <div className="flex gap-2 pt-4">
                   <Button type="submit" disabled={isSubmitting} className="flex-1" data-testid="button-submit-admin">
                     {isSubmitting ? 'جاري الإضافة...' : 'إضافة المشرف'}
                   </Button>
-                  <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                    إلغاء
-                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>إلغاء</Button>
                 </div>
               </form>
             </Form>
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Edit Admin Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>تعديل بيانات المشرف</DialogTitle>
+            <DialogDescription>
+              تعديل بيانات <span className="font-semibold">{editingAdmin?.full_name}</span>
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
+              <FormField control={editForm.control} name="full_name" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>الاسم الكامل</FormLabel>
+                  <FormControl><Input placeholder="أحمد محمد" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editForm.control} name="phone" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>رقم الهاتف (اختياري)</FormLabel>
+                  <FormControl><Input placeholder="+966 5xxxxxxxx" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editForm.control} name="platform_id" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-1">
+                    <Link className="h-3.5 w-3.5" />
+                    ID المنصة (sayyouditto)
+                  </FormLabel>
+                  <FormControl><Input placeholder="مثال: 123456" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editForm.control} name="password" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>كلمة مرور جديدة (اتركها فارغة للإبقاء على القديمة)</FormLabel>
+                  <FormControl><Input type="password" placeholder="••••••••" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <div className="flex gap-2 pt-4">
+                <Button type="submit" disabled={isSubmitting} className="flex-1">
+                  {isSubmitting ? 'جاري الحفظ...' : 'حفظ التغييرات'}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>إلغاء</Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
       <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-md">
@@ -318,9 +342,7 @@ export default function Admins() {
             data-testid="input-search-admins"
           />
         </div>
-        <Badge variant="secondary" className="text-sm">
-          {filteredAdmins.length} مشرف
-        </Badge>
+        <Badge variant="secondary" className="text-sm">{filteredAdmins.length} مشرف</Badge>
       </div>
 
       {filteredAdmins.length === 0 ? (
@@ -345,10 +367,11 @@ export default function Admins() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem 
-                      onClick={() => deleteUser(admin.id)}
-                      className="text-destructive"
-                    >
+                    <DropdownMenuItem onClick={() => openEditDialog(admin)}>
+                      <Pencil className="h-4 w-4 ml-2" />
+                      تعديل البيانات
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => deleteUser(admin.id)} className="text-destructive">
                       <Trash2 className="h-4 w-4 ml-2" />
                       حذف المشرف
                     </DropdownMenuItem>
@@ -367,22 +390,19 @@ export default function Admins() {
                 </Avatar>
                 
                 <h3 className="text-lg font-semibold mb-1">{admin.full_name}</h3>
-                <p className="text-sm text-muted-foreground mb-2">@{admin.username}</p>
+                <p className="text-sm text-muted-foreground mb-1">@{admin.username}</p>
+                {admin.platform_id && (
+                  <p className="text-xs text-muted-foreground/70 mb-2 flex items-center justify-center gap-1">
+                    <Link className="h-3 w-3" />
+                    ID: {admin.platform_id}
+                  </p>
+                )}
                 
-                <Badge 
-                  variant={admin.role === 'super_admin' ? 'default' : 'secondary'}
-                  className="mb-3"
-                >
+                <Badge variant={admin.role === 'super_admin' ? 'default' : 'secondary'} className="mb-3">
                   {admin.role === 'super_admin' ? (
-                    <>
-                      <Shield className="h-3 w-3 ml-1" />
-                      مدير رئيسي
-                    </>
+                    <><Shield className="h-3 w-3 ml-1" />مدير رئيسي</>
                   ) : (
-                    <>
-                      <UserCog className="h-3 w-3 ml-1" />
-                      مشرف
-                    </>
+                    <><UserCog className="h-3 w-3 ml-1" />مشرف</>
                   )}
                 </Badge>
                 

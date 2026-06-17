@@ -3,7 +3,8 @@ export interface UserProfileData {
   image: string;
 }
 
-export async function fetchUserProfile(identifier: string): Promise<UserProfileData | null> {
+export async function fetchUserProfile(identifier: string | null | undefined): Promise<UserProfileData | null> {
+  if (!identifier) return null;
   try {
     const response = await fetch(
       `https://www.sayyouditto.com/pay/payermax/getInfo?no=${encodeURIComponent(identifier)}`,

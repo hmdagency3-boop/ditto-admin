@@ -37,6 +37,7 @@ interface UserInfo {
   username: string;
   full_name: string;
   role: string;
+  platform_id?: string;
   externalName?: string;
   externalImage?: string;
 }
