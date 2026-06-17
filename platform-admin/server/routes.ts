@@ -310,7 +310,7 @@ export async function registerRoutes(
       const { data, error } = await storage.supabase
         .from('shifts')
         .select('*')
-        .order('date', { ascending: true });
+        .order('shift_number', { ascending: true });
 
       if (error) throw error;
       res.json(data || []);
@@ -322,7 +322,7 @@ export async function registerRoutes(
 
   app.post("/api/shifts", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      const { user_id, date, shift_number } = req.body;
+      const { user_id, shift_number } = req.body;
 
       if (!shift_number || shift_number < 1 || shift_number > 12) {
         return res.status(400).json({ message: "رقم الشيفت يجب أن يكون بين 1 و 12" });
@@ -331,7 +331,6 @@ export async function registerRoutes(
       const { data: existing } = await storage.supabase
         .from('shifts')
         .select('*')
-        .eq('date', date)
         .eq('shift_number', shift_number)
         .eq('user_id', user_id);
 
@@ -343,7 +342,6 @@ export async function registerRoutes(
         .from('shifts')
         .insert({
           user_id,
-          date,
           shift_number,
           created_by: req.user!.userId,
         })

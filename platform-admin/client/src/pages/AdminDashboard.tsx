@@ -34,10 +34,7 @@ interface Attendance {
 interface Shift {
   id: string;
   user_id: string;
-  date: string;
-  start_time: string;
-  end_time: string;
-  shift_type: 'morning' | 'afternoon' | 'night';
+  shift_number: number;
   created_by: string;
   created_at?: string;
 }
@@ -109,7 +106,7 @@ export default function AdminDashboard() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const allShifts = await shiftsRes.json();
-      const shifts = allShifts.filter((s: Shift) => s.user_id === user.id && s.date >= today).slice(0, 5);
+      const shifts = allShifts.filter((s: Shift) => s.user_id === user.id).slice(0, 5);
 
       const ratingsRes = await fetch('/api/ratings', {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -416,41 +413,36 @@ export default function AdminDashboard() {
             {upcomingShifts.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Calendar className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>لا توجد شيفتات مجدولة</p>
+                <p>لم يتم تعيين شيفت لك بعد</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {upcomingShifts.map((shift) => (
-                  <div 
-                    key={shift.id} 
-                    className="flex items-center gap-3 p-3 rounded-md bg-muted/50"
-                    data-testid={`shift-${shift.id}`}
-                  >
-                    <div className={`p-2 rounded-md ${
-                      shift.shift_type === 'morning' ? 'bg-yellow-100 dark:bg-yellow-900/30' :
-                      shift.shift_type === 'afternoon' ? 'bg-orange-100 dark:bg-orange-900/30' :
-                      'bg-blue-100 dark:bg-blue-900/30'
-                    }`}>
-                      <Clock className={`h-4 w-4 ${
-                        shift.shift_type === 'morning' ? 'text-yellow-600 dark:text-yellow-400' :
-                        shift.shift_type === 'afternoon' ? 'text-orange-600 dark:text-orange-400' :
-                        'text-blue-600 dark:text-blue-400'
-                      }`} />
+                {upcomingShifts.map((shift) => {
+                  const SLOT_LABELS: Record<number, string> = {
+                    1: '12:00 ص - 2:00 ص', 2: '2:00 ص - 4:00 ص', 3: '4:00 ص - 6:00 ص',
+                    4: '6:00 ص - 8:00 ص',  5: '8:00 ص - 10:00 ص', 6: '10:00 ص - 12:00 م',
+                    7: '12:00 م - 2:00 م', 8: '2:00 م - 4:00 م',  9: '4:00 م - 6:00 م',
+                    10: '6:00 م - 8:00 م', 11: '8:00 م - 10:00 م', 12: '10:00 م - 12:00 ص',
+                  };
+                  return (
+                    <div
+                      key={shift.id}
+                      className="flex items-center gap-3 p-3 rounded-md bg-muted/50"
+                      data-testid={`shift-${shift.id}`}
+                    >
+                      <div className="p-2 rounded-md bg-primary/10">
+                        <Clock className="h-4 w-4 text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">يومياً — كل أيام الأسبوع</p>
+                        <p className="text-xs text-muted-foreground">
+                          {SLOT_LABELS[shift.shift_number] ?? `شيفت #${shift.shift_number}`}
+                        </p>
+                      </div>
+                      <Badge variant="outline">شيفت #{shift.shift_number}</Badge>
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">
-                        {format(new Date(shift.date), 'EEEE، d MMMM', { locale: ar })}
-                      </p>
-                      <p className="text-xs text-muted-foreground font-mono">
-                        {shift.start_time} - {shift.end_time}
-                      </p>
-                    </div>
-                    <Badge variant="outline">
-                      {shift.shift_type === 'morning' ? 'صباحي' : 
-                       shift.shift_type === 'afternoon' ? 'مسائي' : 'ليلي'}
-                    </Badge>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>

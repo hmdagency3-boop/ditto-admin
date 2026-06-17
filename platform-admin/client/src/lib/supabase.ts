@@ -34,10 +34,7 @@ export interface Attendance {
 export interface Shift {
   id: string;
   user_id: string;
-  start_time: string;
-  end_time: string;
-  date: string;
-  shift_type: 'morning' | 'afternoon' | 'night';
+  shift_number: number;
   created_by: string;
   created_at: string;
 }
