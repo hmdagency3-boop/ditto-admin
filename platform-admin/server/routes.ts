@@ -76,7 +76,7 @@ export async function registerRoutes(
         password,
         full_name,
         device_fingerprint: device_fingerprint || null,
-        ip_address: ip_address,
+        ip_address,
       });
 
       res.status(201).json({
@@ -96,7 +96,7 @@ export async function registerRoutes(
 
   app.post("/api/auth/check-status", async (req, res) => {
     try {
-      const { username, fingerprint } = req.body;
+      const { username } = req.body;
 
       if (!username) {
         return res.status(400).json({ status: "not_found" });
@@ -289,27 +289,41 @@ export async function registerRoutes(
       const { id } = req.params;
       const { full_name, phone, platform_id, password } = req.body;
 
-      const updates: Record<string, any> = {};
-      if (full_name  !== undefined) { updates.full_name  = full_name;  updates.name = full_name; }
-      if (phone      !== undefined)   updates.phone      = phone;
-      if (platform_id !== undefined)  updates.platform_id = platform_id;
+      const setClauses: string[] = [];
+      const values: any[] = [];
+      let paramIdx = 1;
 
+      if (full_name !== undefined) {
+        setClauses.push(`full_name = $${paramIdx++}`, `name = $${paramIdx++}`);
+        values.push(full_name, full_name);
+      }
+      if (phone !== undefined) {
+        setClauses.push(`phone = $${paramIdx++}`);
+        values.push(phone);
+      }
+      if (platform_id !== undefined) {
+        setClauses.push(`platform_id = $${paramIdx++}`);
+        values.push(platform_id);
+      }
       if (password && password.trim().length > 0) {
-        const bcrypt = await import('bcryptjs');
-        updates.password = await bcrypt.hash(password, 10);
+        const hashed = await bcrypt.hash(password, 10);
+        setClauses.push(`password = $${paramIdx++}`);
+        values.push(hashed);
       }
 
-      updates.updated_at = new Date().toISOString();
+      setClauses.push(`updated_at = NOW()`);
+      values.push(id);
 
-      const { data, error } = await storage.supabase
-        .from('users')
-        .update(updates)
-        .eq('id', id)
-        .select('id, username, full_name, phone, platform_id, role, status')
-        .single();
+      const result = await storage.query(
+        `UPDATE users SET ${setClauses.join(", ")} WHERE id = $${paramIdx} RETURNING id, username, full_name, phone, platform_id, role, status`,
+        values
+      );
 
-      if (error) throw error;
-      res.json({ message: "تم تحديث البيانات بنجاح", data });
+      if (!result[0]) {
+        return res.status(404).json({ message: "المستخدم غير موجود" });
+      }
+
+      res.json({ message: "تم تحديث البيانات بنجاح", data: result[0] });
     } catch (error) {
       console.error("Update user error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -339,13 +353,8 @@ export async function registerRoutes(
   // Shifts endpoints
   app.get("/api/shifts", authenticateToken, async (req, res) => {
     try {
-      const { data, error } = await storage.supabase
-        .from('shifts')
-        .select('*')
-        .order('shift_number', { ascending: true });
-
-      if (error) throw error;
-      res.json(data || []);
+      const rows = await storage.query("SELECT * FROM shifts ORDER BY shift_number ASC");
+      res.json(rows);
     } catch (error) {
       console.error("Get shifts error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -360,28 +369,21 @@ export async function registerRoutes(
         return res.status(400).json({ message: "رقم الشيفت يجب أن يكون بين 1 و 12" });
       }
 
-      const { data: existing } = await storage.supabase
-        .from('shifts')
-        .select('*')
-        .eq('shift_number', shift_number)
-        .eq('user_id', user_id);
+      const existing = await storage.query(
+        "SELECT id FROM shifts WHERE shift_number = $1 AND user_id = $2",
+        [shift_number, user_id]
+      );
 
-      if (existing && existing.length > 0) {
+      if (existing.length > 0) {
         return res.status(400).json({ message: "هذا المشرف مسجل بالفعل في هذا الشيفت" });
       }
 
-      const { data, error } = await storage.supabase
-        .from('shifts')
-        .insert({
-          user_id,
-          shift_number,
-          created_by: req.user!.userId,
-        })
-        .select()
-        .single();
+      const rows = await storage.query(
+        `INSERT INTO shifts (user_id, shift_number, created_by) VALUES ($1, $2, $3) RETURNING *`,
+        [user_id, shift_number, req.user!.userId]
+      );
 
-      if (error) throw error;
-      res.status(201).json({ message: "تمت إضافة المشرف للشيفت بنجاح", data });
+      res.status(201).json({ message: "تمت إضافة المشرف للشيفت بنجاح", data: rows[0] });
     } catch (error) {
       console.error("Create shift error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -391,13 +393,7 @@ export async function registerRoutes(
   app.delete("/api/shifts/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-
-      const { error } = await storage.supabase
-        .from('shifts')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      await storage.query("DELETE FROM shifts WHERE id = $1", [id]);
       res.json({ message: "تم حذف المشرف من الشيفت بنجاح" });
     } catch (error) {
       console.error("Delete shift error:", error);
@@ -408,13 +404,8 @@ export async function registerRoutes(
   // Attendance endpoints
   app.get("/api/attendance", authenticateToken, async (req, res) => {
     try {
-      const { data, error } = await storage.supabase
-        .from('attendance')
-        .select('*')
-        .order('date', { ascending: false });
-
-      if (error) throw error;
-      res.json(data || []);
+      const rows = await storage.query("SELECT * FROM attendance ORDER BY date DESC");
+      res.json(rows);
     } catch (error) {
       console.error("Get attendance error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -425,14 +416,12 @@ export async function registerRoutes(
     try {
       const { user_id, check_in, date, status } = req.body;
 
-      const { data, error } = await storage.supabase
-        .from('attendance')
-        .insert({ user_id, check_in, date, status })
-        .select()
-        .single();
+      const rows = await storage.query(
+        `INSERT INTO attendance (user_id, check_in, date, status) VALUES ($1, $2, $3, $4) RETURNING *`,
+        [user_id, check_in, date, status]
+      );
 
-      if (error) throw error;
-      res.status(201).json({ message: "تم تسجيل الحضور", data });
+      res.status(201).json({ message: "تم تسجيل الحضور", data: rows[0] });
     } catch (error) {
       console.error("Create attendance error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -444,15 +433,12 @@ export async function registerRoutes(
       const { id } = req.params;
       const { check_out } = req.body;
 
-      const { data, error } = await storage.supabase
-        .from('attendance')
-        .update({ check_out })
-        .eq('id', id)
-        .select()
-        .single();
+      const rows = await storage.query(
+        `UPDATE attendance SET check_out = $1 WHERE id = $2 RETURNING *`,
+        [check_out, id]
+      );
 
-      if (error) throw error;
-      res.json({ message: "تم تحديث الحضور", data });
+      res.json({ message: "تم تحديث الحضور", data: rows[0] });
     } catch (error) {
       console.error("Update attendance error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -462,13 +448,8 @@ export async function registerRoutes(
   // Ratings endpoints
   app.get("/api/ratings", authenticateToken, async (req, res) => {
     try {
-      const { data, error } = await storage.supabase
-        .from('ratings')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      res.json(data || []);
+      const rows = await storage.query("SELECT * FROM ratings ORDER BY created_at DESC");
+      res.json(rows);
     } catch (error) {
       console.error("Get ratings error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -479,14 +460,12 @@ export async function registerRoutes(
     try {
       const { user_id, score, comment } = req.body;
 
-      const { data, error } = await storage.supabase
-        .from('ratings')
-        .insert({ user_id, score, comment, rated_by: req.user!.userId })
-        .select()
-        .single();
+      const rows = await storage.query(
+        `INSERT INTO ratings (user_id, score, comment, rated_by) VALUES ($1, $2, $3, $4) RETURNING *`,
+        [user_id, score, comment, req.user!.userId]
+      );
 
-      if (error) throw error;
-      res.status(201).json({ message: "تم إضافة التقييم", data });
+      res.status(201).json({ message: "تم إضافة التقييم", data: rows[0] });
     } catch (error) {
       console.error("Create rating error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -496,13 +475,8 @@ export async function registerRoutes(
   // Warnings endpoints
   app.get("/api/warnings", authenticateToken, async (req, res) => {
     try {
-      const { data, error } = await storage.supabase
-        .from('warnings')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      res.json(data || []);
+      const rows = await storage.query("SELECT * FROM warnings ORDER BY created_at DESC");
+      res.json(rows);
     } catch (error) {
       console.error("Get warnings error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -513,14 +487,12 @@ export async function registerRoutes(
     try {
       const { user_id, severity, reason } = req.body;
 
-      const { data, error } = await storage.supabase
-        .from('warnings')
-        .insert({ user_id, severity, reason, issued_by: req.user!.userId })
-        .select()
-        .single();
+      const rows = await storage.query(
+        `INSERT INTO warnings (user_id, severity, reason, issued_by) VALUES ($1, $2, $3, $4) RETURNING *`,
+        [user_id, severity, reason, req.user!.userId]
+      );
 
-      if (error) throw error;
-      res.status(201).json({ message: "تم إصدار التحذير", data });
+      res.status(201).json({ message: "تم إصدار التحذير", data: rows[0] });
     } catch (error) {
       console.error("Create warning error:", error);
       res.status(500).json({ message: "حدث خطأ" });
