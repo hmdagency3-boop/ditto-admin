@@ -58,6 +58,7 @@ interface UserInfo {
   platform_id?: string;
   created_at: string;
   externalImage?: string;
+  externalName?: string;
 }
 
 export default function Admins() {
@@ -95,7 +96,7 @@ export default function Admins() {
       const adminsWithImages = await Promise.all(
         approvedAdmins.map(async (admin: UserInfo) => {
           const externalData = await fetchUserProfile(admin.platform_id || admin.username);
-          return { ...admin, externalImage: externalData?.image };
+          return { ...admin, externalName: externalData?.name, externalImage: externalData?.image };
         })
       );
       setAdmins(adminsWithImages);
