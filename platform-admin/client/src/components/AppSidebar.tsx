@@ -12,6 +12,7 @@ import {
   UserCheck,
   Search,
   Settings,
+  History,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -48,6 +49,7 @@ export function AppSidebar() {
     { key: 'nav.shifts', url: '/shifts', icon: Calendar },
     { key: 'nav.ratings', url: '/ratings', icon: Star },
     { key: 'nav.warnings', url: '/warnings', icon: AlertTriangle },
+    { key: 'nav.changeLogs', url: '/change-logs', icon: History },
     { key: 'nav.settings', url: '/settings', icon: Settings },
   ];
 

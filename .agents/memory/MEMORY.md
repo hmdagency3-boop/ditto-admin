@@ -1,0 +1,2 @@
+- [Change log feature](change-log-feature.md) — سجل التغييرات: ما تم وما تبقى وكيف يعمل النظام
+- [Project architecture](project-arch.md) — نظام إدارة المشرفين: Express+React+TS في platform-admin/، Supabase PostgreSQL

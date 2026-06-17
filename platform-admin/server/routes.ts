@@ -44,6 +44,46 @@ function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+async function fetchPlatformProfile(identifier: string): Promise<{ uid: string; nick: string; avatar: string } | null> {
+  try {
+    const response = await fetch(
+      `https://www.sayyouditto.com/pay/payermax/getInfo?no=${encodeURIComponent(identifier)}`,
+      { headers: { Accept: 'application/json' } }
+    );
+    if (!response.ok) return null;
+    const result = await response.json();
+    if (result.code === 200 && result.data) {
+      return {
+        uid: String(result.data.uid || ''),
+        nick: result.data.nick || '',
+        avatar: result.data.avatar || ''
+      };
+    }
+    return null;
+  } catch { return null; }
+}
+
+async function logChange(
+  supabase: any,
+  userId: string,
+  userFullName: string,
+  changeType: string,
+  oldValue: string | null,
+  newValue: string | null
+) {
+  try {
+    await supabase.from('change_logs').insert({
+      user_id: userId,
+      user_full_name: userFullName,
+      change_type: changeType,
+      old_value: oldValue,
+      new_value: newValue
+    });
+  } catch (err) {
+    console.error('Error inserting change log:', err);
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -309,9 +349,15 @@ export async function registerRoutes(
       const { id } = req.params;
       const { full_name, phone, platform_id, password } = req.body;
 
+      const { data: currentUser } = await storage.supabase
+        .from('users')
+        .select('id, full_name, platform_id, platform_uid, platform_nick, platform_avatar')
+        .eq('id', id)
+        .single();
+
       const updates: Record<string, any> = {};
-      if (full_name  !== undefined) { updates.full_name  = full_name;  updates.name = full_name; }
-      if (phone      !== undefined)   updates.phone      = phone;
+      if (full_name  !== undefined) { updates.full_name = full_name; updates.name = full_name; }
+      if (phone      !== undefined)   updates.phone = phone;
       if (platform_id !== undefined)  updates.platform_id = platform_id;
 
       if (password && password.trim().length > 0) {
@@ -320,6 +366,37 @@ export async function registerRoutes(
       }
 
       updates.updated_at = new Date().toISOString();
+
+      if (currentUser) {
+        const displayName = (full_name !== undefined ? full_name : currentUser.full_name) || '';
+
+        if (full_name !== undefined && full_name !== currentUser.full_name) {
+          await logChange(storage.supabase, id, displayName, 'name_change', currentUser.full_name, full_name);
+        }
+
+        if (platform_id !== undefined && String(platform_id || '') !== String(currentUser.platform_id || '')) {
+          await logChange(storage.supabase, id, displayName, 'platform_id_change', currentUser.platform_id || null, platform_id || null);
+
+          if (platform_id) {
+            const profile = await fetchPlatformProfile(String(platform_id));
+            if (profile) {
+              if (currentUser.platform_nick && profile.nick && profile.nick !== currentUser.platform_nick) {
+                await logChange(storage.supabase, id, displayName, 'nick_change', currentUser.platform_nick, profile.nick);
+              }
+              if (currentUser.platform_avatar && profile.avatar && profile.avatar !== currentUser.platform_avatar) {
+                await logChange(storage.supabase, id, displayName, 'avatar_change', currentUser.platform_avatar, profile.avatar);
+              }
+              updates.platform_uid    = profile.uid;
+              updates.platform_nick   = profile.nick;
+              updates.platform_avatar = profile.avatar;
+            }
+          } else {
+            updates.platform_uid    = null;
+            updates.platform_nick   = null;
+            updates.platform_avatar = null;
+          }
+        }
+      }
 
       const { data, error } = await storage.supabase
         .from('users')
@@ -544,6 +621,80 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Create warning error:", error);
       res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // Change Logs endpoints
+  app.get("/api/change-logs", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { data, error } = await storage.supabase
+        .from('change_logs')
+        .select('*')
+        .order('detected_at', { ascending: false })
+        .limit(500);
+      if (error) throw error;
+      res.json(data || []);
+    } catch (error) {
+      console.error("Get change logs error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/change-logs/check-all", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { data: users, error: usersError } = await storage.supabase
+        .from('users')
+        .select('id, full_name, platform_id, platform_uid, platform_nick, platform_avatar')
+        .not('platform_id', 'is', null)
+        .neq('platform_id', '');
+
+      if (usersError) throw usersError;
+
+      let changesFound = 0;
+
+      for (const user of (users || [])) {
+        const profile = await fetchPlatformProfile(String(user.platform_id));
+        if (!profile) continue;
+
+        const profileUpdates: Record<string, any> = {};
+
+        if (user.platform_uid && profile.uid && profile.uid !== user.platform_uid) {
+          await logChange(
+            storage.supabase, user.id, user.full_name, 'uid_mismatch',
+            `uid: ${user.platform_uid} (رقم: ${user.platform_id})`,
+            `uid: ${profile.uid} — الرقم ${user.platform_id} انتقل لشخص آخر`
+          );
+          changesFound++;
+          profileUpdates.platform_uid = profile.uid;
+        } else if (!user.platform_uid && profile.uid) {
+          profileUpdates.platform_uid = profile.uid;
+        }
+
+        if (user.platform_nick && profile.nick && profile.nick !== user.platform_nick) {
+          await logChange(storage.supabase, user.id, user.full_name, 'nick_change', user.platform_nick, profile.nick);
+          changesFound++;
+          profileUpdates.platform_nick = profile.nick;
+        } else if (!user.platform_nick && profile.nick) {
+          profileUpdates.platform_nick = profile.nick;
+        }
+
+        if (user.platform_avatar && profile.avatar && profile.avatar !== user.platform_avatar) {
+          await logChange(storage.supabase, user.id, user.full_name, 'avatar_change', user.platform_avatar, profile.avatar);
+          changesFound++;
+          profileUpdates.platform_avatar = profile.avatar;
+        } else if (!user.platform_avatar && profile.avatar) {
+          profileUpdates.platform_avatar = profile.avatar;
+        }
+
+        if (Object.keys(profileUpdates).length > 0) {
+          await storage.supabase.from('users').update(profileUpdates).eq('id', user.id);
+        }
+      }
+
+      res.json({ message: `تم الفحص بنجاح — تم اكتشاف ${changesFound} تغيير`, changesFound });
+    } catch (error) {
+      console.error("Check all error:", error);
+      res.status(500).json({ message: "حدث خطأ أثناء الفحص" });
     }
   });
 
