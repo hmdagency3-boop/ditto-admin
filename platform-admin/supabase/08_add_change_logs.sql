@@ -16,3 +16,6 @@ CREATE TABLE IF NOT EXISTS public.change_logs (
 
 CREATE INDEX IF NOT EXISTS idx_change_logs_user_id ON public.change_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_change_logs_detected_at ON public.change_logs(detected_at DESC);
+
+ALTER TABLE public.change_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "change_logs_all" ON public.change_logs FOR ALL USING (true) WITH CHECK (true);
