@@ -71,16 +71,15 @@ async function logChange(
   oldValue: string | null,
   newValue: string | null
 ) {
-  try {
-    await supabase.from('change_logs').insert({
-      user_id: userId,
-      user_full_name: userFullName,
-      change_type: changeType,
-      old_value: oldValue,
-      new_value: newValue
-    });
-  } catch (err) {
-    console.error('Error inserting change log:', err);
+  const { error } = await supabase.from('change_logs').insert({
+    user_id: userId,
+    user_full_name: userFullName,
+    change_type: changeType,
+    old_value: oldValue,
+    new_value: newValue
+  });
+  if (error) {
+    console.error('Error inserting change log:', JSON.stringify(error));
   }
 }
 
