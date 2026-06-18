@@ -13,16 +13,17 @@ description: مشكلة حفظ حالة التوظيف (متواجد/مفصول)
 - `Cache-Control: no-store` على GET /api/users ✅
 - Supabase key محدّث من publishable إلى anon key الحقيقي ✅
 
-## المشكلة المعلّقة
-التغيير يظهر لحظياً (optimistic) لكن بعد refresh يرجع active.
-- الـ PATCH يصل للسيرفر ويرجع 200 في 6ms فقط (بدون console.log!) — يشير أن السيرفر لسه بيشغّل كود قديم
-- Supabase update يعمل بشكل مباشر من node scripts ✅
-- GET /api/users لا يزال يرجع 304 رغم Cache-Control: no-store — نفس إشارة كود قديم
-- آخر محاولة: restart الـ workflow لتحميل الكود الجديد
+## الحل النهائي ✅
+المشكلة اتحلت بعد restart السيرفر مع الكود الجديد.
 
-## الأسباب المحتملة المتبقية
-1. الـ tsx --watch لم يُعد تحميل routes.ts بعد التعديلات — تم عمل restart
-2. هناك RLS policy في Supabase تمنع UPDATE من الـ anon role رغم policy "FOR ALL USING (true)"
+**السبب الجذري:** السيرفر كان بيشغّل كود قديم (tsx --watch لم يُعد تحميل التعديلات تلقائياً) — الـ PATCH كان بيرجع 200 في 6ms بدون console.log وده الدليل.
+
+**الإصلاحات الفعّالة:**
+- استبدال publishable key بالـ anon key الحقيقي (JWT)
+- إنشاء endpoint مخصص `PATCH /api/users/:id/employment-status`
+- Cache-Control: no-store على GET /api/users
+- Optimistic UI update في Admins.tsx
+- إعادة تشغيل السيرفر يدوياً
 
 ## الملفات الرئيسية
 - `platform-admin/server/routes.ts` — endpoint مخصص في السطر ~345
