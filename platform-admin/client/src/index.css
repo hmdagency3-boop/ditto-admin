@@ -43,8 +43,8 @@
   --chart-3: 25 85% 40%;
   --chart-4: 280 70% 40%;
   --chart-5: 340 75% 40%;
-  --font-sans: 'Cairo', sans-serif;
-  --font-serif: 'Cairo', serif;
+  --font-sans: 'Cairo', 'Noto Sans', sans-serif;
+  --font-serif: 'Cairo', 'Noto Sans', serif;
   --font-mono: 'IBM Plex Mono', monospace;
   --radius: .5rem;
   --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
