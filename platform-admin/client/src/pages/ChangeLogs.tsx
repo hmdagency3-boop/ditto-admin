@@ -48,7 +48,7 @@ export default function ChangeLogs() {
     setLoading(true);
     try {
       const res = await fetch('/api/change-logs', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        headers: { Authorization: `Bearer ${localStorage.getItem('auth_token')}` }
       });
       if (!res.ok) throw new Error();
       const data = await res.json();
@@ -65,7 +65,7 @@ export default function ChangeLogs() {
     try {
       const res = await fetch('/api/change-logs/check-all', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        headers: { Authorization: `Bearer ${localStorage.getItem('auth_token')}` }
       });
       const data = await res.json();
       toast({ title: 'تم الفحص', description: data.message });
