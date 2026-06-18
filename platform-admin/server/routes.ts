@@ -750,16 +750,15 @@ export async function registerRoutes(
     }
   }, 10_000);
 
-  // Auto-check every 5 minutes
+  // Auto-check every 30 seconds
   setInterval(async () => {
     try {
-      console.log('[platform-check] فحص دوري...');
       const n = await runPlatformCheck(storage.supabase);
-      console.log(`[platform-check] اكتمل — ${n} تغيير`);
+      if (n > 0) console.log(`[platform-check] ${n} تغيير جديد`);
     } catch (e) {
       console.error('[platform-check] خطأ في الفحص الدوري:', e);
     }
-  }, 5 * 60 * 1000);
+  }, 30 * 1000);
 
   return httpServer;
 }
