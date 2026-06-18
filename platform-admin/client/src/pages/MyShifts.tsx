@@ -49,26 +49,27 @@ const typeLabel: Record<string, string> = {
 };
 
 export default function MyShifts() {
-  const { profile } = useAuth();
+  const { user, token } = useAuth();
   const [loading, setLoading] = useState(true);
   const [myShifts, setMyShifts] = useState<ShiftRecord[]>([]);
 
   useEffect(() => {
-    if (profile?.id) fetchShifts();
-  }, [profile?.id]);
+    if (user?.id) fetchShifts();
+  }, [user?.id]);
 
   async function fetchShifts() {
-    if (!profile?.id) return;
+    if (!user?.id || !token) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('shifts')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('shift_number');
-
-      if (error) throw error;
-      setMyShifts(data || []);
+      const res = await fetch('/api/shifts', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error();
+      const allShifts = await res.json();
+      const data = allShifts
+        .filter((s: ShiftRecord) => s.user_id === user.id)
+        .sort((a: ShiftRecord, b: ShiftRecord) => a.shift_number - b.shift_number);
+      setMyShifts(data);
     } catch (error) {
       console.error('Error fetching shifts:', error);
     } finally {

@@ -59,13 +59,11 @@ export default function SuperAdminDashboard() {
 
   async function fetchDashboardData() {
     try {
-      const [usersRes, pendingRes] = await Promise.all([
-        fetch('/api/users', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        }),
-        fetch('/api/users/pending', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
+      const [usersRes, pendingRes, ratingsRes, warningsRes] = await Promise.all([
+        fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/users/pending', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/ratings', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/warnings', { headers: { 'Authorization': `Bearer ${token}` } }),
       ]);
 
       if (usersRes.ok) {
@@ -91,6 +89,19 @@ export default function SuperAdminDashboard() {
         );
         setPendingUsers(pendingWithImages.slice(0, 5));
         setStats(prev => ({ ...prev, pendingRequests: pending.length }));
+      }
+
+      if (ratingsRes.ok) {
+        const ratings = await ratingsRes.json();
+        const avg = ratings.length > 0
+          ? Math.round((ratings.reduce((sum: number, r: any) => sum + (r.score || 0), 0) / ratings.length) * 10) / 10
+          : 0;
+        setStats(prev => ({ ...prev, avgRating: avg }));
+      }
+
+      if (warningsRes.ok) {
+        const warnings = await warningsRes.json();
+        setStats(prev => ({ ...prev, activeWarnings: warnings.length }));
       }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);

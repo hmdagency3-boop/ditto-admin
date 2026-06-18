@@ -112,13 +112,13 @@ export default function AdminDashboard() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const allRatings = await ratingsRes.json();
-      const ratings = allRatings.filter((r: Rating) => true).slice(0, 3);
+      const ratings = allRatings.filter((r: Rating) => r.user_id === user.id).slice(0, 3);
 
       const warningsRes = await fetch('/api/warnings', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const allWarnings = await warningsRes.json();
-      const warnings = allWarnings.filter((w: Warning) => true).slice(0, 3);
+      const warnings = allWarnings.filter((w: Warning) => w.user_id === user.id).slice(0, 3);
 
       setTodayAttendance(todayRecord || null);
       setUpcomingShifts(shifts);

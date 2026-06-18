@@ -18,7 +18,7 @@ import { fetchUserProfile } from '@/lib/userProfileService';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { supabase, type Attendance } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { ar } from 'date-fns/locale';
 
@@ -27,66 +27,78 @@ interface UserInfo {
   username: string;
   full_name: string;
   role: string;
+  platform_id?: string;
   externalImage?: string;
   externalName?: string;
 }
 
-type AttendanceWithUser = Attendance & { user: UserInfo };
+interface AttendanceRecord {
+  id: string;
+  user_id: string;
+  check_in: string;
+  check_out?: string;
+  date: string;
+  status: 'present' | 'late' | 'absent';
+  notes?: string;
+  created_at?: string;
+  user?: UserInfo;
+}
 
 export default function AttendancePage() {
+  const { token } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [attendance, setAttendance] = useState<AttendanceWithUser[]>([]);
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'all'>('today');
   const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'late' | 'absent'>('all');
 
   useEffect(() => {
-    fetchAttendance();
-  }, [dateFilter]);
+    if (token) fetchAttendance();
+  }, [dateFilter, token]);
 
   async function fetchAttendance() {
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
-    
+    if (!token) return;
     setLoading(true);
     try {
-      let query = supabase
-        .from('attendance')
-        .select('*, user:users!attendance_user_id_fkey(*)')
-        .order('created_at', { ascending: false });
+      const [attendanceRes, usersRes] = await Promise.all([
+        fetch('/api/attendance', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } }),
+      ]);
+
+      if (!attendanceRes.ok || !usersRes.ok) throw new Error();
+
+      const allRecords: AttendanceRecord[] = await attendanceRes.json();
+      const allUsers: UserInfo[] = await usersRes.json();
+
+      const usersMap = Object.fromEntries(allUsers.map(u => [u.id, u]));
 
       const today = new Date();
-      
-      if (dateFilter === 'today') {
-        query = query.eq('date', format(today, 'yyyy-MM-dd'));
-      } else if (dateFilter === 'week') {
-        const weekStart = format(startOfWeek(today, { weekStartsOn: 0 }), 'yyyy-MM-dd');
-        const weekEnd = format(endOfWeek(today, { weekStartsOn: 0 }), 'yyyy-MM-dd');
-        query = query.gte('date', weekStart).lte('date', weekEnd);
-      } else if (dateFilter === 'month') {
-        const monthStart = format(startOfMonth(today), 'yyyy-MM-dd');
-        const monthEnd = format(endOfMonth(today), 'yyyy-MM-dd');
-        query = query.gte('date', monthStart).lte('date', monthEnd);
-      }
+      const todayStr = format(today, 'yyyy-MM-dd');
+      const weekStart = format(startOfWeek(today, { weekStartsOn: 0 }), 'yyyy-MM-dd');
+      const weekEnd = format(endOfWeek(today, { weekStartsOn: 0 }), 'yyyy-MM-dd');
+      const monthStart = format(startOfMonth(today), 'yyyy-MM-dd');
+      const monthEnd = format(endOfMonth(today), 'yyyy-MM-dd');
 
-      const { data, error } = await query;
+      const filtered = allRecords.filter(r => {
+        if (dateFilter === 'today') return r.date === todayStr;
+        if (dateFilter === 'week') return r.date >= weekStart && r.date <= weekEnd;
+        if (dateFilter === 'month') return r.date >= monthStart && r.date <= monthEnd;
+        return true;
+      });
 
-      if (error) throw error;
-      
-      // Fetch external images for users
-      const attendanceWithImages = await Promise.all(
-        (data || []).map(async (record) => ({
-          ...record,
-          user: record.user ? {
-            ...record.user,
-            ...await (async () => { const p = await fetchUserProfile(record.user.platform_id || record.user.username); return { externalImage: p?.image, externalName: p?.name }; })()
-          } : undefined
-        }))
+      const withUsers = await Promise.all(
+        filtered.map(async (record) => {
+          const user = usersMap[record.user_id];
+          if (!user) return { ...record, user: undefined };
+          const profile = await fetchUserProfile(user.platform_id || user.username);
+          return {
+            ...record,
+            user: { ...user, externalImage: profile?.image, externalName: profile?.name },
+          };
+        })
       );
-      
-      setAttendance(attendanceWithImages);
+
+      setAttendance(withUsers);
     } catch (error) {
       console.error('Error fetching attendance:', error);
     } finally {
