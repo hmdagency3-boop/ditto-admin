@@ -64,34 +64,29 @@ async function fetchPlatformProfile(identifier: string): Promise<{ uid: string; 
 }
 
 async function logChange(
-  supabase: any,
   userId: string,
   userFullName: string,
   changeType: string,
   oldValue: string | null,
   newValue: string | null
 ) {
-  const { error } = await supabase.from('change_logs').insert({
-    user_id: userId,
-    user_full_name: userFullName,
-    change_type: changeType,
-    old_value: oldValue,
-    new_value: newValue
-  });
-  if (error) {
-    console.error('Error inserting change log:', JSON.stringify(error));
+  try {
+    await storage.query(
+      `INSERT INTO change_logs (user_id, user_full_name, change_type, old_value, new_value)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [userId, userFullName, changeType, oldValue, newValue]
+    );
+  } catch (error) {
+    console.error('Error inserting change log:', error);
   }
 }
 
-async function runPlatformCheck(supabase: any): Promise<number> {
-  // Get all users that have either platform_id set OR a numeric username (which is their platform no.)
-  const { data: allUsers, error } = await supabase
-    .from('users')
-    .select('id, full_name, username, platform_id, platform_uid, platform_nick, platform_avatar');
+async function runPlatformCheck(): Promise<number> {
+  const { rows: allUsers } = await storage.query(
+    `SELECT id, full_name, username, platform_id, platform_uid, platform_nick, platform_avatar FROM users`
+  );
 
-  if (error) throw error;
-
-  const users = (allUsers || []).filter((u: any) => {
+  const users = allUsers.filter((u: any) => {
     const pid = u.platform_id || (u.username && /^\d+$/.test(u.username) ? u.username : null);
     return !!pid;
   });
@@ -105,10 +100,9 @@ async function runPlatformCheck(supabase: any): Promise<number> {
 
     const profileUpdates: Record<string, any> = {};
 
-    // uid mismatch — someone else took this erbanNo
     if (user.platform_uid && profile.uid && profile.uid !== user.platform_uid) {
       await logChange(
-        supabase, user.id, user.full_name, 'uid_mismatch',
+        user.id, user.full_name, 'uid_mismatch',
         `uid: ${user.platform_uid} (رقم: ${identifier})`,
         `uid: ${profile.uid} — الرقم ${identifier} انتقل لشخص آخر`
       );
@@ -118,18 +112,16 @@ async function runPlatformCheck(supabase: any): Promise<number> {
       profileUpdates.platform_uid = profile.uid;
     }
 
-    // nick change
     if (user.platform_nick && profile.nick && profile.nick !== user.platform_nick) {
-      await logChange(supabase, user.id, user.full_name, 'nick_change', user.platform_nick, profile.nick);
+      await logChange(user.id, user.full_name, 'nick_change', user.platform_nick, profile.nick);
       changesFound++;
       profileUpdates.platform_nick = profile.nick;
     } else if (!user.platform_nick && profile.nick) {
       profileUpdates.platform_nick = profile.nick;
     }
 
-    // avatar change
     if (user.platform_avatar && profile.avatar && profile.avatar !== user.platform_avatar) {
-      await logChange(supabase, user.id, user.full_name, 'avatar_change', user.platform_avatar, profile.avatar);
+      await logChange(user.id, user.full_name, 'avatar_change', user.platform_avatar, profile.avatar);
       changesFound++;
       profileUpdates.platform_avatar = profile.avatar;
     } else if (!user.platform_avatar && profile.avatar) {
@@ -137,7 +129,14 @@ async function runPlatformCheck(supabase: any): Promise<number> {
     }
 
     if (Object.keys(profileUpdates).length > 0) {
-      await supabase.from('users').update(profileUpdates).eq('id', user.id);
+      const keys = Object.keys(profileUpdates);
+      const setClauses = keys.map((k, i) => `"${k}" = $${i + 1}`).join(", ");
+      const values = keys.map(k => profileUpdates[k]);
+      values.push(user.id);
+      await storage.query(
+        `UPDATE users SET ${setClauses} WHERE id = $${values.length}`,
+        values
+      );
     }
   }
 
@@ -297,7 +296,6 @@ export async function registerRoutes(
     }
   });
 
-  // Proxy endpoint for external platform profile API (avoids CORS) - no auth needed, data is public
   app.get("/api/platform-profile/:identifier", async (req, res) => {
     const { identifier } = req.params;
     if (!identifier) return res.status(400).json({ message: "identifier required" });
@@ -409,11 +407,11 @@ export async function registerRoutes(
       const { id } = req.params;
       const { full_name, phone, platform_id, password } = req.body;
 
-      const { data: currentUser } = await storage.supabase
-        .from('users')
-        .select('id, full_name, platform_id, platform_uid, platform_nick, platform_avatar')
-        .eq('id', id)
-        .single();
+      const { rows: currentRows } = await storage.query(
+        `SELECT id, full_name, platform_id, platform_uid, platform_nick, platform_avatar FROM users WHERE id = $1`,
+        [id]
+      );
+      const currentUser = currentRows[0];
 
       const updates: Record<string, any> = {};
       if (full_name  !== undefined) { updates.full_name = full_name; updates.name = full_name; }
@@ -425,26 +423,24 @@ export async function registerRoutes(
         updates.password = await bcryptLib.hash(password, 10);
       }
 
-      updates.updated_at = new Date().toISOString();
-
       if (currentUser) {
         const displayName = (full_name !== undefined ? full_name : currentUser.full_name) || '';
 
         if (full_name !== undefined && full_name !== currentUser.full_name) {
-          await logChange(storage.supabase, id, displayName, 'name_change', currentUser.full_name, full_name);
+          await logChange(id, displayName, 'name_change', currentUser.full_name, full_name);
         }
 
         if (platform_id !== undefined && String(platform_id || '') !== String(currentUser.platform_id || '')) {
-          await logChange(storage.supabase, id, displayName, 'platform_id_change', currentUser.platform_id || null, platform_id || null);
+          await logChange(id, displayName, 'platform_id_change', currentUser.platform_id || null, platform_id || null);
 
           if (platform_id) {
             const profile = await fetchPlatformProfile(String(platform_id));
             if (profile) {
               if (currentUser.platform_nick && profile.nick && profile.nick !== currentUser.platform_nick) {
-                await logChange(storage.supabase, id, displayName, 'nick_change', currentUser.platform_nick, profile.nick);
+                await logChange(id, displayName, 'nick_change', currentUser.platform_nick, profile.nick);
               }
               if (currentUser.platform_avatar && profile.avatar && profile.avatar !== currentUser.platform_avatar) {
-                await logChange(storage.supabase, id, displayName, 'avatar_change', currentUser.platform_avatar, profile.avatar);
+                await logChange(id, displayName, 'avatar_change', currentUser.platform_avatar, profile.avatar);
               }
               updates.platform_uid    = profile.uid;
               updates.platform_nick   = profile.nick;
@@ -458,15 +454,23 @@ export async function registerRoutes(
         }
       }
 
-      const { data, error } = await storage.supabase
-        .from('users')
-        .update(updates)
-        .eq('id', id)
-        .select('id, username, full_name, phone, platform_id, role, status')
-        .single();
+      if (Object.keys(updates).length === 0) {
+        return res.json({ message: "لا توجد تغييرات", data: currentUser });
+      }
 
-      if (error) throw error;
-      res.json({ message: "تم تحديث البيانات بنجاح", data });
+      const keys = Object.keys(updates);
+      const setClauses = keys.map((k, i) => `"${k}" = $${i + 1}`).join(", ");
+      const values = keys.map(k => updates[k]);
+      values.push(id);
+
+      const { rows } = await storage.query(
+        `UPDATE users SET ${setClauses}, updated_at = NOW() WHERE id = $${values.length}
+         RETURNING id, username, full_name, phone, platform_id, role, status`,
+        values
+      );
+
+      if (rows.length === 0) throw new Error("User not found");
+      res.json({ message: "تم تحديث البيانات بنجاح", data: rows[0] });
     } catch (error) {
       console.error("Update user error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -496,13 +500,10 @@ export async function registerRoutes(
   // Shifts endpoints
   app.get("/api/shifts", authenticateToken, async (req, res) => {
     try {
-      const { data, error } = await storage.supabase
-        .from('shifts')
-        .select('*')
-        .order('shift_number', { ascending: true });
-
-      if (error) throw error;
-      res.json(data || []);
+      const { rows } = await storage.query(
+        'SELECT * FROM shifts ORDER BY shift_number ASC'
+      );
+      res.json(rows);
     } catch (error) {
       console.error("Get shifts error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -517,28 +518,21 @@ export async function registerRoutes(
         return res.status(400).json({ message: "رقم الشيفت يجب أن يكون بين 1 و 12" });
       }
 
-      const { data: existing } = await storage.supabase
-        .from('shifts')
-        .select('*')
-        .eq('shift_number', shift_number)
-        .eq('user_id', user_id);
+      const { rows: existing } = await storage.query(
+        'SELECT * FROM shifts WHERE shift_number = $1 AND user_id = $2',
+        [shift_number, user_id]
+      );
 
-      if (existing && existing.length > 0) {
+      if (existing.length > 0) {
         return res.status(400).json({ message: "هذا المشرف مسجل بالفعل في هذا الشيفت" });
       }
 
-      const { data, error } = await storage.supabase
-        .from('shifts')
-        .insert({
-          user_id,
-          shift_number,
-          created_by: req.user!.userId,
-        })
-        .select()
-        .single();
+      const { rows } = await storage.query(
+        `INSERT INTO shifts (user_id, shift_number, created_by) VALUES ($1, $2, $3) RETURNING *`,
+        [user_id, shift_number, req.user!.userId]
+      );
 
-      if (error) throw error;
-      res.status(201).json({ message: "تمت إضافة المشرف للشيفت بنجاح", data });
+      res.status(201).json({ message: "تمت إضافة المشرف للشيفت بنجاح", data: rows[0] });
     } catch (error) {
       console.error("Create shift error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -548,13 +542,7 @@ export async function registerRoutes(
   app.delete("/api/shifts/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-
-      const { error } = await storage.supabase
-        .from('shifts')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      await storage.query('DELETE FROM shifts WHERE id = $1', [id]);
       res.json({ message: "تم حذف المشرف من الشيفت بنجاح" });
     } catch (error) {
       console.error("Delete shift error:", error);
@@ -565,13 +553,10 @@ export async function registerRoutes(
   // Attendance endpoints
   app.get("/api/attendance", authenticateToken, async (req, res) => {
     try {
-      const { data, error } = await storage.supabase
-        .from('attendance')
-        .select('*')
-        .order('date', { ascending: false });
-
-      if (error) throw error;
-      res.json(data || []);
+      const { rows } = await storage.query(
+        'SELECT * FROM attendance ORDER BY date DESC'
+      );
+      res.json(rows);
     } catch (error) {
       console.error("Get attendance error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -582,14 +567,12 @@ export async function registerRoutes(
     try {
       const { user_id, check_in, date, status } = req.body;
 
-      const { data, error } = await storage.supabase
-        .from('attendance')
-        .insert({ user_id, check_in, date, status })
-        .select()
-        .single();
+      const { rows } = await storage.query(
+        `INSERT INTO attendance (user_id, check_in, date, status) VALUES ($1, $2, $3, $4) RETURNING *`,
+        [user_id, check_in, date, status]
+      );
 
-      if (error) throw error;
-      res.status(201).json({ message: "تم تسجيل الحضور", data });
+      res.status(201).json({ message: "تم تسجيل الحضور", data: rows[0] });
     } catch (error) {
       console.error("Create attendance error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -601,15 +584,12 @@ export async function registerRoutes(
       const { id } = req.params;
       const { check_out } = req.body;
 
-      const { data, error } = await storage.supabase
-        .from('attendance')
-        .update({ check_out })
-        .eq('id', id)
-        .select()
-        .single();
+      const { rows } = await storage.query(
+        `UPDATE attendance SET check_out = $1 WHERE id = $2 RETURNING *`,
+        [check_out, id]
+      );
 
-      if (error) throw error;
-      res.json({ message: "تم تحديث الحضور", data });
+      res.json({ message: "تم تحديث الحضور", data: rows[0] });
     } catch (error) {
       console.error("Update attendance error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -619,13 +599,10 @@ export async function registerRoutes(
   // Ratings endpoints
   app.get("/api/ratings", authenticateToken, async (req, res) => {
     try {
-      const { data, error } = await storage.supabase
-        .from('ratings')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      res.json(data || []);
+      const { rows } = await storage.query(
+        'SELECT * FROM ratings ORDER BY created_at DESC'
+      );
+      res.json(rows);
     } catch (error) {
       console.error("Get ratings error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -636,14 +613,12 @@ export async function registerRoutes(
     try {
       const { user_id, score, comment } = req.body;
 
-      const { data, error } = await storage.supabase
-        .from('ratings')
-        .insert({ user_id, score, comment, rated_by: req.user!.userId })
-        .select()
-        .single();
+      const { rows } = await storage.query(
+        `INSERT INTO ratings (user_id, score, comment, rated_by) VALUES ($1, $2, $3, $4) RETURNING *`,
+        [user_id, score, comment, req.user!.userId]
+      );
 
-      if (error) throw error;
-      res.status(201).json({ message: "تم إضافة التقييم", data });
+      res.status(201).json({ message: "تم إضافة التقييم", data: rows[0] });
     } catch (error) {
       console.error("Create rating error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -653,13 +628,10 @@ export async function registerRoutes(
   // Warnings endpoints
   app.get("/api/warnings", authenticateToken, async (req, res) => {
     try {
-      const { data, error } = await storage.supabase
-        .from('warnings')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      res.json(data || []);
+      const { rows } = await storage.query(
+        'SELECT * FROM warnings ORDER BY created_at DESC'
+      );
+      res.json(rows);
     } catch (error) {
       console.error("Get warnings error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -670,14 +642,12 @@ export async function registerRoutes(
     try {
       const { user_id, severity, reason } = req.body;
 
-      const { data, error } = await storage.supabase
-        .from('warnings')
-        .insert({ user_id, severity, reason, issued_by: req.user!.userId })
-        .select()
-        .single();
+      const { rows } = await storage.query(
+        `INSERT INTO warnings (user_id, severity, reason, issued_by) VALUES ($1, $2, $3, $4) RETURNING *`,
+        [user_id, severity, reason, req.user!.userId]
+      );
 
-      if (error) throw error;
-      res.status(201).json({ message: "تم إصدار التحذير", data });
+      res.status(201).json({ message: "تم إصدار التحذير", data: rows[0] });
     } catch (error) {
       console.error("Create warning error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -687,13 +657,10 @@ export async function registerRoutes(
   // Change Logs endpoints
   app.get("/api/change-logs", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      const { data, error } = await storage.supabase
-        .from('change_logs')
-        .select('*')
-        .order('detected_at', { ascending: false })
-        .limit(500);
-      if (error) throw error;
-      res.json(data || []);
+      const { rows } = await storage.query(
+        'SELECT * FROM change_logs ORDER BY detected_at DESC LIMIT 500'
+      );
+      res.json(rows);
     } catch (error) {
       console.error("Get change logs error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -702,7 +669,7 @@ export async function registerRoutes(
 
   app.post("/api/change-logs/check-all", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      const changesFound = await runPlatformCheck(storage.supabase);
+      const changesFound = await runPlatformCheck();
       res.json({ message: `تم الفحص بنجاح — تم اكتشاف ${changesFound} تغيير`, changesFound });
     } catch (error) {
       console.error("Check all error:", error);
@@ -714,7 +681,7 @@ export async function registerRoutes(
   setTimeout(async () => {
     try {
       console.log('[platform-check] بدء الفحص التلقائي الأول...');
-      const n = await runPlatformCheck(storage.supabase);
+      const n = await runPlatformCheck();
       console.log(`[platform-check] اكتمل — ${n} تغيير`);
     } catch (e) {
       console.error('[platform-check] خطأ في الفحص الأول:', e);
@@ -725,7 +692,7 @@ export async function registerRoutes(
   setInterval(async () => {
     try {
       console.log('[platform-check] فحص دوري...');
-      const n = await runPlatformCheck(storage.supabase);
+      const n = await runPlatformCheck();
       console.log(`[platform-check] اكتمل — ${n} تغيير`);
     } catch (e) {
       console.error('[platform-check] خطأ في الفحص الدوري:', e);
