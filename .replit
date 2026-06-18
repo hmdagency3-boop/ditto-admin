@@ -39,9 +39,10 @@ localPort = 5000
 externalPort = 80
 
 [deployment]
-deploymentTarget = "static"
-build = ["bash", "-c", "cd admin-panel && npm run build"]
+deploymentTarget = "vm"
+build = ["bash", "-c", "cd platform-admin && npm run build"]
 publicDir = "admin-panel/dist"
+run = ["bash", "-c", "cd platform-admin && npm run start"]
 
 [userenv]
 
