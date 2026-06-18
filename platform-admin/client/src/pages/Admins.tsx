@@ -13,7 +13,9 @@ import {
   Trash2,
   Clock,
   Pencil,
-  Link
+  Link,
+  UserX,
+  UserCheck
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,7 +26,7 @@ import { fetchUserProfile } from '@/lib/userProfileService';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
@@ -57,13 +59,14 @@ interface UserInfo {
   avatar_url?: string;
   platform_id?: string;
   created_at: string;
+  employment_status?: string;
   externalImage?: string;
   externalName?: string;
 }
 
 export default function Admins() {
   const { toast } = useToast();
-  const { token, user: currentUser } = useAuth();
+  const { token, user: currentUser, isSuperAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [admins, setAdmins] = useState<UserInfo[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -183,6 +186,30 @@ export default function Admins() {
       fetchAdmins();
     } catch (error: any) {
       toast({ title: 'خطأ', description: error.message || 'حدث خطأ أثناء حذف المشرف', variant: 'destructive' });
+    }
+  }
+
+  async function toggleEmploymentStatus(admin: UserInfo) {
+    const newStatus = admin.employment_status === 'dismissed' ? 'active' : 'dismissed';
+    try {
+      const response = await fetch(`/api/users/${admin.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ employment_status: newStatus }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message);
+      }
+      toast({
+        title: newStatus === 'dismissed' ? 'تم الفصل' : 'تم التفعيل',
+        description: newStatus === 'dismissed'
+          ? `تم تحديد ${admin.full_name} كمفصول`
+          : `تم تفعيل ${admin.full_name} مجدداً`,
+      });
+      fetchAdmins();
+    } catch (error: any) {
+      toast({ title: 'خطأ', description: error.message || 'حدث خطأ', variant: 'destructive' });
     }
   }
 
@@ -358,75 +385,116 @@ export default function Admins() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredAdmins.map((admin) => (
-            <Card key={admin.id} className="relative" data-testid={`card-admin-${admin.id}`}>
-              {admin.id !== currentUser?.id && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="absolute top-4 left-4">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => openEditDialog(admin)}>
-                      <Pencil className="h-4 w-4 ml-2" />
-                      تعديل البيانات
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => deleteUser(admin.id)} className="text-destructive">
-                      <Trash2 className="h-4 w-4 ml-2" />
-                      حذف المشرف
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-
-              <CardContent className="pt-6 text-center">
-                <Avatar className="h-16 w-16 mx-auto mb-4">
-                  {admin.externalImage && (
-                    <AvatarImage src={admin.externalImage} alt={admin.full_name} />
-                  )}
-                  <AvatarFallback className="bg-primary/10 text-primary text-xl">
-                    {getInitials(admin.full_name)}
-                  </AvatarFallback>
-                </Avatar>
-                
-                <h3 className="text-lg font-semibold mb-1">
-                  {admin.full_name}
-                  {admin.externalName && admin.externalName !== admin.full_name && (
-                    <span className="block text-sm font-normal text-primary/70 mt-0.5">({admin.externalName})</span>
-                  )}
-                </h3>
-                <p className="text-sm text-muted-foreground mb-1">@{admin.username}</p>
-                {admin.platform_id && (
-                  <p className="text-xs text-muted-foreground/70 mb-2 flex items-center justify-center gap-1">
-                    <Link className="h-3 w-3" />
-                    ID: {admin.platform_id}
-                  </p>
-                )}
-                
-                <Badge variant={admin.role === 'super_admin' ? 'default' : 'secondary'} className="mb-3">
-                  {admin.role === 'super_admin' ? (
-                    <><Shield className="h-3 w-3 ml-1" />مدير رئيسي</>
-                  ) : (
-                    <><UserCog className="h-3 w-3 ml-1" />مشرف</>
-                  )}
-                </Badge>
-                
-                <div className="space-y-2 text-sm text-muted-foreground">
-                  {admin.phone && (
-                    <div className="flex items-center justify-center gap-2">
-                      <Phone className="h-4 w-4" />
-                      <span dir="ltr">{admin.phone}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    <span>انضم {format(new Date(admin.created_at), 'd MMM yyyy', { locale: ar })}</span>
+          {filteredAdmins.map((admin) => {
+            const isDismissed = admin.employment_status === 'dismissed';
+            return (
+              <Card
+                key={admin.id}
+                className={`relative transition-all ${isDismissed ? 'opacity-60 grayscale' : ''}`}
+                data-testid={`card-admin-${admin.id}`}
+              >
+                {/* حالة الفصل */}
+                {isDismissed && (
+                  <div className="absolute top-2 right-2 z-10">
+                    <Badge variant="destructive" className="text-xs flex items-center gap-1">
+                      <UserX className="h-3 w-3" />
+                      مفصول
+                    </Badge>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                )}
+
+                {admin.id !== currentUser?.id && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="absolute top-4 left-4">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => openEditDialog(admin)}>
+                        <Pencil className="h-4 w-4 ml-2" />
+                        تعديل البيانات
+                      </DropdownMenuItem>
+                      {isSuperAdmin && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => toggleEmploymentStatus(admin)}
+                            className={isDismissed ? 'text-green-600' : 'text-orange-600'}
+                          >
+                            {isDismissed ? (
+                              <><UserCheck className="h-4 w-4 ml-2" />تفعيل المشرف</>
+                            ) : (
+                              <><UserX className="h-4 w-4 ml-2" />فصل المشرف</>
+                            )}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                        </>
+                      )}
+                      <DropdownMenuItem onClick={() => deleteUser(admin.id)} className="text-destructive">
+                        <Trash2 className="h-4 w-4 ml-2" />
+                        حذف المشرف
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+
+                <CardContent className="pt-6 text-center">
+                  <Avatar className="h-16 w-16 mx-auto mb-4">
+                    {admin.externalImage && (
+                      <AvatarImage src={admin.externalImage} alt={admin.full_name} />
+                    )}
+                    <AvatarFallback className="bg-primary/10 text-primary text-xl">
+                      {getInitials(admin.full_name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  
+                  <h3 className="text-lg font-semibold mb-1">
+                    {admin.full_name}
+                    {admin.externalName && admin.externalName !== admin.full_name && (
+                      <span className="block text-sm font-normal text-primary/70 mt-0.5">({admin.externalName})</span>
+                    )}
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-1">@{admin.username}</p>
+                  {admin.platform_id && (
+                    <p className="text-xs text-muted-foreground/70 mb-2 flex items-center justify-center gap-1">
+                      <Link className="h-3 w-3" />
+                      ID: {admin.platform_id}
+                    </p>
+                  )}
+                  
+                  <div className="flex items-center justify-center gap-2 mb-3 flex-wrap">
+                    <Badge variant={admin.role === 'super_admin' ? 'default' : 'secondary'}>
+                      {admin.role === 'super_admin' ? (
+                        <><Shield className="h-3 w-3 ml-1" />مدير رئيسي</>
+                      ) : (
+                        <><UserCog className="h-3 w-3 ml-1" />مشرف</>
+                      )}
+                    </Badge>
+                    {!isDismissed && (
+                      <Badge variant="outline" className="text-green-600 border-green-300 bg-green-50 dark:bg-green-950/30">
+                        <UserCheck className="h-3 w-3 ml-1" />
+                        متواجد
+                      </Badge>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    {admin.phone && (
+                      <div className="flex items-center justify-center gap-2">
+                        <Phone className="h-4 w-4" />
+                        <span dir="ltr">{admin.phone}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      <span>انضم {format(new Date(admin.created_at), 'd MMM yyyy', { locale: ar })}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

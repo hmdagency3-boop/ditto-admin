@@ -4,7 +4,8 @@ import {
   Plus, 
   X,
   Users,
-  Shield
+  Shield,
+  UserX
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,7 @@ interface UserInfo {
   full_name: string;
   role: string;
   platform_id?: string;
+  employment_status?: string;
   externalName?: string;
   externalImage?: string;
 }
@@ -92,6 +94,7 @@ export default function Shifts() {
         }));
 
         setShifts(shiftsWithUsers);
+        // فقط المشرفون (بدون super_admin)
         setAdmins(adminsWithImages.filter((u) => u.role !== 'super_admin'));
       }
     } catch (error) {
@@ -148,9 +151,13 @@ export default function Shifts() {
     return shifts.filter(s => s.shift_number === shiftNumber);
   }
 
-  function getUnassignedAdmins(shiftNumber: number): UserInfo[] {
+  // المفصولون لا يظهرون في قائمة الإضافة
+  function getAvailableAdmins(shiftNumber: number): UserInfo[] {
     const assignedIds = getShiftsForSlot(shiftNumber).map(s => s.user_id);
-    return admins.filter(a => !assignedIds.includes(a.id));
+    return admins.filter(a =>
+      !assignedIds.includes(a.id) &&
+      a.employment_status !== 'dismissed'
+    );
   }
 
   const getInitials = (name: string) =>
@@ -182,7 +189,7 @@ export default function Shifts() {
         <div className="flex gap-3 text-sm text-muted-foreground">
           <div className="flex items-center gap-1">
             <Users className="h-4 w-4" />
-            <span>{admins.length} مشرف</span>
+            <span>{admins.filter(a => a.employment_status !== 'dismissed').length} مشرف</span>
           </div>
           <div className="flex items-center gap-1">
             <Shield className="h-4 w-4" />
@@ -195,7 +202,7 @@ export default function Shifts() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {SHIFT_SLOTS.map((slot) => {
           const slotShifts = getShiftsForSlot(slot.number);
-          const available = getUnassignedAdmins(slot.number);
+          const available = getAvailableAdmins(slot.number);
 
           return (
             <Card key={slot.number} className="group hover:shadow-md transition-shadow">
@@ -221,7 +228,7 @@ export default function Shifts() {
                           size="icon"
                           className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
                           disabled={available.length === 0}
-                          title={available.length === 0 ? 'كل المشرفين مُعيّنون' : 'إضافة مشرف'}
+                          title={available.length === 0 ? 'كل المشرفين مُعيّنون أو مفصولون' : 'إضافة مشرف'}
                         >
                           <Plus className="h-4 w-4" />
                         </Button>
@@ -284,33 +291,42 @@ export default function Shifts() {
                   </p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {slotShifts.map((shift) => (
-                      <div
-                        key={shift.id}
-                        className="flex items-center gap-1.5 bg-primary/10 rounded-full pl-3 pr-1.5 py-1 text-xs"
-                      >
-                        <Avatar className="h-5 w-5">
-                          {shift.user?.externalImage && <AvatarImage src={shift.user.externalImage} />}
-                          <AvatarFallback className="text-[8px] bg-primary/20">
-                            {getInitials(shift.user?.externalName || shift.user?.full_name || '؟؟')}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="font-medium">
-                          {shift.user?.full_name}
-                          {shift.user?.externalName && shift.user.externalName !== shift.user.full_name && (
-                            <span className="font-normal opacity-70 mr-1">({shift.user.externalName})</span>
+                    {slotShifts.map((shift) => {
+                      const isDismissed = shift.user?.employment_status === 'dismissed';
+                      return (
+                        <div
+                          key={shift.id}
+                          className={`flex items-center gap-1.5 rounded-full pl-3 pr-1.5 py-1 text-xs transition-all ${
+                            isDismissed
+                              ? 'bg-muted/60 opacity-50 grayscale'
+                              : 'bg-primary/10'
+                          }`}
+                          title={isDismissed ? 'هذا المشرف مفصول' : undefined}
+                        >
+                          <Avatar className="h-5 w-5">
+                            {shift.user?.externalImage && <AvatarImage src={shift.user.externalImage} />}
+                            <AvatarFallback className={`text-[8px] ${isDismissed ? 'bg-muted' : 'bg-primary/20'}`}>
+                              {getInitials(shift.user?.externalName || shift.user?.full_name || '؟؟')}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="font-medium flex items-center gap-1">
+                            {shift.user?.full_name}
+                            {shift.user?.externalName && shift.user.externalName !== shift.user.full_name && (
+                              <span className="font-normal opacity-70 mr-1">({shift.user.externalName})</span>
+                            )}
+                            {isDismissed && <UserX className="h-3 w-3 text-destructive" />}
+                          </span>
+                          {isSuperAdmin && (
+                            <button
+                              onClick={() => removeShift(shift.id)}
+                              className="text-destructive hover:bg-destructive/20 rounded-full p-0.5 ml-0.5"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
                           )}
-                        </span>
-                        {isSuperAdmin && (
-                          <button
-                            onClick={() => removeShift(shift.id)}
-                            className="text-destructive hover:bg-destructive/20 rounded-full p-0.5 ml-0.5"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>

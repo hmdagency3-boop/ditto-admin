@@ -329,6 +329,7 @@ export async function registerRoutes(
           avatar_url: u.avatar_url,
           platform_id: u.platform_id || null,
           created_at: u.created_at,
+          employment_status: u.employment_status || 'active',
         }))
       );
     } catch (error) {
