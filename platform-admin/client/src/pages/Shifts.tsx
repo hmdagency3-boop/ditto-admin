@@ -151,13 +151,10 @@ export default function Shifts() {
     return shifts.filter(s => s.shift_number === shiftNumber);
   }
 
-  // المفصولون لا يظهرون في قائمة الإضافة
-  function getAvailableAdmins(shiftNumber: number): UserInfo[] {
+  // كل المشرفين غير المعيّنين — المفصولون يظهرون لكن معطّلون
+  function getUnassignedAdmins(shiftNumber: number): UserInfo[] {
     const assignedIds = getShiftsForSlot(shiftNumber).map(s => s.user_id);
-    return admins.filter(a =>
-      !assignedIds.includes(a.id) &&
-      a.employment_status !== 'dismissed'
-    );
+    return admins.filter(a => !assignedIds.includes(a.id));
   }
 
   const getInitials = (name: string) =>
@@ -202,7 +199,8 @@ export default function Shifts() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {SHIFT_SLOTS.map((slot) => {
           const slotShifts = getShiftsForSlot(slot.number);
-          const available = getAvailableAdmins(slot.number);
+          const unassigned = getUnassignedAdmins(slot.number);
+          const available = unassigned.filter(a => a.employment_status !== 'dismissed');
 
           return (
             <Card key={slot.number} className="group hover:shadow-md transition-shadow">
@@ -249,24 +247,35 @@ export default function Shifts() {
                               <SelectValue placeholder="اختر المشرف" />
                             </SelectTrigger>
                             <SelectContent>
-                              {available.map((admin) => (
-                                <SelectItem key={admin.id} value={admin.id}>
-                                  <div className="flex items-center gap-2">
-                                    <Avatar className="h-6 w-6">
-                                      {admin.externalImage && <AvatarImage src={admin.externalImage} />}
-                                      <AvatarFallback className="text-xs">
-                                        {getInitials(admin.externalName || admin.full_name)}
-                                      </AvatarFallback>
-                                    </Avatar>
-                                    <span>
-                                      {admin.full_name}
-                                      {admin.externalName && admin.externalName !== admin.full_name && (
-                                        <span className="text-muted-foreground mr-1">({admin.externalName})</span>
-                                      )}
-                                    </span>
-                                  </div>
-                                </SelectItem>
-                              ))}
+                              {unassigned.map((admin) => {
+                                const isDismissed = admin.employment_status === 'dismissed';
+                                return (
+                                  <SelectItem
+                                    key={admin.id}
+                                    value={admin.id}
+                                    disabled={isDismissed}
+                                    className={isDismissed ? 'opacity-40 cursor-not-allowed' : ''}
+                                  >
+                                    <div className={`flex items-center gap-2 ${isDismissed ? 'grayscale' : ''}`}>
+                                      <Avatar className="h-6 w-6">
+                                        {admin.externalImage && <AvatarImage src={admin.externalImage} />}
+                                        <AvatarFallback className="text-xs">
+                                          {getInitials(admin.externalName || admin.full_name)}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <span>
+                                        {admin.full_name}
+                                        {admin.externalName && admin.externalName !== admin.full_name && (
+                                          <span className="text-muted-foreground mr-1">({admin.externalName})</span>
+                                        )}
+                                        {isDismissed && (
+                                          <span className="text-destructive mr-1 text-xs">(مفصول)</span>
+                                        )}
+                                      </span>
+                                    </div>
+                                  </SelectItem>
+                                );
+                              })}
                             </SelectContent>
                           </Select>
                           <div className="flex gap-2">
