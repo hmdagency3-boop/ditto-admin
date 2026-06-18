@@ -191,6 +191,7 @@ export default function Admins() {
 
   async function toggleEmploymentStatus(admin: UserInfo) {
     const newStatus = admin.employment_status === 'dismissed' ? 'active' : 'dismissed';
+    setAdmins(prev => prev.map(a => a.id === admin.id ? { ...a, employment_status: newStatus } : a));
     try {
       const response = await fetch(`/api/users/${admin.id}`, {
         method: 'PATCH',
@@ -199,6 +200,7 @@ export default function Admins() {
       });
       if (!response.ok) {
         const data = await response.json();
+        setAdmins(prev => prev.map(a => a.id === admin.id ? { ...a, employment_status: admin.employment_status } : a));
         throw new Error(data.message);
       }
       toast({
@@ -207,7 +209,6 @@ export default function Admins() {
           ? `تم تحديد ${admin.full_name} كمفصول`
           : `تم تفعيل ${admin.full_name} مجدداً`,
       });
-      fetchAdmins();
     } catch (error: any) {
       toast({ title: 'خطأ', description: error.message || 'حدث خطأ', variant: 'destructive' });
     }
