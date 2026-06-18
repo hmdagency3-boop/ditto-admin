@@ -750,7 +750,7 @@ export async function registerRoutes(
     }
   }, 10_000);
 
-  // Auto-check every 60 minutes
+  // Auto-check every 5 minutes
   setInterval(async () => {
     try {
       console.log('[platform-check] فحص دوري...');
@@ -759,7 +759,7 @@ export async function registerRoutes(
     } catch (e) {
       console.error('[platform-check] خطأ في الفحص الدوري:', e);
     }
-  }, 60 * 60 * 1000);
+  }, 5 * 60 * 1000);
 
   return httpServer;
 }
