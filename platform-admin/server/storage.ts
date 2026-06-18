@@ -19,8 +19,9 @@ export class SupabaseStorage implements IStorage {
   public supabase: SupabaseClient;
 
   constructor() {
-    const supabaseUrl = process.env.SUPABASE_URL || 'https://hijmdaiwxhcrvxqmgxsy.supabase.co';
-    const supabaseKey = process.env.SUPABASE_ANON_KEY || 'sb_publishable_np8rx4Ve9Rs0NN9Q6MbiEg_vUCVxlAe';
+    // ثابت دائماً — لا يتغير بتغيير البيئة أو الأكونت
+    const supabaseUrl = 'https://hijmdaiwxhcrvxqmgxsy.supabase.co';
+    const supabaseKey = 'sb_publishable_np8rx4Ve9Rs0NN9Q6MbiEg_vUCVxlAe';
 
     this.supabase = createClient(supabaseUrl, supabaseKey);
     this.initializeSuperAdmin();
