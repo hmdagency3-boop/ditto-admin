@@ -408,7 +408,7 @@ export async function registerRoutes(
   app.patch("/api/users/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const { full_name, phone, platform_id, password } = req.body;
+      const { full_name, phone, platform_id, password, employment_status } = req.body;
 
       const { data: currentUser } = await storage.supabase
         .from('users')
@@ -417,9 +417,10 @@ export async function registerRoutes(
         .single();
 
       const updates: Record<string, any> = {};
-      if (full_name  !== undefined) { updates.full_name = full_name; updates.name = full_name; }
-      if (phone      !== undefined)   updates.phone = phone;
-      if (platform_id !== undefined)  updates.platform_id = platform_id;
+      if (full_name         !== undefined) { updates.full_name = full_name; updates.name = full_name; }
+      if (phone             !== undefined)   updates.phone = phone;
+      if (platform_id       !== undefined)   updates.platform_id = platform_id;
+      if (employment_status !== undefined)   updates.employment_status = employment_status;
 
       if (password && password.trim().length > 0) {
         const bcryptLib = await import('bcryptjs');
