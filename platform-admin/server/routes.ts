@@ -84,6 +84,67 @@ async function logChange(
   }
 }
 
+async function runPlatformCheck(supabase: any): Promise<number> {
+  // Get all users that have either platform_id set OR a numeric username (which is their platform no.)
+  const { data: allUsers, error } = await supabase
+    .from('users')
+    .select('id, full_name, username, platform_id, platform_uid, platform_nick, platform_avatar');
+
+  if (error) throw error;
+
+  const users = (allUsers || []).filter((u: any) => {
+    const pid = u.platform_id || (u.username && /^\d+$/.test(u.username) ? u.username : null);
+    return !!pid;
+  });
+
+  let changesFound = 0;
+
+  for (const user of users) {
+    const identifier = user.platform_id || user.username;
+    const profile = await fetchPlatformProfile(String(identifier));
+    if (!profile) continue;
+
+    const profileUpdates: Record<string, any> = {};
+
+    // uid mismatch — someone else took this erbanNo
+    if (user.platform_uid && profile.uid && profile.uid !== user.platform_uid) {
+      await logChange(
+        supabase, user.id, user.full_name, 'uid_mismatch',
+        `uid: ${user.platform_uid} (رقم: ${identifier})`,
+        `uid: ${profile.uid} — الرقم ${identifier} انتقل لشخص آخر`
+      );
+      changesFound++;
+      profileUpdates.platform_uid = profile.uid;
+    } else if (!user.platform_uid && profile.uid) {
+      profileUpdates.platform_uid = profile.uid;
+    }
+
+    // nick change
+    if (user.platform_nick && profile.nick && profile.nick !== user.platform_nick) {
+      await logChange(supabase, user.id, user.full_name, 'nick_change', user.platform_nick, profile.nick);
+      changesFound++;
+      profileUpdates.platform_nick = profile.nick;
+    } else if (!user.platform_nick && profile.nick) {
+      profileUpdates.platform_nick = profile.nick;
+    }
+
+    // avatar change
+    if (user.platform_avatar && profile.avatar && profile.avatar !== user.platform_avatar) {
+      await logChange(supabase, user.id, user.full_name, 'avatar_change', user.platform_avatar, profile.avatar);
+      changesFound++;
+      profileUpdates.platform_avatar = profile.avatar;
+    } else if (!user.platform_avatar && profile.avatar) {
+      profileUpdates.platform_avatar = profile.avatar;
+    }
+
+    if (Object.keys(profileUpdates).length > 0) {
+      await supabase.from('users').update(profileUpdates).eq('id', user.id);
+    }
+  }
+
+  return changesFound;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -642,61 +703,35 @@ export async function registerRoutes(
 
   app.post("/api/change-logs/check-all", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      const { data: users, error: usersError } = await storage.supabase
-        .from('users')
-        .select('id, full_name, platform_id, platform_uid, platform_nick, platform_avatar')
-        .not('platform_id', 'is', null)
-        .neq('platform_id', '');
-
-      if (usersError) throw usersError;
-
-      let changesFound = 0;
-
-      for (const user of (users || [])) {
-        const profile = await fetchPlatformProfile(String(user.platform_id));
-        if (!profile) continue;
-
-        const profileUpdates: Record<string, any> = {};
-
-        if (user.platform_uid && profile.uid && profile.uid !== user.platform_uid) {
-          await logChange(
-            storage.supabase, user.id, user.full_name, 'uid_mismatch',
-            `uid: ${user.platform_uid} (رقم: ${user.platform_id})`,
-            `uid: ${profile.uid} — الرقم ${user.platform_id} انتقل لشخص آخر`
-          );
-          changesFound++;
-          profileUpdates.platform_uid = profile.uid;
-        } else if (!user.platform_uid && profile.uid) {
-          profileUpdates.platform_uid = profile.uid;
-        }
-
-        if (user.platform_nick && profile.nick && profile.nick !== user.platform_nick) {
-          await logChange(storage.supabase, user.id, user.full_name, 'nick_change', user.platform_nick, profile.nick);
-          changesFound++;
-          profileUpdates.platform_nick = profile.nick;
-        } else if (!user.platform_nick && profile.nick) {
-          profileUpdates.platform_nick = profile.nick;
-        }
-
-        if (user.platform_avatar && profile.avatar && profile.avatar !== user.platform_avatar) {
-          await logChange(storage.supabase, user.id, user.full_name, 'avatar_change', user.platform_avatar, profile.avatar);
-          changesFound++;
-          profileUpdates.platform_avatar = profile.avatar;
-        } else if (!user.platform_avatar && profile.avatar) {
-          profileUpdates.platform_avatar = profile.avatar;
-        }
-
-        if (Object.keys(profileUpdates).length > 0) {
-          await storage.supabase.from('users').update(profileUpdates).eq('id', user.id);
-        }
-      }
-
+      const changesFound = await runPlatformCheck(storage.supabase);
       res.json({ message: `تم الفحص بنجاح — تم اكتشاف ${changesFound} تغيير`, changesFound });
     } catch (error) {
       console.error("Check all error:", error);
       res.status(500).json({ message: "حدث خطأ أثناء الفحص" });
     }
   });
+
+  // Auto-check on startup after 10 seconds
+  setTimeout(async () => {
+    try {
+      console.log('[platform-check] بدء الفحص التلقائي الأول...');
+      const n = await runPlatformCheck(storage.supabase);
+      console.log(`[platform-check] اكتمل — ${n} تغيير`);
+    } catch (e) {
+      console.error('[platform-check] خطأ في الفحص الأول:', e);
+    }
+  }, 10_000);
+
+  // Auto-check every 60 minutes
+  setInterval(async () => {
+    try {
+      console.log('[platform-check] فحص دوري...');
+      const n = await runPlatformCheck(storage.supabase);
+      console.log(`[platform-check] اكتمل — ${n} تغيير`);
+    } catch (e) {
+      console.error('[platform-check] خطأ في الفحص الدوري:', e);
+    }
+  }, 60 * 60 * 1000);
 
   return httpServer;
 }
