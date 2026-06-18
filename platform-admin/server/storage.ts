@@ -21,7 +21,7 @@ export class SupabaseStorage implements IStorage {
   constructor() {
     // ثابت دائماً — لا يتغير بتغيير البيئة أو الأكونت
     const supabaseUrl = 'https://hijmdaiwxhcrvxqmgxsy.supabase.co';
-    const supabaseKey = 'sb_publishable_np8rx4Ve9Rs0NN9Q6MbiEg_vUCVxlAe';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhpam1kYWl3eGhjcnZ4cW1neHN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyOTQ3NjIsImV4cCI6MjA5Njg3MDc2Mn0.iPjxByKPCxuFR-UBPCSH56dMDPWQ3ZufBfZ3Z5dFHUs';
 
     this.supabase = createClient(supabaseUrl, supabaseKey);
     this.initializeSuperAdmin();
