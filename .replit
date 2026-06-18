@@ -42,3 +42,10 @@ externalPort = 80
 deploymentTarget = "static"
 build = ["bash", "-c", "cd admin-panel && npm run build"]
 publicDir = "admin-panel/dist"
+
+[userenv]
+
+[userenv.shared]
+SUPABASE_URL = "https://hijmdaiwxhcrvxqmgxsy.supabase.co"
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhpam1kYWl3eGhjcnZ4cW1neHN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyOTQ3NjIsImV4cCI6MjA5Njg3MDc2Mn0.iPjxByKPCxuFR-UBPCSH56dMDPWQ3ZufBfZ3Z5dFHUs"
+JWT_SECRET = "admindesk-jwt-secret-2024-secure-key-change-me"
