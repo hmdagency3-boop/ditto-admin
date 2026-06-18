@@ -266,7 +266,7 @@ export default function Shifts() {
                                       <span>
                                         {admin.full_name}
                                         {admin.externalName && admin.externalName !== admin.full_name && (
-                                          <span className="text-muted-foreground mr-1">({admin.externalName})</span>
+                                          <span className="text-muted-foreground mr-1 platform-nick">({admin.externalName})</span>
                                         )}
                                         {isDismissed && (
                                           <span className="text-destructive mr-1 text-xs">(مفصول)</span>
@@ -321,7 +321,7 @@ export default function Shifts() {
                           <span className="font-medium flex items-center gap-1">
                             {shift.user?.full_name}
                             {shift.user?.externalName && shift.user.externalName !== shift.user.full_name && (
-                              <span className="font-normal opacity-70 mr-1">({shift.user.externalName})</span>
+                              <span className="font-normal opacity-70 mr-1 platform-nick">({shift.user.externalName})</span>
                             )}
                             {isDismissed && <UserX className="h-3 w-3 text-destructive" />}
                           </span>

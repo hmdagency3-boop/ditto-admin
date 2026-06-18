@@ -351,7 +351,7 @@ export default function Ratings() {
                     <h3 className="font-semibold">
                       {rating.user?.full_name || 'غير معروف'}
                       {rating.user?.externalName && rating.user.externalName !== rating.user.full_name && (
-                        <span className="font-normal text-sm text-primary/70 mr-1">({rating.user.externalName})</span>
+                        <span className="font-normal text-sm text-primary/70 mr-1 platform-nick">({rating.user.externalName})</span>
                       )}
                     </h3>
                     <p className="text-sm text-muted-foreground">@{rating.user?.username}</p>

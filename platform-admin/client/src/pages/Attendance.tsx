@@ -307,7 +307,7 @@ export default function AttendancePage() {
                             <div className="font-medium">
                               {record.user?.full_name || 'غير معروف'}
                               {record.user?.externalName && record.user.externalName !== record.user.full_name && (
-                                <span className="font-normal text-xs text-primary/70 mr-1">({record.user.externalName})</span>
+                                <span className="font-normal text-xs text-primary/70 mr-1 platform-nick">({record.user.externalName})</span>
                               )}
                             </div>
                             <div className="text-xs text-muted-foreground">@{record.user?.username}</div>

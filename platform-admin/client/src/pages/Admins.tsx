@@ -453,7 +453,7 @@ export default function Admins() {
                   <h3 className="text-lg font-semibold mb-1">
                     {admin.full_name}
                     {admin.externalName && admin.externalName !== admin.full_name && (
-                      <span className="block text-sm font-normal text-primary/70 mt-0.5">({admin.externalName})</span>
+                      <span className="block text-sm font-normal text-primary/70 mt-0.5 platform-nick">({admin.externalName})</span>
                     )}
                   </h3>
                   <p className="text-sm text-muted-foreground mb-1">@{admin.username}</p>

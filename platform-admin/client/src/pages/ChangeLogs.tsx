@@ -208,7 +208,7 @@ export default function ChangeLogs() {
                       ) : (
                         <div className="flex items-center gap-2 flex-wrap text-sm">
                           {log.old_value !== null && (
-                            <span className="px-2 py-0.5 bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 rounded border border-red-200 dark:border-red-800 font-mono">
+                            <span className="px-2 py-0.5 bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 rounded border border-red-200 dark:border-red-800 font-mono platform-nick">
                               {log.old_value || '(فارغ)'}
                             </span>
                           )}
@@ -216,7 +216,7 @@ export default function ChangeLogs() {
                             <span className="text-muted-foreground">←</span>
                           )}
                           {log.new_value !== null && (
-                            <span className="px-2 py-0.5 bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300 rounded border border-green-200 dark:border-green-800 font-mono">
+                            <span className="px-2 py-0.5 bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300 rounded border border-green-200 dark:border-green-800 font-mono platform-nick">
                               {log.new_value || '(فارغ)'}
                             </span>
                           )}

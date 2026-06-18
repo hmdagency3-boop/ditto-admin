@@ -402,7 +402,7 @@ export default function Warnings() {
                       <h3 className="font-semibold">
                         {warning.user?.full_name || 'غير معروف'}
                         {warning.user?.externalName && warning.user.externalName !== warning.user.full_name && (
-                          <span className="font-normal text-sm text-primary/70 mr-1">({warning.user.externalName})</span>
+                          <span className="font-normal text-sm text-primary/70 mr-1 platform-nick">({warning.user.externalName})</span>
                         )}
                       </h3>
                       {getSeverityBadge(warning.severity)}

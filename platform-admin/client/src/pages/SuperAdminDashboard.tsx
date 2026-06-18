@@ -256,7 +256,7 @@ export default function SuperAdminDashboard() {
                       <p className="text-sm font-medium truncate">
                         {user.full_name}
                         {user.externalName && user.externalName !== user.full_name && (
-                          <span className="font-normal text-xs text-primary/70 mr-1">({user.externalName})</span>
+                          <span className="font-normal text-xs text-primary/70 mr-1 platform-nick">({user.externalName})</span>
                         )}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -312,7 +312,7 @@ export default function SuperAdminDashboard() {
                       <p className="text-sm font-medium truncate">
                         {user.full_name}
                         {user.externalName && user.externalName !== user.full_name && (
-                          <span className="font-normal text-xs text-primary/70 mr-1">({user.externalName})</span>
+                          <span className="font-normal text-xs text-primary/70 mr-1 platform-nick">({user.externalName})</span>
                         )}
                       </p>
                       <p className="text-xs text-muted-foreground">
