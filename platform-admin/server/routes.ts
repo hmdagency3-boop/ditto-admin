@@ -317,6 +317,7 @@ export async function registerRoutes(
 
   app.get("/api/users", authenticateToken, async (req, res) => {
     try {
+      res.setHeader('Cache-Control', 'no-store');
       const users = await storage.getAllUsers();
       res.json(
         users.map((u: any) => ({
@@ -334,6 +335,32 @@ export async function registerRoutes(
       );
     } catch (error) {
       console.error("Get users error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.patch("/api/users/:id/employment-status", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { employment_status } = req.body;
+      if (!employment_status || !['active', 'dismissed'].includes(employment_status)) {
+        return res.status(400).json({ message: "قيمة غير صالحة" });
+      }
+      console.log(`[employment-status] تحديث المستخدم ${id} إلى ${employment_status}`);
+      const { data, error } = await storage.supabase
+        .from('users')
+        .update({ employment_status })
+        .eq('id', id)
+        .select('id, employment_status')
+        .single();
+      if (error) {
+        console.error('[employment-status] خطأ سوبابيز:', error);
+        throw error;
+      }
+      console.log(`[employment-status] نجح: ${JSON.stringify(data)}`);
+      res.json({ message: "تم التحديث", data });
+    } catch (error) {
+      console.error("Employment status error:", error);
       res.status(500).json({ message: "حدث خطأ" });
     }
   });

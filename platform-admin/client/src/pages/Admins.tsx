@@ -193,7 +193,7 @@ export default function Admins() {
     const newStatus = admin.employment_status === 'dismissed' ? 'active' : 'dismissed';
     setAdmins(prev => prev.map(a => a.id === admin.id ? { ...a, employment_status: newStatus } : a));
     try {
-      const response = await fetch(`/api/users/${admin.id}`, {
+      const response = await fetch(`/api/users/${admin.id}/employment-status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ employment_status: newStatus }),
