@@ -1,12 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = 'https://wrtehkrbsewgcdbloddk.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndydGVoa3Jic2V3Z2NkYmxvZGRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxMjg2NjEsImV4cCI6MjA4MDcwNDY2MX0.jdgD0s0jcm-NqfI3LleQpn3WDKDaxzEQWQstHs6qmvM';
-
-export const supabase = supabaseUrl && supabaseAnonKey 
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
-
 export type UserRole = 'super_admin' | 'admin';
 
 export interface Profile {
