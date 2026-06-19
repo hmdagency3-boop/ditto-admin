@@ -214,10 +214,16 @@ export default function Admins() {
     }
   }
 
-  const filteredAdmins = admins.filter(admin => 
-    admin.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    admin.username.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredAdmins = admins
+    .filter(admin => 
+      admin.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      admin.username.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => {
+      const aD = a.employment_status === 'dismissed' ? 1 : 0;
+      const bD = b.employment_status === 'dismissed' ? 1 : 0;
+      return aD - bD;
+    });
 
   const getInitials = (name: string) =>
     name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase();
