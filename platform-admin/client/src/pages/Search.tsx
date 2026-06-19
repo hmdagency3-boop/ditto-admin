@@ -30,6 +30,10 @@ interface SayyoData {
   avatar?: string;
   country?: string;
   gender?: number;
+  vipId?: string;
+  charmLevel?: string;
+  experLevel?: string;
+  fansNum?: string;
 }
 
 interface MergedUser {
@@ -43,6 +47,10 @@ interface MergedUser {
   nobleName?: string;
   chatGift?: number;
   chatRange?: number;
+  vipId?: string;
+  charmLevel?: string;
+  experLevel?: string;
+  fansNum?: string;
 }
 
 const CONCURRENCY = 5;
@@ -55,11 +63,15 @@ async function fetchSayyo(erbanNo: string): Promise<SayyoData | null> {
       const d = json.data;
       return {
         erbanNo,
-        uid: d.uid || d.id || '',
-        nick: d.nick || d.nickName || d.name || '',
-        avatar: d.avatar || d.headImg || '',
-        country: d.country || d.countryCode || '',
-        gender: d.gender,
+        uid:         d.uid || d.id || '',
+        nick:        d.nick || d.nickName || d.name || '',
+        avatar:      d.avatar || d.headImg || '',
+        country:     d.country || d.countryCode || '',
+        gender:      d.gender,
+        vipId:       d.vipId    != null ? String(d.vipId)    : undefined,
+        charmLevel:  d.charmLevel != null ? String(d.charmLevel) : undefined,
+        experLevel:  d.experLevel != null ? String(d.experLevel) : undefined,
+        fansNum:     d.fansNum  != null ? String(d.fansNum)  : undefined,
       };
     }
     return null;
@@ -95,16 +107,20 @@ async function searchUser(erbanNo: string): Promise<MergedUser | null> {
   let ditto: DittoData | null = null;
   if (sayyo.uid) ditto = await fetchDitto(sayyo.uid);
   return {
-    erbanNo: sayyo.erbanNo,
-    uid: sayyo.uid,
-    nick: ditto?.nickName || sayyo.nick,
-    avatar: ditto?.avatar || sayyo.avatar,
-    country: ditto?.country || sayyo.country,
-    gender: ditto?.gender ?? sayyo.gender,
+    erbanNo:    sayyo.erbanNo,
+    uid:        sayyo.uid,
+    nick:       ditto?.nickName || sayyo.nick,
+    avatar:     ditto?.avatar || sayyo.avatar,
+    country:    ditto?.country || sayyo.country,
+    gender:     ditto?.gender ?? sayyo.gender,
     ditto,
-    nobleName: ditto?.nobleName,
-    chatGift: ditto?.chatGift,
-    chatRange: ditto?.chatRange,
+    nobleName:  ditto?.nobleName,
+    chatGift:   ditto?.chatGift,
+    chatRange:  ditto?.chatRange,
+    vipId:      sayyo.vipId,
+    charmLevel: sayyo.charmLevel,
+    experLevel: sayyo.experLevel,
+    fansNum:    sayyo.fansNum,
   };
 }
 
@@ -162,20 +178,25 @@ function UserCard({ user, t }: { user: MergedUser; t: (k: string) => string }) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <InfoBlock title={t('search.basicInfo')} rows={[
-          { label: t('search.erban'), value: user.erbanNo },
-          { label: t('search.uid'), value: user.uid || '—' },
-          { label: t('search.name'), value: user.nick || '—' },
+          { label: t('search.erban'),   value: user.erbanNo },
+          { label: t('search.uid'),     value: user.uid || '—' },
+          { label: t('search.name'),    value: user.nick || '—' },
           { label: t('search.country'), value: user.country || '—' },
-          { label: t('search.gender'), value: genderLabel(user.gender, t) },
+          { label: t('search.gender'),  value: genderLabel(user.gender, t) },
+          { label: 'عدد المتابعين',     value: user.fansNum ?? '—' },
         ]} />
-        {user.ditto && (
-          <InfoBlock title={t('search.platformInfo')} rows={[
-            { label: t('search.status'), value: user.ditto.onLine ? t('search.online') : '—' },
-            { label: t('search.ban'), value: user.ditto.ban !== 1 ? t('search.safe') : '—' },
-            { label: t('search.gifts'), value: user.chatGift === 1 ? t('search.enabled') : t('search.disabled') },
+        <InfoBlock title={t('search.platformInfo')} rows={[
+          { label: 'رتبة النبالة',      value: user.nobleName || '—' },
+          { label: 'VIP',               value: user.vipId ? `مستوى ${user.vipId}` : '—' },
+          { label: 'مستوى السحر',      value: user.charmLevel ?? '—' },
+          { label: 'مستوى الخبرة',     value: user.experLevel ?? '—' },
+          ...(user.ditto ? [
+            { label: t('search.status'),    value: user.ditto.onLine ? t('search.online') : '—' },
+            { label: t('search.ban'),       value: user.ditto.ban !== 1 ? t('search.safe') : '—' },
+            { label: t('search.gifts'),     value: user.chatGift === 1 ? t('search.enabled') : t('search.disabled') },
             { label: t('search.chatRange'), value: user.chatRange === 1 ? t('search.public') : t('search.private') },
-          ]} />
-        )}
+          ] : []),
+        ]} />
       </div>
     </div>
   );
@@ -220,7 +241,10 @@ function BatchCard({ user, t }: { user: MergedUser; t: (k: string) => string }) 
       </div>
       <div className="flex flex-wrap gap-1">
         {user.country && <Badge variant="outline" className="text-xs px-1.5 py-0">{user.country}</Badge>}
-        {user.nobleName && <Badge className="text-xs px-1.5 py-0 bg-amber-100 text-amber-800">👑</Badge>}
+        {user.nobleName && <Badge className="text-xs px-1.5 py-0 bg-amber-100 text-amber-800">👑 {user.nobleName}</Badge>}
+        {user.vipId && <Badge className="text-xs px-1.5 py-0 bg-pink-100 text-pink-800">⭐ VIP{user.vipId}</Badge>}
+        {user.charmLevel && <Badge className="text-xs px-1.5 py-0 bg-violet-100 text-violet-800">⚡ {user.charmLevel}</Badge>}
+        {user.experLevel && <Badge className="text-xs px-1.5 py-0 bg-cyan-100 text-cyan-800">📈 {user.experLevel}</Badge>}
         {user.ditto?.onLine && <Badge className="text-xs px-1.5 py-0 bg-green-100 text-green-800">🟢</Badge>}
         {user.ditto?.ban !== 1 && user.ditto && <Badge className="text-xs px-1.5 py-0 bg-emerald-100 text-emerald-800">✅</Badge>}
       </div>
@@ -253,7 +277,10 @@ function BatchRow({ user, t }: { user: MergedUser; t: (k: string) => string }) {
         <div className="flex gap-1 flex-wrap">
           {user.ditto?.onLine && <Badge className="text-xs bg-green-100 text-green-800">🟢</Badge>}
           {user.ditto?.ban !== 1 && user.ditto && <Badge className="text-xs bg-emerald-100 text-emerald-800">✅</Badge>}
-          {user.nobleName && <Badge className="text-xs bg-amber-100 text-amber-800">👑</Badge>}
+          {user.nobleName && <Badge className="text-xs bg-amber-100 text-amber-800">👑 {user.nobleName}</Badge>}
+          {user.vipId && <Badge className="text-xs bg-pink-100 text-pink-800">⭐ VIP{user.vipId}</Badge>}
+          {user.charmLevel && <Badge className="text-xs bg-violet-100 text-violet-800">⚡{user.charmLevel}</Badge>}
+          {user.experLevel && <Badge className="text-xs bg-cyan-100 text-cyan-800">📈{user.experLevel}</Badge>}
         </div>
       </td>
     </tr>
