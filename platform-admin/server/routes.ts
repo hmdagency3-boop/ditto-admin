@@ -780,6 +780,55 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/ratings/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { error } = await storage.supabase.from('ratings').delete().eq('id', id);
+      if (error) throw error;
+      res.json({ message: "تم حذف التقييم بنجاح" });
+    } catch (error) {
+      console.error("Delete rating error:", error);
+      res.status(500).json({ message: "حدث خطأ أثناء الحذف" });
+    }
+  });
+
+  app.delete("/api/warnings/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { error } = await storage.supabase.from('warnings').delete().eq('id', id);
+      if (error) throw error;
+      res.json({ message: "تم حذف الإنذار بنجاح" });
+    } catch (error) {
+      console.error("Delete warning error:", error);
+      res.status(500).json({ message: "حدث خطأ أثناء الحذف" });
+    }
+  });
+
+  app.patch("/api/auth/change-password", authenticateToken, async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: "كلمة المرور الحالية والجديدة مطلوبتان" });
+      }
+      if (newPassword.length < 6) {
+        return res.status(400).json({ message: "كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل" });
+      }
+      const { data: userData, error: fetchErr } = await storage.supabase
+        .from('users').select('password').eq('id', req.user!.userId).single();
+      if (fetchErr || !userData) return res.status(404).json({ message: "المستخدم غير موجود" });
+      if (userData.password !== currentPassword) {
+        return res.status(400).json({ message: "كلمة المرور الحالية غير صحيحة" });
+      }
+      const { error: updateErr } = await storage.supabase
+        .from('users').update({ password: newPassword }).eq('id', req.user!.userId);
+      if (updateErr) throw updateErr;
+      res.json({ message: "تم تغيير كلمة المرور بنجاح" });
+    } catch (error) {
+      console.error("Change password error:", error);
+      res.status(500).json({ message: "حدث خطأ أثناء تغيير كلمة المرور" });
+    }
+  });
+
   // Change Logs endpoints
   app.get("/api/change-logs", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {

@@ -6,9 +6,10 @@ import {
   Star, 
   Plus, 
   Search,
-  MessageSquare
+  MessageSquare,
+  Trash2
 } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -17,6 +18,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { fetchUserProfile } from '@/lib/userProfileService';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
@@ -45,7 +47,7 @@ type AddRatingFormData = z.infer<typeof addRatingSchema>;
 type RatingWithUser = Rating & { user?: UserInfo };
 
 export default function Ratings() {
-  const { user, token } = useAuth();
+  const { user, token, isSuperAdmin } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [ratings, setRatings] = useState<RatingWithUser[]>([]);
@@ -53,6 +55,7 @@ export default function Ratings() {
   const [searchQuery, setSearchQuery] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedScore, setSelectedScore] = useState(5);
 
   const form = useForm<AddRatingFormData>({
@@ -86,11 +89,12 @@ export default function Ratings() {
           ratingsData.map(async (rating) => {
             const u = usersMap[rating.user_id];
             if (!u) return { ...rating, user: undefined };
-            const p = await fetchUserProfile((u as any).platform_id || u.username);
-            return {
-              ...rating,
-              user: { ...u, externalImage: p?.image, externalName: p?.name }
-            };
+            try {
+              const p = await fetchUserProfile((u as any).platform_id || u.username);
+              return { ...rating, user: { ...u, externalImage: p?.image, externalName: p?.name } };
+            } catch {
+              return { ...rating, user: u };
+            }
           })
         );
         setRatings(ratingsWithUsers);
@@ -108,45 +112,40 @@ export default function Ratings() {
 
   async function onSubmit(data: AddRatingFormData) {
     if (!user?.id) return;
-    
     setIsSubmitting(true);
     try {
       const res = await fetch('/api/ratings', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          user_id: data.userId,
-          score: selectedScore,
-          comment: data.comment || null,
-        }),
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ user_id: data.userId, score: selectedScore, comment: data.comment || null }),
       });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'حدث خطأ');
-      }
-
-      toast({
-        title: 'تم إضافة التقييم',
-        description: 'تم إضافة التقييم بنجاح',
-      });
-
+      if (!res.ok) { const err = await res.json(); throw new Error(err.message || 'حدث خطأ'); }
+      toast({ title: 'تم إضافة التقييم', description: 'تم إضافة التقييم بنجاح' });
       form.reset();
       setSelectedScore(5);
       setDialogOpen(false);
       fetchData();
     } catch (error: any) {
-      console.error('Error adding rating:', error);
-      toast({
-        title: 'خطأ',
-        description: error.message || 'حدث خطأ أثناء إضافة التقييم',
-        variant: 'destructive',
-      });
+      toast({ title: 'خطأ', description: error.message || 'حدث خطأ', variant: 'destructive' });
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function deleteRating(id: string) {
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/ratings/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.message || 'حدث خطأ'); }
+      toast({ title: 'تم الحذف', description: 'تم حذف التقييم بنجاح' });
+      setRatings(prev => prev.filter(r => r.id !== id));
+    } catch (error: any) {
+      toast({ title: 'خطأ', description: error.message || 'حدث خطأ أثناء الحذف', variant: 'destructive' });
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -155,24 +154,13 @@ export default function Ratings() {
     rating.user?.username?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const getInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map(part => part[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
-  };
+  const getInitials = (name: string) => name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
 
   const renderStars = (score: number, interactive = false, size = 'w-4 h-4') => {
     return Array.from({ length: 5 }, (_, i) => (
       <Star
         key={i}
-        className={`${size} ${
-          i < score 
-            ? 'fill-yellow-400 text-yellow-400' 
-            : 'text-muted-foreground/30'
-        } ${interactive ? 'cursor-pointer hover:scale-110 transition-transform' : ''}`}
+        className={`${size} ${i < score ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground/30'} ${interactive ? 'cursor-pointer hover:scale-110 transition-transform' : ''}`}
         onClick={interactive ? () => setSelectedScore(i + 1) : undefined}
       />
     ));
@@ -180,7 +168,7 @@ export default function Ratings() {
 
   const stats = {
     total: ratings.length,
-    average: ratings.length > 0 
+    average: ratings.length > 0
       ? (ratings.reduce((acc, r) => acc + r.score, 0) / ratings.length).toFixed(1)
       : '0',
   };
@@ -190,14 +178,8 @@ export default function Ratings() {
       <div className="page-wrapper">
         <Skeleton className="h-10 w-48" />
         <div className="stats-grid-2">
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i}>
-              <CardContent className="p-6">
-                <Skeleton className="h-12 w-12 rounded-full mb-4" />
-                <Skeleton className="h-5 w-32 mb-2" />
-                <Skeleton className="h-4 w-48" />
-              </CardContent>
-            </Card>
+          {[1, 2].map((i) => (
+            <Card key={i}><CardContent className="p-6"><Skeleton className="h-12 w-12 rounded-full mb-4" /><Skeleton className="h-5 w-32 mb-2" /></CardContent></Card>
           ))}
         </div>
       </div>
@@ -212,9 +194,7 @@ export default function Ratings() {
             <Star className="page-title-icon" />
             التقييمات
           </h1>
-          <p className="text-muted-foreground mt-1">
-            إدارة تقييمات المشرفين
-          </p>
+          <p className="text-muted-foreground mt-1">إدارة تقييمات المشرفين</p>
         </div>
         
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -227,9 +207,7 @@ export default function Ratings() {
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>إضافة تقييم جديد</DialogTitle>
-              <DialogDescription>
-                قم بتقييم أداء أحد المشرفين
-              </DialogDescription>
+              <DialogDescription>قم بتقييم أداء أحد المشرفين</DialogDescription>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -247,9 +225,7 @@ export default function Ratings() {
                         </FormControl>
                         <SelectContent>
                           {admins.map((admin) => (
-                            <SelectItem key={admin.id} value={admin.id}>
-                              {admin.full_name}
-                            </SelectItem>
+                            <SelectItem key={admin.id} value={admin.id}>{admin.full_name}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -257,7 +233,6 @@ export default function Ratings() {
                     </FormItem>
                   )}
                 />
-
                 <div className="space-y-2">
                   <label className="text-sm font-medium">التقييم</label>
                   <div className="flex items-center gap-2">
@@ -265,7 +240,6 @@ export default function Ratings() {
                     <span className="text-lg font-bold mr-2">{selectedScore}/5</span>
                   </div>
                 </div>
-
                 <FormField
                   control={form.control}
                   name="comment"
@@ -273,24 +247,17 @@ export default function Ratings() {
                     <FormItem>
                       <FormLabel>ملاحظات (اختياري)</FormLabel>
                       <FormControl>
-                        <Textarea 
-                          placeholder="أضف ملاحظات حول الأداء..." 
-                          data-testid="textarea-comment"
-                          {...field} 
-                        />
+                        <Textarea placeholder="أضف ملاحظات حول الأداء..." data-testid="textarea-comment" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-
                 <div className="flex gap-2 pt-4">
                   <Button type="submit" disabled={isSubmitting} className="flex-1" data-testid="button-submit-rating">
                     {isSubmitting ? 'جاري الإضافة...' : 'إضافة التقييم'}
                   </Button>
-                  <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                    إلغاء
-                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>إلغاء</Button>
                 </div>
               </form>
             </Form>
@@ -326,17 +293,15 @@ export default function Ratings() {
       <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="البحث عن مشرف..." 
+          <Input
+            placeholder="البحث عن مشرف..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pr-10"
             data-testid="input-search-ratings"
           />
         </div>
-        <Badge variant="secondary" className="text-sm">
-          {filteredRatings.length} تقييم
-        </Badge>
+        <Badge variant="secondary" className="text-sm">{filteredRatings.length} تقييم</Badge>
       </div>
 
       {filteredRatings.length === 0 ? (
@@ -344,9 +309,7 @@ export default function Ratings() {
           <CardContent className="py-16 text-center">
             <Star className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
             <h3 className="text-lg font-medium mb-2">لا توجد تقييمات</h3>
-            <p className="text-muted-foreground">
-              {searchQuery ? 'لم يتم العثور على نتائج للبحث' : 'ابدأ بإضافة تقييم جديد'}
-            </p>
+            <p className="text-muted-foreground">{searchQuery ? 'لم يتم العثور على نتائج للبحث' : 'ابدأ بإضافة تقييم جديد'}</p>
           </CardContent>
         </Card>
       ) : (
@@ -356,9 +319,7 @@ export default function Ratings() {
               <CardContent className="pt-6">
                 <div className="flex items-start gap-4">
                   <Avatar className="h-12 w-12">
-                    {rating.user?.externalImage && (
-                      <AvatarImage src={rating.user.externalImage} alt={rating.user.full_name} />
-                    )}
+                    {rating.user?.externalImage && <AvatarImage src={rating.user.externalImage} alt={rating.user.full_name} />}
                     <AvatarFallback className="bg-primary/10 text-primary">
                       {rating.user?.full_name ? getInitials(rating.user.full_name) : 'م'}
                     </AvatarFallback>
@@ -376,14 +337,43 @@ export default function Ratings() {
                       <span className="text-sm font-medium mr-2">{rating.score}/5</span>
                     </div>
                     {rating.comment && (
-                      <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
-                        {rating.comment}
-                      </p>
+                      <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{rating.comment}</p>
                     )}
                     <p className="text-xs text-muted-foreground mt-2">
                       {format(new Date(rating.created_at), 'd MMM yyyy', { locale: ar })}
                     </p>
                   </div>
+                  {isSuperAdmin && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+                          disabled={deletingId === rating.id}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>حذف التقييم</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            هل أنت متأكد من حذف هذا التقييم؟ لا يمكن التراجع عن هذا الإجراء.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => deleteRating(rating.id)}
+                          >
+                            حذف
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
                 </div>
               </CardContent>
             </Card>

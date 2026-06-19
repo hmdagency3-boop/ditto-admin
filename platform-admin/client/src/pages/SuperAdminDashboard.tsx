@@ -71,8 +71,12 @@ export default function SuperAdminDashboard() {
         const approvedUsers = users.filter((u: UserInfo) => u.status === 'approved');
         const usersWithImages = await Promise.all(
           approvedUsers.map(async (u: UserInfo) => {
-            const profile = await fetchUserProfile(u.platform_id || u.username);
-            return { ...u, externalName: profile?.name, externalImage: profile?.image };
+            try {
+              const profile = await fetchUserProfile(u.platform_id || u.username);
+              return { ...u, externalName: profile?.name, externalImage: profile?.image };
+            } catch {
+              return u;
+            }
           })
         );
         setRecentUsers(usersWithImages.slice(0, 5));
@@ -83,8 +87,12 @@ export default function SuperAdminDashboard() {
         const pending = await pendingRes.json();
         const pendingWithImages = await Promise.all(
           pending.map(async (u: UserInfo) => {
-            const profile = await fetchUserProfile(u.platform_id || u.username);
-            return { ...u, externalName: profile?.name, externalImage: profile?.image };
+            try {
+              const profile = await fetchUserProfile(u.platform_id || u.username);
+              return { ...u, externalName: profile?.name, externalImage: profile?.image };
+            } catch {
+              return u;
+            }
           })
         );
         setPendingUsers(pendingWithImages.slice(0, 5));

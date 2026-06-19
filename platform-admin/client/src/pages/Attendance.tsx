@@ -106,6 +106,28 @@ export default function AttendancePage() {
     }
   }
 
+  function exportCSV() {
+    const headers = ['الاسم', 'اسم المستخدم', 'التاريخ', 'وقت الدخول', 'وقت الخروج', 'الساعات', 'الحالة'];
+    const statusMap: Record<string, string> = { present: 'حاضر', late: 'متأخر', absent: 'غائب' };
+    const rows = filteredAttendance.map(r => [
+      r.user?.full_name || '',
+      r.user?.username || '',
+      r.date,
+      r.check_in ? format(new Date(r.check_in), 'hh:mm a', { locale: ar }) : '',
+      r.check_out ? format(new Date(r.check_out), 'hh:mm a', { locale: ar }) : '',
+      calculateHours(r.check_in, r.check_out),
+      statusMap[r.status] || r.status,
+    ]);
+    const csv = [headers, ...rows].map(row => row.map(v => `"${v}"`).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `حضور_${dateFilter}_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   const filteredAttendance = attendance.filter(record => {
     const matchesSearch = record.user?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          record.user?.username?.toLowerCase().includes(searchQuery.toLowerCase());
@@ -168,9 +190,9 @@ export default function AttendancePage() {
             متابعة حضور وانصراف جميع المشرفين
           </p>
         </div>
-        <Button variant="outline" data-testid="button-export-attendance">
+        <Button variant="outline" data-testid="button-export-attendance" onClick={exportCSV}>
           <Download className="h-4 w-4 ml-2" />
-          تصدير
+          تصدير CSV
         </Button>
       </div>
 
