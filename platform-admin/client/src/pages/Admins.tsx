@@ -378,6 +378,10 @@ export default function Admins() {
           />
         </div>
         <Badge variant="secondary" className="text-sm">{filteredAdmins.length} مشرف</Badge>
+        <Badge variant="outline" className="text-sm text-green-600 border-green-300 bg-green-50 dark:bg-green-950/30">
+          <UserCheck className="h-3.5 w-3.5 ml-1" />
+          {filteredAdmins.filter(a => a.employment_status !== 'dismissed').length} فعّال
+        </Badge>
       </div>
 
       {filteredAdmins.length === 0 ? (
