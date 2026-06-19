@@ -1,18 +1,12 @@
 {
-  "name": "workspace",
+  "name": "platform-admin-app",
   "version": "1.0.0",
-  "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "install": "cd platform-admin && npm install",
+    "build": "cd platform-admin && npm run build",
+    "start": "cd platform-admin && npm run start"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
-  "dependencies": {
-    "esbuild": "^0.28.1",
-    "tsx": "^4.22.4",
-    "typescript": "^6.0.3",
-    "vite": "^8.0.16"
+  "engines": {
+    "node": ">=20.0.0"
   }
 }
