@@ -217,7 +217,8 @@ export default function Admins() {
   const filteredAdmins = admins
     .filter(admin => 
       admin.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      admin.username.toLowerCase().includes(searchQuery.toLowerCase())
+      admin.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (admin.platform_id && admin.platform_id.includes(searchQuery))
     )
     .sort((a, b) => {
       const aD = a.employment_status === 'dismissed' ? 1 : 0;
@@ -370,7 +371,7 @@ export default function Admins() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input 
-            placeholder="البحث عن مشرف..." 
+            placeholder="البحث بالاسم أو ID المنصة..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pr-10"
