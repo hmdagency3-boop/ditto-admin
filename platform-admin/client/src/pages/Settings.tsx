@@ -21,9 +21,9 @@ export default function Settings() {
   ];
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl mx-auto">
+    <div className="page-wrapper max-w-2xl mx-auto">
       <div>
-        <h1 className="text-3xl font-bold">{t('settings.title')}</h1>
+        <h1 className="page-title">{t('settings.title')}</h1>
       </div>
 
       {/* Language */}

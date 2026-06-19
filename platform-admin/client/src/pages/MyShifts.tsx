@@ -78,7 +78,7 @@ export default function MyShifts() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4">
+      <div className="page-wrapper">
         <Skeleton className="h-10 w-48" />
         <Skeleton className="h-40 w-full" />
       </div>
@@ -86,10 +86,10 @@ export default function MyShifts() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="page-wrapper">
       <div>
-        <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-          <Clock className="h-8 w-8" />
+        <h1 className="page-title flex items-center gap-2">
+          <Clock className="page-title-icon" />
           شيفتاتي
         </h1>
         <p className="text-muted-foreground mt-1">شيفتاتك الثابتة — بتوقيت مصر</p>

@@ -151,7 +151,7 @@ export default function PendingRequests() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="page-wrapper">
         <div className="flex items-center justify-between gap-4">
           <Skeleton className="h-10 w-48" />
           <Skeleton className="h-10 w-32" />
@@ -177,11 +177,11 @@ export default function PendingRequests() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="page-wrapper">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-            <Clock className="h-8 w-8" />
+          <h1 className="page-title flex items-center gap-2">
+            <Clock className="page-title-icon" />
             طلبات التسجيل
           </h1>
           <p className="text-muted-foreground mt-1">

@@ -79,7 +79,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
             <SidebarTrigger />
             <ThemeToggle />
           </header>
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 overflow-auto overflow-x-hidden">
             {children}
           </main>
         </SidebarInset>

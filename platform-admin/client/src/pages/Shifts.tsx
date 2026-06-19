@@ -162,7 +162,7 @@ export default function Shifts() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4">
+      <div className="page-wrapper">
         <Skeleton className="h-10 w-48" />
         {[1,2,3,4].map(i => <Skeleton key={i} className="h-20 w-full" />)}
       </div>
@@ -170,12 +170,12 @@ export default function Shifts() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="page-wrapper">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-            <Clock className="h-8 w-8" />
+          <h1 className="page-title flex items-center gap-2">
+            <Clock className="page-title-icon" />
             جدول الشيفتات
           </h1>
           <p className="text-muted-foreground mt-1">

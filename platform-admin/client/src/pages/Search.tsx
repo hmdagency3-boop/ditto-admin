@@ -331,10 +331,10 @@ export default function SearchPage() {
   const isRtl = lang === 'ar';
 
   return (
-    <div className="p-6 space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
+    <div className="page-wrapper" dir={isRtl ? 'rtl' : 'ltr'}>
       <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <UserSearch className="h-8 w-8" />
+        <h1 className="page-title flex items-center gap-2">
+          <UserSearch className="page-title-icon" />
           {t('search.title')}
         </h1>
         <p className="text-muted-foreground mt-1">Sayyouditto + Dittoparty APIs</p>

@@ -250,7 +250,7 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="page-wrapper">
         <Skeleton className="h-10 w-48" />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Skeleton className="h-64" />
@@ -261,9 +261,9 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="page-wrapper">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">مرحباً، {userProfile?.name?.split(' ')[0] || user?.full_name?.split(' ')[0] || 'مستخدم'}</h1>
+        <h1 className="page-title">مرحباً، {userProfile?.name?.split(' ')[0] || user?.full_name?.split(' ')[0] || 'مستخدم'}</h1>
         <p className="text-muted-foreground mt-1">
           {format(new Date(), 'EEEE، d MMMM yyyy', { locale: ar })}
         </p>

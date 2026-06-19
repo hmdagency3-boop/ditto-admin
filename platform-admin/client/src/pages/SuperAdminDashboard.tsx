@@ -152,8 +152,8 @@ export default function SuperAdminDashboard() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="page-wrapper">
+        <div className="stats-grid-4">
           {[1, 2, 3, 4].map((i) => (
             <Card key={i}>
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
@@ -171,10 +171,10 @@ export default function SuperAdminDashboard() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="page-wrapper">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">لوحة التحكم</h1>
+          <h1 className="page-title">لوحة التحكم</h1>
           <p className="text-muted-foreground mt-1">
             {format(new Date(), 'EEEE، d MMMM yyyy', { locale: ar })}
           </p>
@@ -198,7 +198,7 @@ export default function SuperAdminDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="stats-grid-4">
         {statCards.map((stat, index) => (
           <Card key={index} data-testid={`card-stat-${index}`}>
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">

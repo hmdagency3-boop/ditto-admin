@@ -101,9 +101,9 @@ export default function MyAttendance() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="page-wrapper">
         <Skeleton className="h-10 w-48" />
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="stats-grid-4">
           {[1, 2, 3, 4].map((i) => (
             <Card key={i}>
               <CardContent className="p-4">
@@ -119,11 +119,11 @@ export default function MyAttendance() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="page-wrapper">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-            <Clock className="h-8 w-8" />
+          <h1 className="page-title flex items-center gap-2">
+            <Clock className="page-title-icon" />
             سجل حضوري
           </h1>
           <p className="text-muted-foreground mt-1">
@@ -143,7 +143,7 @@ export default function MyAttendance() {
         </Select>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="stats-grid-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
@@ -205,55 +205,94 @@ export default function MyAttendance() {
               <p>لم يتم العثور على سجلات حضور للفترة المحددة</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-right">التاريخ</TableHead>
-                    <TableHead className="text-right">اليوم</TableHead>
-                    <TableHead className="text-right">الحضور</TableHead>
-                    <TableHead className="text-right">الانصراف</TableHead>
-                    <TableHead className="text-right">ساعات العمل</TableHead>
-                    <TableHead className="text-right">الحالة</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {attendance.map((record) => (
-                    <TableRow key={record.id} data-testid={`row-attendance-${record.id}`}>
-                      <TableCell className="font-medium">
-                        {format(new Date(record.date), 'd MMM yyyy', { locale: ar })}
-                      </TableCell>
-                      <TableCell>
-                        {format(new Date(record.date), 'EEEE', { locale: ar })}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {format(new Date(record.check_in), 'hh:mm a', { locale: ar })}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {record.check_out 
-                          ? format(new Date(record.check_out), 'hh:mm a', { locale: ar })
-                          : <Badge variant="outline">لم ينصرف</Badge>
-                        }
-                      </TableCell>
-                      <TableCell className="font-mono">
-                        {calculateHours(record.check_in, record.check_out)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge 
-                          variant={
-                            record.status === 'present' ? 'default' : 
-                            record.status === 'late' ? 'secondary' : 'destructive'
-                          }
-                        >
-                          {record.status === 'present' ? 'حاضر' : 
-                           record.status === 'late' ? 'متأخر' : 'غائب'}
-                        </Badge>
-                      </TableCell>
+            <>
+              {/* Desktop table */}
+              <div className="hidden md:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-right">التاريخ</TableHead>
+                      <TableHead className="text-right">اليوم</TableHead>
+                      <TableHead className="text-right">الحضور</TableHead>
+                      <TableHead className="text-right">الانصراف</TableHead>
+                      <TableHead className="text-right">ساعات العمل</TableHead>
+                      <TableHead className="text-right">الحالة</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {attendance.map((record) => (
+                      <TableRow key={record.id} data-testid={`row-attendance-${record.id}`}>
+                        <TableCell className="font-medium">
+                          {format(new Date(record.date), 'd MMM yyyy', { locale: ar })}
+                        </TableCell>
+                        <TableCell>
+                          {format(new Date(record.date), 'EEEE', { locale: ar })}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {format(new Date(record.check_in), 'hh:mm a', { locale: ar })}
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {record.check_out 
+                            ? format(new Date(record.check_out), 'hh:mm a', { locale: ar })
+                            : <Badge variant="outline">لم ينصرف</Badge>
+                          }
+                        </TableCell>
+                        <TableCell className="font-mono">
+                          {calculateHours(record.check_in, record.check_out)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant={
+                              record.status === 'present' ? 'default' : 
+                              record.status === 'late' ? 'secondary' : 'destructive'
+                            }
+                          >
+                            {record.status === 'present' ? 'حاضر' : 
+                             record.status === 'late' ? 'متأخر' : 'غائب'}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile cards */}
+              <div className="md:hidden space-y-3">
+                {attendance.map((record) => (
+                  <div key={record.id} className="border rounded-lg p-3 space-y-2" data-testid={`row-attendance-${record.id}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="font-medium text-sm">{format(new Date(record.date), 'EEEE', { locale: ar })}</div>
+                        <div className="text-xs text-muted-foreground">{format(new Date(record.date), 'd MMM yyyy', { locale: ar })}</div>
+                      </div>
+                      <Badge 
+                        variant={
+                          record.status === 'present' ? 'default' : 
+                          record.status === 'late' ? 'secondary' : 'destructive'
+                        }
+                      >
+                        {record.status === 'present' ? 'حاضر' : record.status === 'late' ? 'متأخر' : 'غائب'}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div>
+                        <div className="text-muted-foreground">الحضور</div>
+                        <div className="font-mono font-medium">{format(new Date(record.check_in), 'hh:mm a', { locale: ar })}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">الانصراف</div>
+                        <div className="font-mono font-medium">{record.check_out ? format(new Date(record.check_out), 'hh:mm a', { locale: ar }) : '—'}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">الساعات</div>
+                        <div className="font-mono font-medium">{calculateHours(record.check_in, record.check_out)}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

@@ -185,9 +185,9 @@ export default function Warnings() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="page-wrapper">
         <Skeleton className="h-10 w-48" />
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="stats-grid-4">
           {[1, 2, 3, 4].map((i) => (
             <Card key={i}>
               <CardContent className="p-4">
@@ -202,11 +202,11 @@ export default function Warnings() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="page-wrapper">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-            <AlertTriangle className="h-8 w-8" />
+          <h1 className="page-title flex items-center gap-2">
+            <AlertTriangle className="page-title-icon" />
             الإنذارات
           </h1>
           <p className="text-muted-foreground mt-1">
@@ -310,7 +310,7 @@ export default function Warnings() {
         </Dialog>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="stats-grid-4">
         <Card>
           <CardContent className="p-4 flex items-center gap-4">
             <div className="p-3 rounded-md bg-gray-100 dark:bg-gray-900/30">
