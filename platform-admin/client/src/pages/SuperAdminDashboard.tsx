@@ -37,14 +37,11 @@ const SHIFT_SLOTS = [
   { number: 12, label: "10:00 م - 12:00 ص", startHour: 22 },
 ];
 
-function getEgyptNow(): Date {
+function getEgyptHour(): number {
   const now = new Date();
   const utc = now.getTime() + now.getTimezoneOffset() * 60000;
-  return new Date(utc + 2 * 3600000); // Egypt = UTC+2
-}
-
-function getEgyptHour(): number {
-  return getEgyptNow().getHours();
+  const egypt = new Date(utc + 3 * 3600000);
+  return egypt.getHours();
 }
 
 function getCurrentShiftNumber(): number {
@@ -53,24 +50,6 @@ function getCurrentShiftNumber(): number {
 
 function getNextShiftNumber(current: number): number {
   return (current % 12) + 1;
-}
-
-function getShiftEndEgypt(shiftNum: number): { h: number; m: number } {
-  const endHour = (shiftNum * 2) % 24;
-  return { h: endHour, m: 0 };
-}
-
-function calcTimeLeft(shiftNum: number): string {
-  const egypt = getEgyptNow();
-  const endH = (shiftNum * 2) % 24;
-  const endMs = endH * 3600000;
-  const nowMs = egypt.getHours() * 3600000 + egypt.getMinutes() * 60000 + egypt.getSeconds() * 1000;
-  let diffMs = endMs - nowMs;
-  if (diffMs <= 0) diffMs += 24 * 3600000; // wrap midnight
-  const h = Math.floor(diffMs / 3600000);
-  const m = Math.floor((diffMs % 3600000) / 60000);
-  const s = Math.floor((diffMs % 60000) / 1000);
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 interface DashboardStats {
@@ -116,23 +95,9 @@ export default function SuperAdminDashboard() {
   const [nextShiftNum, setNextShiftNum] = useState(2);
   const [currentShiftUsers, setCurrentShiftUsers] = useState<ShiftUser[]>([]);
   const [nextShiftUsers, setNextShiftUsers] = useState<ShiftUser[]>([]);
-  const [timeLeft, setTimeLeft] = useState(() => calcTimeLeft(getCurrentShiftNumber()));
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
-
-  // عداد تنازلي يتحدث كل ثانية
-  useEffect(() => {
-    const tick = () => {
-      const curr = getCurrentShiftNumber();
-      setCurrentShiftNum(curr);
-      setNextShiftNum(getNextShiftNumber(curr));
-      setTimeLeft(calcTimeLeft(curr));
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
   }, []);
 
   async function fetchDashboardData() {
@@ -358,27 +323,7 @@ export default function SuperAdminDashboard() {
                 : 'لا يوجد مشرفون مُعيَّنون لهذا الشيفت'}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {/* عداد تنازلي */}
-            <div className="flex items-center justify-between rounded-xl bg-green-100/80 dark:bg-green-900/30 px-4 py-3 border border-green-200 dark:border-green-800">
-              <div className="text-xs text-green-700 dark:text-green-400 font-medium">
-                ينتهي الشيفت خلال
-              </div>
-              <div className="font-mono text-2xl font-bold text-green-700 dark:text-green-300 tracking-widest" dir="ltr">
-                {timeLeft}
-              </div>
-            </div>
-            {/* وقت بداية الشيفت القادم */}
-            <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
-              <ChevronRight className="h-3.5 w-3.5 text-primary shrink-0" />
-              <span>
-                يبدأ الشيفت القادم (#{nextShiftNum}) الساعة{' '}
-                <span className="font-semibold text-foreground" dir="ltr">
-                  {String(getShiftEndEgypt(currentShiftNum).h).padStart(2, '0')}:00
-                </span>
-                {' '}بتوقيت مصر
-              </span>
-            </div>
+          <CardContent>
             <ShiftMembersList users={currentShiftUsers} emptyText="لا يوجد مشرفون مُعيَّنون" />
           </CardContent>
         </Card>
