@@ -1,5 +1,6 @@
 - [Supabase-only rule](supabase-only.md) — لا تستخدم Replit PostgreSQL أبدًا، executeSql يوصل DB غلط
 - [Change logs RLS blocker](change-logs-rls.md) — change_logs INSERT يفشل بـ 42501، يحتاج policy في Supabase SQL Editor
-- [Platform check setup](platform-check.md) — runPlatformCheck تشتغل كل 60 دقيقة + 10 ثوان عند البدء
+- [Platform check setup](platform-check.md) — runPlatformCheck تشتغل كل 30 ثانية + 10 ثوان عند البدء
 - [Project architecture](project-arch.md) — نظام إدارة المشرفين: Express+React+TS في platform-admin/، Supabase PostgreSQL
-- [Employment status bug](employment-status-bug.md) — تغيير الحالة بيشتغل لحظياً لكن مبيتحفظش بعد refresh، المشكلة معلّقة
+- [Employment status bug](employment-status-bug.md) — تغيير الحالة بيشتغل وبيتحفظ — المشكلة اتحلت
+- [ما تم إنجازه وما تبقى](progress.md) — ملخص شامل للمشروع للرجوع إليه عند التبديل لأكونت جديد
