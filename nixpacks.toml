@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["cd platform-admin && npm install"]
+
+[phases.build]
+cmds = ["cd platform-admin && npm run build"]
+
+[start]
+cmd = "cd platform-admin && npm run start"
