@@ -8,11 +8,12 @@ import {
   AlertTriangle,
   TrendingUp,
   CheckCircle2,
-  XCircle
+  Users2
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
@@ -20,6 +21,45 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fetchUserProfile } from '@/lib/userProfileService';
 import { format, differenceInMinutes, startOfMonth, endOfMonth } from 'date-fns';
 import { ar } from 'date-fns/locale';
+
+const SHIFT_SLOTS = [
+  { number: 1,  label: "12:00 ص - 2:00 ص",  startHour: 0  },
+  { number: 2,  label: "2:00 ص - 4:00 ص",   startHour: 2  },
+  { number: 3,  label: "4:00 ص - 6:00 ص",   startHour: 4  },
+  { number: 4,  label: "6:00 ص - 8:00 ص",   startHour: 6  },
+  { number: 5,  label: "8:00 ص - 10:00 ص",  startHour: 8  },
+  { number: 6,  label: "10:00 ص - 12:00 م", startHour: 10 },
+  { number: 7,  label: "12:00 م - 2:00 م",  startHour: 12 },
+  { number: 8,  label: "2:00 م - 4:00 م",   startHour: 14 },
+  { number: 9,  label: "4:00 م - 6:00 م",   startHour: 16 },
+  { number: 10, label: "6:00 م - 8:00 م",   startHour: 18 },
+  { number: 11, label: "8:00 م - 10:00 م",  startHour: 20 },
+  { number: 12, label: "10:00 م - 12:00 ص", startHour: 22 },
+];
+
+function getEgyptHour(): number {
+  const now = new Date();
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  const egypt = new Date(utc + 3 * 3600000);
+  return egypt.getHours();
+}
+
+function getCurrentShiftNumber(): number {
+  return Math.floor(getEgyptHour() / 2) + 1;
+}
+
+function getNextShiftNumber(current: number): number {
+  return (current % 12) + 1;
+}
+
+interface NextShiftUser {
+  id: string;
+  full_name: string;
+  username: string;
+  platform_id?: string;
+  externalImage?: string;
+  externalName?: string;
+}
 
 interface Attendance {
   id: string;
@@ -67,12 +107,10 @@ export default function AdminDashboard() {
   const [upcomingShifts, setUpcomingShifts] = useState<Shift[]>([]);
   const [myRatings, setMyRatings] = useState<Rating[]>([]);
   const [myWarnings, setMyWarnings] = useState<Warning[]>([]);
-  const [attendanceStats, setAttendanceStats] = useState({ 
-    present: 0, 
-    late: 0, 
-    absent: 0, 
-    total: 0 
-  });
+  const [attendanceStats, setAttendanceStats] = useState({ present: 0, late: 0, absent: 0, total: 0 });
+  const [nextShiftUsers, setNextShiftUsers] = useState<NextShiftUser[]>([]);
+  const [nextShiftNumber, setNextShiftNumber] = useState<number>(1);
+  const [currentShiftNumber, setCurrentShiftNumber] = useState<number>(1);
 
   useEffect(() => {
     if (user?.id) {
@@ -107,6 +145,38 @@ export default function AdminDashboard() {
       });
       const allShifts = await shiftsRes.json();
       const shifts = allShifts.filter((s: Shift) => s.user_id === user.id).slice(0, 5);
+
+      // حساب الشيفت الحالي والقادم
+      const currShift = getCurrentShiftNumber();
+      const nextShift = getNextShiftNumber(currShift);
+      setCurrentShiftNumber(currShift);
+      setNextShiftNumber(nextShift);
+
+      // جلب بيانات المستخدمين للشيفت القادم
+      const usersRes = await fetch('/api/users', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (usersRes.ok) {
+        const allUsers: NextShiftUser[] = await usersRes.json();
+        const usersMap = Object.fromEntries(allUsers.map(u => [u.id, u]));
+        const nextShiftUserIds = (allShifts as Shift[])
+          .filter(s => s.shift_number === nextShift && s.user_id !== user.id)
+          .map(s => s.user_id);
+        const uniqueIds = [...new Set(nextShiftUserIds)];
+        const usersWithProfiles = await Promise.all(
+          uniqueIds.map(async (uid) => {
+            const u = usersMap[uid];
+            if (!u) return null;
+            try {
+              const p = await fetchUserProfile((u as any).platform_id || u.username);
+              return { ...u, externalImage: p?.image, externalName: p?.name };
+            } catch {
+              return u;
+            }
+          })
+        );
+        setNextShiftUsers(usersWithProfiles.filter(Boolean) as NextShiftUser[]);
+      }
 
       const ratingsRes = await fetch('/api/ratings', {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -399,6 +469,56 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* كارت الشيفت القادم */}
+      <Card className="border-2 border-primary/20 bg-gradient-to-l from-primary/5 to-transparent">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Users2 className="h-5 w-5 text-primary" />
+              الشيفت القادم — من سيكون معك؟
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs">
+                الحالي: شيفت #{currentShiftNumber} ({SHIFT_SLOTS.find(s => s.number === currentShiftNumber)?.label})
+              </Badge>
+              <Badge className="text-xs">
+                القادم: شيفت #{nextShiftNumber}
+              </Badge>
+            </div>
+          </div>
+          <CardDescription>
+            {SHIFT_SLOTS.find(s => s.number === nextShiftNumber)?.label} — المشرفون المعيّنون لهذا الشيفت
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {nextShiftUsers.length === 0 ? (
+            <div className="flex items-center gap-3 py-4 text-muted-foreground">
+              <Users2 className="h-8 w-8 opacity-30" />
+              <p className="text-sm">لا يوجد مشرفون مُعيَّنون للشيفت القادم</p>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-4">
+              {nextShiftUsers.map((u) => (
+                <div key={u.id} className="flex items-center gap-3 bg-background rounded-xl border p-3 min-w-[160px]">
+                  <Avatar className="h-10 w-10 shrink-0">
+                    {u.externalImage && <AvatarImage src={u.externalImage} alt={u.full_name} />}
+                    <AvatarFallback className="bg-primary/10 text-primary font-semibold text-sm">
+                      {u.full_name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm truncate">
+                      {u.externalName || u.full_name}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">@{u.username}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
