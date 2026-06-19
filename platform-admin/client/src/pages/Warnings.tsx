@@ -21,7 +21,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase, type Warning } from '@/lib/supabase';
+import { type Warning } from '@/lib/supabase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 
@@ -30,6 +30,7 @@ interface UserInfo {
   username: string;
   full_name: string;
   role: string;
+  platform_id?: string;
   externalImage?: string;
   externalName?: string;
 }
@@ -70,27 +71,33 @@ export default function Warnings() {
   async function fetchData() {
     try {
       const [warningsRes, adminsRes] = await Promise.all([
-        supabase?.from('warnings').select('*, user:users(*)').order('created_at', { ascending: false }),
+        fetch('/api/warnings', { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
 
-      if (warningsRes?.data) {
-        // Fetch external images for users
-        const warningsWithImages = await Promise.all(
-          warningsRes.data.map(async (warning) => ({
-            ...warning,
-            user: warning.user ? {
-              ...warning.user,
-              ...await (async () => { const p = await fetchUserProfile(warning.user.platform_id || warning.user.username); return { externalImage: p?.image, externalName: p?.name }; })()
-            } : undefined
-          }))
-        );
-        setWarnings(warningsWithImages);
-      }
+      if (warningsRes.ok) {
+        const warningsData: Warning[] = await warningsRes.json();
+        const adminsData: UserInfo[] = adminsRes.ok ? await adminsRes.json() : [];
 
-      if (adminsRes?.ok) {
-        const adminsData = await adminsRes.json();
-        setAdmins(adminsData.filter((u: UserInfo) => u.role !== 'super_admin'));
+        const usersMap: Record<string, UserInfo> = {};
+        for (const u of adminsData) usersMap[u.id] = u;
+
+        const warningsWithUsers = await Promise.all(
+          warningsData.map(async (warning) => {
+            const u = usersMap[warning.user_id];
+            if (!u) return { ...warning, user: undefined };
+            const p = await fetchUserProfile((u as any).platform_id || u.username);
+            return {
+              ...warning,
+              user: { ...u, externalImage: p?.image, externalName: p?.name }
+            };
+          })
+        );
+        setWarnings(warningsWithUsers);
+
+        if (adminsRes.ok) {
+          setAdmins(adminsData.filter((u) => u.role !== 'super_admin'));
+        }
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -100,18 +107,27 @@ export default function Warnings() {
   }
 
   async function onSubmit(data: AddWarningFormData) {
-    if (!user?.id || !supabase) return;
+    if (!user?.id) return;
     
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.from('warnings').insert({
-        user_id: data.userId,
-        severity: data.severity,
-        reason: data.reason,
-        issued_by: user.id,
+      const res = await fetch('/api/warnings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          user_id: data.userId,
+          severity: data.severity,
+          reason: data.reason,
+        }),
       });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'حدث خطأ');
+      }
 
       toast({
         title: 'تم إضافة الإنذار',

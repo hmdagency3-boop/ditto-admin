@@ -21,7 +21,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase, type Rating } from '@/lib/supabase';
+import { type Rating } from '@/lib/supabase';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
 
@@ -30,6 +30,7 @@ interface UserInfo {
   username: string;
   full_name: string;
   role: string;
+  platform_id?: string;
   externalImage?: string;
   externalName?: string;
 }
@@ -70,27 +71,33 @@ export default function Ratings() {
   async function fetchData() {
     try {
       const [ratingsRes, adminsRes] = await Promise.all([
-        supabase?.from('ratings').select('*, user:users(*)').order('created_at', { ascending: false }),
+        fetch('/api/ratings', { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
 
-      if (ratingsRes?.data) {
-        // Fetch external images for users
-        const ratingsWithImages = await Promise.all(
-          ratingsRes.data.map(async (rating) => ({
-            ...rating,
-            user: rating.user ? {
-              ...rating.user,
-              ...await (async () => { const p = await fetchUserProfile(rating.user.platform_id || rating.user.username); return { externalImage: p?.image, externalName: p?.name }; })()
-            } : undefined
-          }))
-        );
-        setRatings(ratingsWithImages);
-      }
+      if (ratingsRes.ok) {
+        const ratingsData: Rating[] = await ratingsRes.json();
+        const adminsData: UserInfo[] = adminsRes.ok ? await adminsRes.json() : [];
 
-      if (adminsRes?.ok) {
-        const adminsData = await adminsRes.json();
-        setAdmins(adminsData.filter((u: UserInfo) => u.role !== 'super_admin'));
+        const usersMap: Record<string, UserInfo> = {};
+        for (const u of adminsData) usersMap[u.id] = u;
+
+        const ratingsWithUsers = await Promise.all(
+          ratingsData.map(async (rating) => {
+            const u = usersMap[rating.user_id];
+            if (!u) return { ...rating, user: undefined };
+            const p = await fetchUserProfile((u as any).platform_id || u.username);
+            return {
+              ...rating,
+              user: { ...u, externalImage: p?.image, externalName: p?.name }
+            };
+          })
+        );
+        setRatings(ratingsWithUsers);
+
+        if (adminsRes.ok) {
+          setAdmins(adminsData.filter((u) => u.role !== 'super_admin'));
+        }
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -100,18 +107,27 @@ export default function Ratings() {
   }
 
   async function onSubmit(data: AddRatingFormData) {
-    if (!user?.id || !supabase) return;
+    if (!user?.id) return;
     
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.from('ratings').insert({
-        user_id: data.userId,
-        score: selectedScore,
-        comment: data.comment || null,
-        rated_by: user.id,
+      const res = await fetch('/api/ratings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          user_id: data.userId,
+          score: selectedScore,
+          comment: data.comment || null,
+        }),
       });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'حدث خطأ');
+      }
 
       toast({
         title: 'تم إضافة التقييم',
