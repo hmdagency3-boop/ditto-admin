@@ -49,4 +49,4 @@ run = ["bash", "-c", "cd platform-admin && npm run start"]
 [userenv.shared]
 SUPABASE_URL = "https://hijmdaiwxhcrvxqmgxsy.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhpam1kYWl3eGhjcnZ4cW1neHN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyOTQ3NjIsImV4cCI6MjA5Njg3MDc2Mn0.iPjxByKPCxuFR-UBPCSH56dMDPWQ3ZufBfZ3Z5dFHUs"
-JWT_SECRET = "admindesk-jwt-secret-2024-secure-key-change-me"
+JWT_SECRET = "3aa696cf4766ba50a20c07635099a9dc54bed677930c4ed9d3f75b3c58d5b71b6deb86780523fc100901ebc0ba2a73889599f3e5ea3b7ebfdf444dd43e1ff591"

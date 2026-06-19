@@ -138,7 +138,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function signOut() {
+  async function signOut() {
+    const savedToken = localStorage.getItem('auth_token');
+    if (savedToken) {
+      try {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${savedToken}` },
+        });
+      } catch { /* ignore network errors on logout */ }
+    }
     localStorage.removeItem('auth_token');
     setToken(null);
     setUser(null);

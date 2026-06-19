@@ -60,14 +60,11 @@ export default function MyShifts() {
     if (!user?.id || !token) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/shifts', {
+      const res = await fetch('/api/me/shifts', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) throw new Error();
-      const allShifts = await res.json();
-      const data = allShifts
-        .filter((s: ShiftRecord) => s.user_id === user.id)
-        .sort((a: ShiftRecord, b: ShiftRecord) => a.shift_number - b.shift_number);
+      const data = await res.json();
       setMyShifts(data);
     } catch (error) {
       console.error('Error fetching shifts:', error);

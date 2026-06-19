@@ -44,7 +44,7 @@ export default function MyAttendance() {
     
     setLoading(true);
     try {
-      const res = await fetch('/api/attendance', {
+      const res = await fetch('/api/me/attendance', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -63,7 +63,7 @@ export default function MyAttendance() {
         allAttendance = allAttendance.filter((a: Attendance) => a.date >= monthStart && a.date <= monthEnd);
       }
 
-      allAttendance = allAttendance.filter((a: Attendance) => a.user_id === user.id).sort((a: Attendance, b: Attendance) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      allAttendance = allAttendance.sort((a: Attendance, b: Attendance) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setAttendance(allAttendance);
     } catch (error) {
       console.error('Error fetching attendance:', error);

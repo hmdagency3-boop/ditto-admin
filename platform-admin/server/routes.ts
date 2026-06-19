@@ -4,13 +4,44 @@ import { storage } from "./storage";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "admindesk-secret-key-change-in-production";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("[SECURITY] JWT_SECRET environment variable is required but not set. Set it in Replit Secrets.");
+}
 
 interface JWTPayload {
   userId: string;
   username: string;
   role: string;
 }
+
+// ── Simple in-memory rate limiter for login ──────────────────────────────────
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_MAX     = 10;   // max attempts
+const RATE_LIMIT_WINDOW  = 10 * 60 * 1000; // 10 minutes
+const RATE_LIMIT_LOCKOUT = 15 * 60 * 1000; // 15 minutes lockout after max
+
+function checkLoginRateLimit(ip: string): { allowed: boolean; retryAfterMs: number } {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+
+  if (!entry || now > entry.resetAt) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return { allowed: true, retryAfterMs: 0 };
+  }
+
+  if (entry.count >= RATE_LIMIT_MAX) {
+    return { allowed: false, retryAfterMs: entry.resetAt - now };
+  }
+
+  entry.count++;
+  return { allowed: true, retryAfterMs: 0 };
+}
+
+function resetLoginRateLimit(ip: string) {
+  loginAttempts.delete(ip);
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 declare global {
   namespace Express {
@@ -28,7 +59,7 @@ function authenticateToken(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ message: "غير مصرح - يرجى تسجيل الدخول" });
   }
 
-  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+  jwt.verify(token, JWT_SECRET!, (err, decoded) => {
     if (err) {
       return res.status(403).json({ message: "الجلسة منتهية - يرجى تسجيل الدخول مرة أخرى" });
     }
@@ -286,6 +317,15 @@ export async function registerRoutes(
   });
 
   app.post("/api/auth/login", async (req, res) => {
+    const ip = req.headers['x-forwarded-for']?.toString().split(',')[0] || req.socket.remoteAddress || 'unknown';
+    const rateCheck = checkLoginRateLimit(ip);
+    if (!rateCheck.allowed) {
+      const minutesLeft = Math.ceil(rateCheck.retryAfterMs / 60000);
+      return res.status(429).json({
+        message: `تم تجاوز الحد الأقصى لمحاولات الدخول. حاول مجدداً بعد ${minutesLeft} دقيقة.`
+      });
+    }
+
     try {
       const { username, password } = req.body;
 
@@ -317,10 +357,13 @@ export async function registerRoutes(
         });
       }
 
+      // Reset rate limit on successful login
+      resetLoginRateLimit(ip);
+
       const token = jwt.sign(
         { userId: user.id, username: user.username, role: user.role },
-        JWT_SECRET,
-        { expiresIn: "7d" }
+        JWT_SECRET!,
+        { expiresIn: "24h" }
       );
 
       res.json({
@@ -339,6 +382,11 @@ export async function registerRoutes(
       console.error("Login error:", error);
       res.status(500).json({ message: "حدث خطأ أثناء تسجيل الدخول" });
     }
+  });
+
+  // Logout (client should discard token; server-side for future blacklist extension)
+  app.post("/api/auth/logout", authenticateToken, (req, res) => {
+    res.json({ message: "تم تسجيل الخروج بنجاح" });
   });
 
   app.get("/api/auth/me", authenticateToken, async (req, res) => {
@@ -364,8 +412,8 @@ export async function registerRoutes(
     }
   });
 
-  // Proxy endpoint for external platform profile API (avoids CORS) - no auth needed, data is public
-  app.get("/api/platform-profile/:identifier", async (req, res) => {
+  // Proxy endpoint for external platform profile API (avoids CORS)
+  app.get("/api/platform-profile/:identifier", authenticateToken, async (req, res) => {
     const { identifier } = req.params;
     if (!identifier) return res.status(400).json({ message: "identifier required" });
     try {
@@ -382,7 +430,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/users", authenticateToken, async (req, res) => {
+  app.get("/api/users", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       res.setHeader('Cache-Control', 'no-store');
       const users = await storage.getAllUsers();
@@ -674,7 +722,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/attendance", authenticateToken, async (req, res) => {
+  app.post("/api/attendance", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { user_id, check_in, date, status } = req.body;
 
@@ -692,7 +740,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/attendance/:id", authenticateToken, async (req, res) => {
+  app.patch("/api/attendance/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const { check_out } = req.body;
@@ -728,7 +776,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/ratings", authenticateToken, async (req, res) => {
+  app.post("/api/ratings", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { user_id, score, comment } = req.body;
 
@@ -762,7 +810,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/warnings", authenticateToken, async (req, res) => {
+  app.post("/api/warnings", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { user_id, severity, reason } = req.body;
 
@@ -816,11 +864,16 @@ export async function registerRoutes(
       const { data: userData, error: fetchErr } = await storage.supabase
         .from('users').select('password').eq('id', req.user!.userId).single();
       if (fetchErr || !userData) return res.status(404).json({ message: "المستخدم غير موجود" });
-      if (userData.password !== currentPassword) {
+
+      // Verify against bcrypt hash
+      const valid = await bcrypt.compare(currentPassword, userData.password);
+      if (!valid) {
         return res.status(400).json({ message: "كلمة المرور الحالية غير صحيحة" });
       }
+
+      const hashed = await bcrypt.hash(newPassword, 10);
       const { error: updateErr } = await storage.supabase
-        .from('users').update({ password: newPassword }).eq('id', req.user!.userId);
+        .from('users').update({ password: hashed }).eq('id', req.user!.userId);
       if (updateErr) throw updateErr;
       res.json({ message: "تم تغيير كلمة المرور بنجاح" });
     } catch (error) {
@@ -828,6 +881,73 @@ export async function registerRoutes(
       res.status(500).json({ message: "حدث خطأ أثناء تغيير كلمة المرور" });
     }
   });
+
+  // ── /api/me/* — user-scoped endpoints (for regular admins) ──────────────────
+
+  // Own attendance only — no data leakage to other users
+  app.get("/api/me/attendance", authenticateToken, async (req, res) => {
+    try {
+      const { data, error } = await storage.supabase
+        .from('attendance')
+        .select('*')
+        .eq('user_id', req.user!.userId)
+        .order('date', { ascending: false });
+      if (error) throw error;
+      res.json(data || []);
+    } catch (error) {
+      console.error("Get my attendance error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // Own shifts only
+  app.get("/api/me/shifts", authenticateToken, async (req, res) => {
+    try {
+      const { data, error } = await storage.supabase
+        .from('shifts')
+        .select('*')
+        .eq('user_id', req.user!.userId)
+        .order('shift_number', { ascending: true });
+      if (error) throw error;
+      res.json(data || []);
+    } catch (error) {
+      console.error("Get my shifts error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // Own ratings only
+  app.get("/api/me/ratings", authenticateToken, async (req, res) => {
+    try {
+      const { data, error } = await storage.supabase
+        .from('ratings')
+        .select('*')
+        .eq('user_id', req.user!.userId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      res.json(data || []);
+    } catch (error) {
+      console.error("Get my ratings error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // Own warnings only
+  app.get("/api/me/warnings", authenticateToken, async (req, res) => {
+    try {
+      const { data, error } = await storage.supabase
+        .from('warnings')
+        .select('*')
+        .eq('user_id', req.user!.userId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      res.json(data || []);
+    } catch (error) {
+      console.error("Get my warnings error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+  // ────────────────────────────────────────────────────────────────────────────
 
   // Change Logs endpoints
   app.get("/api/change-logs", authenticateToken, requireSuperAdmin, async (req, res) => {
