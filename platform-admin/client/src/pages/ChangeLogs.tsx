@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { RefreshCw, History, User, Hash, ImageIcon, Tag, AlertCircle } from 'lucide-react';
+import { RefreshCw, History, User, Hash, ImageIcon, Tag, AlertCircle, Crown, Star, Zap, TrendingUp, Users, Globe } from 'lucide-react';
 
 interface ChangeLog {
   id: string;
@@ -21,6 +21,12 @@ const CHANGE_TYPE_LABELS: Record<string, { label: string; icon: React.ReactNode;
   nick_change:       { label: 'تغيير الاسم في المنصة', icon: <Tag className="h-3.5 w-3.5" />,         color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' },
   avatar_change:     { label: 'تغيير الصورة',          icon: <ImageIcon className="h-3.5 w-3.5" />,   color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
   uid_mismatch:      { label: 'تغيير الرقم الثابت',    icon: <AlertCircle className="h-3.5 w-3.5" />, color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
+  noble_change:      { label: 'تغيير رتبة النبالة',    icon: <Crown className="h-3.5 w-3.5" />,       color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' },
+  vip_change:        { label: 'تغيير حالة VIP',        icon: <Star className="h-3.5 w-3.5" />,        color: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200' },
+  charm_change:      { label: 'تغيير مستوى السحر',     icon: <Zap className="h-3.5 w-3.5" />,         color: 'bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-200' },
+  exp_change:        { label: 'تغيير مستوى الخبرة',    icon: <TrendingUp className="h-3.5 w-3.5" />,  color: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200' },
+  fans_change:       { label: 'تغيير عدد المتابعين',   icon: <Users className="h-3.5 w-3.5" />,       color: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200' },
+  country_change:    { label: 'تغيير الدولة',          icon: <Globe className="h-3.5 w-3.5" />,       color: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200' },
 };
 
 function isImageUrl(val: string | null): boolean {

@@ -44,7 +44,19 @@ function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-async function fetchPlatformProfile(identifier: string): Promise<{ uid: string; nick: string; avatar: string } | null> {
+interface PlatformProfile {
+  uid: string;
+  nick: string;
+  avatar: string;
+  noble: string;      // nobleName
+  vip: string;        // vipId
+  charm: string;      // charmLevel
+  exp: string;        // experLevel
+  fans: string;       // fansNum
+  country: string;
+}
+
+async function fetchPlatformProfile(identifier: string): Promise<PlatformProfile | null> {
   try {
     const response = await fetch(
       `https://www.sayyouditto.com/pay/payermax/getInfo?no=${encodeURIComponent(identifier)}`,
@@ -53,10 +65,17 @@ async function fetchPlatformProfile(identifier: string): Promise<{ uid: string; 
     if (!response.ok) return null;
     const result = await response.json();
     if (result.code === 200 && result.data) {
+      const d = result.data;
       return {
-        uid: String(result.data.uid || ''),
-        nick: result.data.nick || '',
-        avatar: result.data.avatar || ''
+        uid:     String(d.uid || ''),
+        nick:    d.nick     || '',
+        avatar:  d.avatar   || '',
+        noble:   d.nobleName ? String(d.nobleName) : '',
+        vip:     d.vipId    ? String(d.vipId)    : '',
+        charm:   d.charmLevel != null ? String(d.charmLevel) : '',
+        exp:     d.experLevel != null ? String(d.experLevel) : '',
+        fans:    d.fansNum  != null ? String(d.fansNum)  : '',
+        country: d.country  || '',
       };
     }
     return null;
@@ -84,10 +103,9 @@ async function logChange(
 }
 
 async function runPlatformCheck(supabase: any): Promise<number> {
-  // Get all users that have either platform_id set OR a numeric username (which is their platform no.)
   const { data: allUsers, error } = await supabase
     .from('users')
-    .select('id, full_name, username, platform_id, platform_uid, platform_nick, platform_avatar');
+    .select('id, full_name, username, platform_id, platform_uid, platform_nick, platform_avatar, platform_extra');
 
   if (error) throw error;
 
@@ -104,6 +122,7 @@ async function runPlatformCheck(supabase: any): Promise<number> {
     if (!profile) continue;
 
     const profileUpdates: Record<string, any> = {};
+    const extra: Record<string, string> = user.platform_extra || {};
 
     // uid mismatch — someone else took this erbanNo
     if (user.platform_uid && profile.uid && profile.uid !== user.platform_uid) {
@@ -135,6 +154,54 @@ async function runPlatformCheck(supabase: any): Promise<number> {
     } else if (!user.platform_avatar && profile.avatar) {
       profileUpdates.platform_avatar = profile.avatar;
     }
+
+    // noble change
+    if (extra.noble !== undefined && profile.noble !== extra.noble) {
+      await logChange(supabase, user.id, user.full_name, 'noble_change', extra.noble || '(بدون رتبة)', profile.noble || '(بدون رتبة)');
+      changesFound++;
+    }
+
+    // vip change
+    if (extra.vip !== undefined && profile.vip !== extra.vip) {
+      await logChange(supabase, user.id, user.full_name, 'vip_change', extra.vip || '(بدون VIP)', profile.vip || '(بدون VIP)');
+      changesFound++;
+    }
+
+    // charm level change
+    if (extra.charm !== undefined && profile.charm !== extra.charm) {
+      await logChange(supabase, user.id, user.full_name, 'charm_change', extra.charm || '0', profile.charm || '0');
+      changesFound++;
+    }
+
+    // exp level change
+    if (extra.exp !== undefined && profile.exp !== extra.exp) {
+      await logChange(supabase, user.id, user.full_name, 'exp_change', extra.exp || '0', profile.exp || '0');
+      changesFound++;
+    }
+
+    // fans count change
+    if (extra.fans !== undefined && profile.fans !== extra.fans) {
+      await logChange(supabase, user.id, user.full_name, 'fans_change', extra.fans || '0', profile.fans || '0');
+      changesFound++;
+    }
+
+    // country change
+    if (extra.country !== undefined && profile.country && profile.country !== extra.country) {
+      await logChange(supabase, user.id, user.full_name, 'country_change', extra.country || '(غير محدد)', profile.country);
+      changesFound++;
+    }
+
+    // Always update platform_extra with latest values
+    const newExtra: Record<string, string> = {
+      ...extra,
+      noble:   profile.noble,
+      vip:     profile.vip,
+      charm:   profile.charm,
+      exp:     profile.exp,
+      fans:    profile.fans,
+      country: profile.country,
+    };
+    profileUpdates.platform_extra = newExtra;
 
     if (Object.keys(profileUpdates).length > 0) {
       await supabase.from('users').update(profileUpdates).eq('id', user.id);
