@@ -97,7 +97,7 @@ function Router() {
         <ProtectedRoute component={Dashboard} />
       </Route>
       <Route path="/search">
-        <ProtectedRoute component={SearchPage} />
+        <ProtectedRoute component={SearchPage} superAdminOnly />
       </Route>
       <Route path="/admins">
         <ProtectedRoute component={Admins} superAdminOnly />

@@ -55,7 +55,6 @@ export function AppSidebar() {
 
   const adminItems = [
     { key: 'nav.dashboard', url: '/', icon: LayoutDashboard },
-    { key: 'nav.search', url: '/search', icon: Search },
     { key: 'nav.myAttendance', url: '/my-attendance', icon: Clock },
     { key: 'nav.myShifts', url: '/my-shifts', icon: Calendar },
     { key: 'nav.settings', url: '/settings', icon: Settings },
