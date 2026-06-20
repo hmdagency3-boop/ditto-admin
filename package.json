@@ -2,7 +2,6 @@
   "name": "platform-admin-app",
   "version": "1.0.0",
   "scripts": {
-    "install": "cd platform-admin && npm install",
     "build": "cd platform-admin && npm run build",
     "start": "cd platform-admin && npm run start"
   },
