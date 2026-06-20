@@ -15,6 +15,11 @@ interface ChangeLog {
   detected_at: string;
 }
 
+interface UserInfo {
+  id: string;
+  platform_id?: string;
+}
+
 const CHANGE_TYPE_LABELS: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
   name_change:       { label: 'تغيير الاسم',           icon: <User className="h-3.5 w-3.5" />,        color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' },
   platform_id_change:{ label: 'تغيير رقم المنصة',      icon: <Hash className="h-3.5 w-3.5" />,        color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
@@ -45,6 +50,7 @@ function formatDate(iso: string) {
 
 export default function ChangeLogs() {
   const [logs, setLogs] = useState<ChangeLog[]>([]);
+  const [usersMap, setUsersMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
   const [filter, setFilter] = useState<string>('all');
@@ -53,12 +59,21 @@ export default function ChangeLogs() {
   const fetchLogs = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/change-logs', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('auth_token')}` }
-      });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
+      const token = localStorage.getItem('auth_token');
+      const headers = { Authorization: `Bearer ${token}` };
+      const [logsRes, usersRes] = await Promise.all([
+        fetch('/api/change-logs', { headers }),
+        fetch('/api/users', { headers }),
+      ]);
+      if (!logsRes.ok) throw new Error();
+      const data = await logsRes.json();
       setLogs(data);
+      if (usersRes.ok) {
+        const users: UserInfo[] = await usersRes.json();
+        const map: Record<string, string> = {};
+        users.forEach(u => { if (u.platform_id) map[u.id] = u.platform_id; });
+        setUsersMap(map);
+      }
     } catch {
       toast({ title: 'خطأ', description: 'تعذّر تحميل السجل', variant: 'destructive' });
     } finally {
@@ -182,6 +197,12 @@ export default function ChangeLogs() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-2">
                         <span className="font-semibold text-sm">{log.user_full_name}</span>
+                        {usersMap[log.user_id] && (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                            <Hash className="h-3 w-3" />
+                            {usersMap[log.user_id]}
+                          </span>
+                        )}
                         <span className="text-xs text-muted-foreground">{formatDate(log.detected_at)}</span>
                       </div>
 
