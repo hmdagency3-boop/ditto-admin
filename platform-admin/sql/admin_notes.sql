@@ -1,6 +1,6 @@
 -- =====================================================
 -- جدول الملاحظات السرية على ملفات المشرفين
--- شغّل هذا الملف في Supabase SQL Editor
+-- آمن للتشغيل أكثر من مرة (يحدّث تلقائياً)
 -- =====================================================
 
 CREATE TABLE IF NOT EXISTS public.admin_notes (
@@ -15,4 +15,6 @@ CREATE TABLE IF NOT EXISTS public.admin_notes (
 CREATE INDEX IF NOT EXISTS idx_admin_notes_user_id ON public.admin_notes(user_id);
 
 ALTER TABLE public.admin_notes ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "admin_notes_all" ON public.admin_notes;
 CREATE POLICY "admin_notes_all" ON public.admin_notes FOR ALL USING (true) WITH CHECK (true);
