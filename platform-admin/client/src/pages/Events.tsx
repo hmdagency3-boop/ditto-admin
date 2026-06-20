@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Megaphone, Plus, Trash2, Calendar, ToggleLeft, ToggleRight, Pencil } from 'lucide-react';
+import { Megaphone, Plus, Trash2, Calendar, ToggleLeft, ToggleRight, Pencil, ImageIcon, Upload, X as XIcon } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,13 +58,20 @@ export default function Events() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<EventFormData>({
     resolver: zodResolver(eventSchema),
-    defaultValues: { title: '', description: '', color: 'blue', start_date: '', end_date: '' },
+    defaultValues: { title: '', description: '', color: 'blue', image_url: '', start_date: '', end_date: '' },
   });
 
   useEffect(() => { fetchEvents(); }, []);
+
+  useEffect(() => {
+    return () => { if (previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl); };
+  }, [previewUrl]);
 
   async function fetchEvents() {
     try {
@@ -73,14 +80,34 @@ export default function Events() {
     } catch { } finally { setLoading(false); }
   }
 
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
+    setSelectedFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+  }
+
+  function clearImage() {
+    setSelectedFile(null);
+    if (previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl('');
+    form.setValue('image_url', '');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
   function openCreate() {
     setEditingEvent(null);
+    setSelectedFile(null);
+    setPreviewUrl('');
     form.reset({ title: '', description: '', color: 'blue', image_url: '', start_date: '', end_date: '' });
     setDialogOpen(true);
   }
 
   function openEdit(event: Event) {
     setEditingEvent(event);
+    setSelectedFile(null);
+    setPreviewUrl(event.image_url || '');
     form.reset({
       title: event.title,
       description: event.description || '',
@@ -92,19 +119,38 @@ export default function Events() {
     setDialogOpen(true);
   }
 
+  async function uploadImage(file: File): Promise<string> {
+    const formData = new FormData();
+    formData.append('image', file);
+    const res = await fetch('/api/upload/event-image', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    if (!res.ok) { const err = await res.json(); throw new Error(err.message || 'فشل رفع الصورة'); }
+    const { url } = await res.json();
+    return url;
+  }
+
   async function onSubmit(data: EventFormData) {
     setIsSubmitting(true);
     try {
+      let imageUrl = data.image_url || '';
+      if (selectedFile) {
+        imageUrl = await uploadImage(selectedFile);
+      }
       const url = editingEvent ? `/api/events/${editingEvent.id}` : '/api/events';
       const method = editingEvent ? 'PATCH' : 'POST';
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, image_url: imageUrl }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.message); }
       toast({ title: editingEvent ? 'تم تعديل الإيفنت' : 'تم إنشاء الإيفنت' });
       setDialogOpen(false);
+      setSelectedFile(null);
+      setPreviewUrl('');
       fetchEvents();
     } catch (e: any) {
       toast({ title: 'خطأ', description: e.message, variant: 'destructive' });
@@ -189,27 +235,46 @@ export default function Events() {
                   <FormMessage />
                 </FormItem>
               )} />
-              <FormField control={form.control} name="image_url" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>رابط الصورة (اختياري)</FormLabel>
-                  <FormControl>
-                    <div className="space-y-2">
-                      <Input placeholder="https://..." {...field} />
-                      {field.value && (
-                        <div className="h-20 w-full overflow-hidden rounded-md border">
-                          <img
-                            src={field.value}
-                            alt="معاينة"
-                            className="h-full w-full object-cover"
-                            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">صورة البنر (اختياري)</label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+                {previewUrl ? (
+                  <div className="relative rounded-md overflow-hidden border h-28">
+                    <img src={previewUrl} alt="معاينة" className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={clearImage}
+                      className="absolute top-1 left-1 rounded-full bg-black/60 p-1 text-white hover:bg-black/80 transition-colors"
+                    >
+                      <XIcon className="h-3 w-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="absolute bottom-1 left-1 rounded-md bg-black/60 px-2 py-1 text-xs text-white hover:bg-black/80 transition-colors flex items-center gap-1"
+                    >
+                      <Upload className="h-3 w-3" />
+                      تغيير
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex w-full flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed border-muted-foreground/25 py-6 text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground transition-colors"
+                  >
+                    <ImageIcon className="h-8 w-8" />
+                    <span className="text-sm">اضغط لرفع صورة</span>
+                    <span className="text-xs opacity-60">PNG، JPG — حجم أقصى 5 MB</span>
+                  </button>
+                )}
+              </div>
               <FormField control={form.control} name="color" render={({ field }) => (
                 <FormItem>
                   <FormLabel>لون البنر</FormLabel>

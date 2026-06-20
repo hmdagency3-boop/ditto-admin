@@ -3,6 +3,7 @@ import { type Server } from "http";
 import { storage } from "./storage";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import multer from "multer";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -1050,6 +1051,34 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Update note error:", error);
       res.status(500).json({ message: "حدث خطأ أثناء تعديل الملاحظة" });
+    }
+  });
+
+  // ── File Upload endpoint ────────────────────────────────────────────────────
+
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype.startsWith('image/')) cb(null, true);
+      else cb(new Error('يُسمح بالصور فقط'));
+    },
+  });
+
+  app.post("/api/upload/event-image", authenticateToken, requireSuperAdmin, upload.single('image'), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لم يتم إرسال صورة" });
+      const ext = req.file.mimetype.split('/')[1] || 'jpg';
+      const filename = `events/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const { data, error } = await storage.supabase.storage
+        .from('event-images')
+        .upload(filename, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
+      if (error) throw error;
+      const { data: urlData } = storage.supabase.storage.from('event-images').getPublicUrl(data.path);
+      res.json({ url: urlData.publicUrl });
+    } catch (error: any) {
+      console.error("Upload event image error:", error);
+      res.status(500).json({ message: error?.message || "حدث خطأ أثناء رفع الصورة" });
     }
   });
 
