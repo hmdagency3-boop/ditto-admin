@@ -1,11 +1,11 @@
 [build]
   base = "platform-admin"
-  command = "node node_modules/vite/bin/vite.js build"
+  command = "npm install --include=dev --legacy-peer-deps --no-scripts && node node_modules/vite/bin/vite.js build"
   publish = "dist/public"
 
 [build.environment]
   NODE_VERSION = "20"
-  NPM_FLAGS = "--include=dev --legacy-peer-deps"
+  NPM_FLAGS = "--include=dev --legacy-peer-deps --no-scripts"
 
 [functions]
   directory = "netlify/functions"
