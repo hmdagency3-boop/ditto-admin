@@ -3,7 +3,7 @@
   publish = "platform-admin/dist/public"
 
 [functions]
-  directory = "netlify/functions"
+  directory = "platform-admin/netlify/functions"
   node_bundler = "esbuild"
 
 [[redirects]]

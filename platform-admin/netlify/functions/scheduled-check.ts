@@ -1,8 +1,7 @@
 import { schedule } from "@netlify/functions";
-import { runPlatformCheck } from "../../platform-admin/server/routes";
-import { storage } from "../../platform-admin/server/storage";
+import { runPlatformCheck } from "../../server/routes";
+import { storage } from "../../server/storage";
 
-// Runs every minute (minimum interval on Netlify)
 const handler = schedule("* * * * *", async () => {
   try {
     console.log("[scheduled-check] بدء الفحص الدوري...");
