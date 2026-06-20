@@ -1053,6 +1053,159 @@ export async function registerRoutes(
     }
   });
 
+  // ── Tasks endpoints ─────────────────────────────────────────────────────────
+
+  app.get("/api/tasks", authenticateToken, async (req, res) => {
+    try {
+      const { data, error } = await storage.supabase
+        .from('tasks')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      res.json(data || []);
+    } catch (error) {
+      console.error("Get tasks error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/tasks", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { title, description, assigned_to, priority, due_date } = req.body;
+      if (!title || !assigned_to) {
+        return res.status(400).json({ message: "العنوان والمشرف المكلّف مطلوبان" });
+      }
+      const { data, error } = await storage.supabase
+        .from('tasks')
+        .insert({
+          title,
+          description: description || null,
+          assigned_to,
+          assigned_by: req.user!.userId,
+          priority: priority || 'medium',
+          due_date: due_date || null,
+          status: 'pending',
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      res.status(201).json({ message: "تم إضافة المهمة", data });
+    } catch (error) {
+      console.error("Create task error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.patch("/api/tasks/:id", authenticateToken, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { title, description, assigned_to, priority, due_date, status } = req.body;
+      const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (title !== undefined) updates.title = title;
+      if (description !== undefined) updates.description = description;
+      if (status !== undefined) updates.status = status;
+      if (req.user?.role === 'super_admin') {
+        if (assigned_to !== undefined) updates.assigned_to = assigned_to;
+        if (priority !== undefined) updates.priority = priority;
+        if (due_date !== undefined) updates.due_date = due_date || null;
+      }
+      const { data, error } = await storage.supabase
+        .from('tasks')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      res.json({ message: "تم تحديث المهمة", data });
+    } catch (error) {
+      console.error("Update task error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.delete("/api/tasks/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { error } = await storage.supabase.from('tasks').delete().eq('id', id);
+      if (error) throw error;
+      res.json({ message: "تم حذف المهمة" });
+    } catch (error) {
+      console.error("Delete task error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // ── Events endpoints ─────────────────────────────────────────────────────────
+
+  app.get("/api/events", authenticateToken, async (req, res) => {
+    try {
+      const { data, error } = await storage.supabase
+        .from('events')
+        .select('*')
+        .order('start_date', { ascending: false });
+      if (error) throw error;
+      res.json(data || []);
+    } catch (error) {
+      console.error("Get events error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.post("/api/events", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { title, description, color, start_date, end_date } = req.body;
+      if (!title || !start_date || !end_date) {
+        return res.status(400).json({ message: "العنوان وتاريخي البداية والنهاية مطلوبة" });
+      }
+      const { data, error } = await storage.supabase
+        .from('events')
+        .insert({
+          title,
+          description: description || null,
+          color: color || 'blue',
+          start_date,
+          end_date,
+          is_active: true,
+          created_by: req.user!.userId,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      res.status(201).json({ message: "تم إنشاء الإيفنت", data });
+    } catch (error) {
+      console.error("Create event error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.patch("/api/events/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+      const fields = ['title', 'description', 'color', 'start_date', 'end_date', 'is_active'];
+      for (const f of fields) { if (req.body[f] !== undefined) updates[f] = req.body[f]; }
+      const { data, error } = await storage.supabase
+        .from('events').update(updates).eq('id', id).select().single();
+      if (error) throw error;
+      res.json({ message: "تم تحديث الإيفنت", data });
+    } catch (error) {
+      console.error("Update event error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  app.delete("/api/events/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { error } = await storage.supabase.from('events').delete().eq('id', id);
+      if (error) throw error;
+      res.json({ message: "تم حذف الإيفنت" });
+    } catch (error) {
+      console.error("Delete event error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
   // ── Change Logs endpoints ────────────────────────────────────────────────────
 
   // Change Logs endpoints

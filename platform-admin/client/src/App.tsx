@@ -26,6 +26,9 @@ import SearchPage from "@/pages/Search";
 import Settings from "@/pages/Settings";
 import ChangeLogs from "@/pages/ChangeLogs";
 import AdminProfile from "@/pages/AdminProfile";
+import Tasks from "@/pages/Tasks";
+import MyTasks from "@/pages/MyTasks";
+import Events from "@/pages/Events";
 
 function ProtectedRoute({ component: Component, superAdminOnly = false }: { component: React.ComponentType; superAdminOnly?: boolean }) {
   const { user, loading, isSuperAdmin } = useAuth();
@@ -129,6 +132,15 @@ function Router() {
       </Route>
       <Route path="/change-logs">
         <ProtectedRoute component={ChangeLogs} superAdminOnly />
+      </Route>
+      <Route path="/tasks">
+        <ProtectedRoute component={Tasks} superAdminOnly />
+      </Route>
+      <Route path="/my-tasks">
+        <ProtectedRoute component={MyTasks} />
+      </Route>
+      <Route path="/events">
+        <ProtectedRoute component={Events} superAdminOnly />
       </Route>
       <Route path="/admins/:id">
         <ProtectedRoute component={AdminProfile} superAdminOnly />

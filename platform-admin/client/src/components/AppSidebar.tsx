@@ -13,6 +13,8 @@ import {
   Search,
   Settings,
   History,
+  ClipboardList,
+  Megaphone,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -49,12 +51,15 @@ export function AppSidebar() {
     { key: 'nav.shifts', url: '/shifts', icon: Calendar },
     { key: 'nav.ratings', url: '/ratings', icon: Star },
     { key: 'nav.warnings', url: '/warnings', icon: AlertTriangle },
+    { key: 'nav.tasks', url: '/tasks', icon: ClipboardList },
+    { key: 'nav.events', url: '/events', icon: Megaphone },
     { key: 'nav.changeLogs', url: '/change-logs', icon: History },
     { key: 'nav.settings', url: '/settings', icon: Settings },
   ];
 
   const adminItems = [
     { key: 'nav.dashboard', url: '/', icon: LayoutDashboard },
+    { key: 'nav.myTasks', url: '/my-tasks', icon: ClipboardList },
     { key: 'nav.myAttendance', url: '/my-attendance', icon: Clock },
     { key: 'nav.myShifts', url: '/my-shifts', icon: Calendar },
     { key: 'nav.settings', url: '/settings', icon: Settings },

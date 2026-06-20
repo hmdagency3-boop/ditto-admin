@@ -47,3 +47,29 @@ export interface Warning {
   issued_by: string;
   created_at: string;
 }
+
+export interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  assigned_to: string;
+  assigned_by: string;
+  due_date?: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  priority: 'low' | 'medium' | 'high';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Event {
+  id: string;
+  title: string;
+  description?: string;
+  color: string;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}

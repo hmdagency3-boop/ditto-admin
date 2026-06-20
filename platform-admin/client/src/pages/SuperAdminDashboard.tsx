@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'wouter';
+import { EventsBanner } from '@/components/EventsBanner';
 import { 
   Users, 
   Clock, 
@@ -270,6 +271,7 @@ export default function SuperAdminDashboard() {
 
   return (
     <div className="page-wrapper">
+      <EventsBanner />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="page-title">لوحة التحكم</h1>

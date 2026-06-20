@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { EventsBanner } from '@/components/EventsBanner';
 import { 
   Clock, 
   LogIn, 
@@ -332,6 +333,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="page-wrapper">
+      <EventsBanner />
       <div>
         <h1 className="page-title">مرحباً، {userProfile?.name?.split(' ')[0] || user?.full_name?.split(' ')[0] || 'مستخدم'}</h1>
         <p className="text-muted-foreground mt-1">
