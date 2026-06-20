@@ -1,0 +1,96 @@
+3:34:07 AM: build-image version: cbbb2660d860fe70694043ec05851a3910a2bf39 (noble-new-builds)
+3:34:07 AM: buildbot version: 12b3c6f417c1b3440df5ed3246d8285499c647e3
+3:34:07 AM: Fetching cached dependencies
+3:34:07 AM: Failed to fetch cache, continuing with build
+3:34:07 AM: Starting to prepare the repo for build
+3:34:07 AM: No cached dependencies found. Cloning fresh repo
+3:34:07 AM: git clone --filter=blob:none https://github.com/hmdagency3-boop/ditto-admin
+3:34:08 AM: Preparing Git Reference refs/heads/main
+3:34:09 AM: Custom build path detected. Proceeding with the specified path: 'platform-admin'
+3:34:09 AM: Custom build command detected. Proceeding with the specified command: 'node_modules/.bin/vite build'
+3:34:09 AM: Installing dependencies
+3:34:09 AM: mise ~/.config/mise/config.toml tools: python@3.14.3
+3:34:09 AM: mise ~/.config/mise/config.toml tools: ruby@3.4.8
+3:34:09 AM: mise ~/.config/mise/config.toml tools: go@1.26.2
+3:34:10 AM: v20.20.2 is already installed.
+3:34:10 AM: Now using node v20.20.2 (npm v10.8.2)
+3:34:10 AM: Enabling Node.js Corepack
+3:34:10 AM: No npm workspaces detected
+3:34:10 AM: Installing npm packages using npm version 10.8.2
+3:34:13 AM: npm warn deprecated @esbuild-kit/esm-loader@2.6.5: Merged into tsx: https://tsx.is
+3:34:13 AM: npm warn deprecated @esbuild-kit/core-utils@3.3.2: Merged into tsx: https://tsx.is
+3:35:21 AM: npm error Exit handler never called!
+3:35:21 AM: npm error This is an error with npm itself. Please report this error at:
+3:35:21 AM: npm error   <https://github.com/npm/cli/issues>
+3:35:21 AM: npm error A complete log of this run can be found in: /opt/buildhome/.npm/_logs/2026-06-20T00_34_10_676Z-debug-0.log
+3:35:21 AM: npm packages installed
+3:35:22 AM: Successfully installed dependencies
+3:35:22 AM: Detected 1 framework(s)
+3:35:22 AM: "vite" at version "5.4.20"
+3:35:22 AM: Starting build script
+3:35:22 AM: Section completed: initializing
+3:35:25 AM: Failed during stage 'building site': Build script returned non-zero exit code: 2 (https://ntl.fyi/exit-code-2)
+3:35:24 AM: ​
+3:35:24 AM: Netlify Build                                                 
+3:35:24 AM: ────────────────────────────────────────────────────────────────
+3:35:24 AM: ​
+3:35:24 AM: ❯ Version
+3:35:24 AM:   @netlify/build 36.0.0
+3:35:24 AM: ​
+3:35:24 AM: ❯ Flags
+3:35:24 AM:   accountId: 6a35d448aa88e2ee2512a568
+3:35:24 AM:   baseRelDir: true
+3:35:24 AM:   buildId: 6a35dffe16184e0009dfabce
+3:35:24 AM:   deployId: 6a35dffe16184e0009dfabd0
+3:35:24 AM: ​
+3:35:24 AM: ❯ Current directory
+3:35:24 AM:   /opt/build/repo/platform-admin
+3:35:24 AM: ​
+3:35:24 AM: ❯ Config file
+3:35:24 AM:   /opt/build/repo/netlify.toml
+3:35:24 AM: ​
+3:35:24 AM: ❯ Context
+3:35:24 AM:   production
+3:35:24 AM: ​
+3:35:24 AM: build.command from netlify.toml                               
+3:35:24 AM: ────────────────────────────────────────────────────────────────
+3:35:24 AM: ​
+3:35:24 AM: $ node_modules/.bin/vite build
+3:35:24 AM: bash: line 1: node_modules/.bin/vite: No such file or directory
+3:35:24 AM: ​
+3:35:24 AM: "build.command" failed                                        
+3:35:24 AM: ────────────────────────────────────────────────────────────────
+3:35:24 AM: ​
+3:35:24 AM:   Error message
+3:35:24 AM:   Command failed with exit code 127: node_modules/.bin/vite build (https://ntl.fyi/exit-code-127)
+3:35:24 AM: ​
+3:35:24 AM:   Error location
+3:35:24 AM:   In build.command from netlify.toml:
+3:35:24 AM:   node_modules/.bin/vite build
+3:35:24 AM: ​
+3:35:24 AM:   Resolved config
+3:35:24 AM:   build:
+3:35:24 AM:     base: /opt/build/repo/platform-admin
+3:35:24 AM:     command: node_modules/.bin/vite build
+3:35:24 AM:     commandOrigin: config
+3:35:24 AM:     environment:
+3:35:24 AM:       - NODE_VERSION
+3:35:24 AM:       - NPM_FLAGS
+3:35:24 AM:     publish: /opt/build/repo/platform-admin/dist/public
+3:35:24 AM:     publishOrigin: config
+3:35:24 AM:   functions:
+3:35:24 AM:     "*":
+3:35:24 AM:       node_bundler: esbuild
+3:35:24 AM:   functionsDirectory: /opt/build/repo/platform-admin/netlify/functions
+3:35:24 AM:   redirects:
+3:35:24 AM:     - force: true
+3:35:25 AM:       from: /api/*
+      status: 200
+      to: /.netlify/functions/api
+    - from: /*
+      status: 200
+      to: /index.html
+  redirectsOrigin: config
+3:35:25 AM: Build failed due to a user error: Build script returned non-zero exit code: 2
+3:35:25 AM: Failing build: Failed to build site
+3:35:25 AM: Finished processing build request in 1m17.903s

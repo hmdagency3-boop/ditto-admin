@@ -5,7 +5,7 @@
 
 [build.environment]
   NODE_VERSION = "20"
-  NPM_FLAGS = "--include=dev --legacy-peer-deps"
+  NPM_FLAGS = "--include=dev --legacy-peer-deps --ignore-optional"
 
 [functions]
   directory = "netlify/functions"
