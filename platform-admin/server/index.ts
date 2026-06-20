@@ -1,15 +1,3 @@
-// ============================================================
-// حماية: هذا المشروع يستخدم Supabase فقط كقاعدة بيانات.
-// نمسح متغيرات Replit PostgreSQL فوراً عند بدء التشغيل
-// لمنع أي اتصال عرضي بقاعدة بيانات ريبليت في أي بيئة.
-// ============================================================
-delete process.env.DATABASE_URL;
-delete process.env.PGDATABASE;
-delete process.env.PGHOST;
-delete process.env.PGPORT;
-delete process.env.PGUSER;
-delete process.env.PGPASSWORD;
-
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
