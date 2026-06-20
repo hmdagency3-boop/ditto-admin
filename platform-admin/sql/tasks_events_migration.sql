@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS events (
   title TEXT NOT NULL,
   description TEXT,
   color TEXT NOT NULL DEFAULT 'blue',
+  image_url TEXT,
   start_date TIMESTAMPTZ NOT NULL,
   end_date TIMESTAMPTZ NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT true,
@@ -30,6 +31,9 @@ CREATE TABLE IF NOT EXISTS events (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- If the table already exists, add the image_url column
+ALTER TABLE events ADD COLUMN IF NOT EXISTS image_url TEXT;
 
 -- Enable RLS
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;

@@ -23,6 +23,7 @@ interface Event {
   title: string;
   description?: string;
   color: string;
+  image_url?: string;
   start_date: string;
   end_date: string;
   is_active: boolean;
@@ -33,6 +34,7 @@ const eventSchema = z.object({
   title: z.string().min(2, 'العنوان مطلوب'),
   description: z.string().optional(),
   color: z.enum(['blue', 'green', 'purple', 'orange', 'red', 'yellow', 'pink']),
+  image_url: z.string().optional(),
   start_date: z.string().min(1, 'تاريخ البداية مطلوب'),
   end_date: z.string().min(1, 'تاريخ النهاية مطلوب'),
 });
@@ -73,7 +75,7 @@ export default function Events() {
 
   function openCreate() {
     setEditingEvent(null);
-    form.reset({ title: '', description: '', color: 'blue', start_date: '', end_date: '' });
+    form.reset({ title: '', description: '', color: 'blue', image_url: '', start_date: '', end_date: '' });
     setDialogOpen(true);
   }
 
@@ -83,6 +85,7 @@ export default function Events() {
       title: event.title,
       description: event.description || '',
       color: event.color as any,
+      image_url: event.image_url || '',
       start_date: event.start_date.slice(0, 16),
       end_date: event.end_date.slice(0, 16),
     });
@@ -183,6 +186,27 @@ export default function Events() {
                 <FormItem>
                   <FormLabel>الوصف (اختياري)</FormLabel>
                   <FormControl><Textarea placeholder="تفاصيل الإيفنت..." {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="image_url" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>رابط الصورة (اختياري)</FormLabel>
+                  <FormControl>
+                    <div className="space-y-2">
+                      <Input placeholder="https://..." {...field} />
+                      {field.value && (
+                        <div className="h-20 w-full overflow-hidden rounded-md border">
+                          <img
+                            src={field.value}
+                            alt="معاينة"
+                            className="h-full w-full object-cover"
+                            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )} />

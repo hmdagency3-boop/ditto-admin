@@ -66,6 +66,7 @@ export interface Event {
   title: string;
   description?: string;
   color: string;
+  image_url?: string;
   start_date: string;
   end_date: string;
   is_active: boolean;

@@ -1153,7 +1153,7 @@ export async function registerRoutes(
 
   app.post("/api/events", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      const { title, description, color, start_date, end_date } = req.body;
+      const { title, description, color, image_url, start_date, end_date } = req.body;
       if (!title || !start_date || !end_date) {
         return res.status(400).json({ message: "العنوان وتاريخي البداية والنهاية مطلوبة" });
       }
@@ -1163,6 +1163,7 @@ export async function registerRoutes(
           title,
           description: description || null,
           color: color || 'blue',
+          image_url: image_url || null,
           start_date,
           end_date,
           is_active: true,
@@ -1182,7 +1183,7 @@ export async function registerRoutes(
     try {
       const { id } = req.params;
       const updates: Record<string, any> = { updated_at: new Date().toISOString() };
-      const fields = ['title', 'description', 'color', 'start_date', 'end_date', 'is_active'];
+      const fields = ['title', 'description', 'color', 'image_url', 'start_date', 'end_date', 'is_active'];
       for (const f of fields) { if (req.body[f] !== undefined) updates[f] = req.body[f]; }
       const { data, error } = await storage.supabase
         .from('events').update(updates).eq('id', id).select().single();
