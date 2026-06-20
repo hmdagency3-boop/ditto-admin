@@ -1,9 +1,10 @@
 -- Create admin_notes table for private super admin notes on moderator profiles
+-- No FK constraints to avoid type mismatch issues between different DB setups
 CREATE TABLE IF NOT EXISTS public.admin_notes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
   content TEXT NOT NULL,
-  created_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  created_by TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
