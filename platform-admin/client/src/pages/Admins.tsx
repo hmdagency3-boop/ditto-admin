@@ -15,8 +15,10 @@ import {
   Pencil,
   Link,
   UserX,
-  UserCheck
+  UserCheck,
+  StickyNote
 } from 'lucide-react';
+import { AdminNotesDialog } from '@/components/AdminNotesDialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -74,6 +76,8 @@ export default function Admins() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<UserInfo | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [notesAdmin, setNotesAdmin] = useState<UserInfo | null>(null);
+  const [notesDialogOpen, setNotesDialogOpen] = useState(false);
 
   const form = useForm<AddAdminFormData>({
     resolver: zodResolver(addAdminSchema),
@@ -429,6 +433,10 @@ export default function Admins() {
                       </DropdownMenuItem>
                       {isSuperAdmin && (
                         <>
+                          <DropdownMenuItem onClick={() => { setNotesAdmin(admin); setNotesDialogOpen(true); }}>
+                            <StickyNote className="h-4 w-4 ml-2" />
+                            الملاحظات السرية
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() => toggleEmploymentStatus(admin)}
@@ -508,6 +516,16 @@ export default function Admins() {
             );
           })}
         </div>
+      )}
+
+      {/* Notes Dialog */}
+      {notesAdmin && (
+        <AdminNotesDialog
+          open={notesDialogOpen}
+          onOpenChange={setNotesDialogOpen}
+          adminId={notesAdmin.id}
+          adminName={notesAdmin.full_name}
+        />
       )}
     </div>
   );

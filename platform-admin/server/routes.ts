@@ -971,6 +971,90 @@ export async function registerRoutes(
   });
   // ────────────────────────────────────────────────────────────────────────────
 
+  // ── Admin Notes endpoints ────────────────────────────────────────────────────
+
+  // GET all notes for a specific admin (super admin only)
+  app.get("/api/users/:id/notes", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { data, error } = await storage.supabase
+        .from('admin_notes')
+        .select('*')
+        .eq('user_id', id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      res.json(data || []);
+    } catch (error) {
+      console.error("Get notes error:", error);
+      res.status(500).json({ message: "حدث خطأ أثناء جلب الملاحظات" });
+    }
+  });
+
+  // POST create a new note for an admin (super admin only)
+  app.post("/api/users/:id/notes", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { content } = req.body;
+      if (!content || !content.trim()) {
+        return res.status(400).json({ message: "محتوى الملاحظة مطلوب" });
+      }
+      const { data, error } = await storage.supabase
+        .from('admin_notes')
+        .insert({
+          user_id: id,
+          content: content.trim(),
+          created_by: req.user!.userId,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      res.status(201).json({ message: "تم إضافة الملاحظة", data });
+    } catch (error) {
+      console.error("Create note error:", error);
+      res.status(500).json({ message: "حدث خطأ أثناء إضافة الملاحظة" });
+    }
+  });
+
+  // DELETE a note (super admin only)
+  app.delete("/api/notes/:noteId", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { noteId } = req.params;
+      const { error } = await storage.supabase
+        .from('admin_notes')
+        .delete()
+        .eq('id', noteId);
+      if (error) throw error;
+      res.json({ message: "تم حذف الملاحظة" });
+    } catch (error) {
+      console.error("Delete note error:", error);
+      res.status(500).json({ message: "حدث خطأ أثناء حذف الملاحظة" });
+    }
+  });
+
+  // PATCH edit a note (super admin only)
+  app.patch("/api/notes/:noteId", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { noteId } = req.params;
+      const { content } = req.body;
+      if (!content || !content.trim()) {
+        return res.status(400).json({ message: "محتوى الملاحظة مطلوب" });
+      }
+      const { data, error } = await storage.supabase
+        .from('admin_notes')
+        .update({ content: content.trim(), updated_at: new Date().toISOString() })
+        .eq('id', noteId)
+        .select()
+        .single();
+      if (error) throw error;
+      res.json({ message: "تم تعديل الملاحظة", data });
+    } catch (error) {
+      console.error("Update note error:", error);
+      res.status(500).json({ message: "حدث خطأ أثناء تعديل الملاحظة" });
+    }
+  });
+
+  // ── Change Logs endpoints ────────────────────────────────────────────────────
+
   // Change Logs endpoints
   app.get("/api/change-logs", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
