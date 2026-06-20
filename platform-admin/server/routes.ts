@@ -502,6 +502,25 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/users/rejected", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const users = await storage.getRejectedUsers();
+      res.json(
+        users.map((u: any) => ({
+          id: u.id,
+          username: u.username,
+          full_name: u.full_name,
+          created_at: u.created_at,
+          device_fingerprint: u.device_fingerprint || null,
+          ip_address: u.ip_address || null,
+        }))
+      );
+    } catch (error) {
+      console.error("Get rejected users error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
   app.post("/api/users/:id/approve", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { id } = req.params;

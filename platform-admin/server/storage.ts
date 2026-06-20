@@ -9,6 +9,7 @@ export interface IStorage {
   createUser(user: InsertUser & { full_name: string }): Promise<User>;
   getAllUsers(): Promise<User[]>;
   getPendingUsers(): Promise<User[]>;
+  getRejectedUsers(): Promise<User[]>;
   approveUser(id: string, approvedBy: string): Promise<User | undefined>;
   rejectUser(id: string): Promise<User | undefined>;
   updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
@@ -136,6 +137,20 @@ export class SupabaseStorage implements IStorage {
 
     if (error) {
       console.error("Error fetching pending users:", error.message);
+      return [];
+    }
+    return data as User[];
+  }
+
+  async getRejectedUsers(): Promise<User[]> {
+    const { data, error } = await this.supabase
+      .from("users")
+      .select("*")
+      .eq("status", "rejected")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching rejected users:", error.message);
       return [];
     }
     return data as User[];
