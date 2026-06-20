@@ -1,4 +1,4 @@
-import { type User, type InsertUser } from "@shared/schema";
+import { type User, type InsertUser } from "../shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";

@@ -242,9 +242,12 @@ async function runPlatformCheck(supabase: any): Promise<number> {
   return changesFound;
 }
 
+export { runPlatformCheck };
+
 export async function registerRoutes(
   httpServer: Server,
-  app: Express
+  app: Express,
+  options: { enableScheduler?: boolean } = { enableScheduler: true }
 ): Promise<Server> {
 
   app.post("/api/auth/register", async (req, res) => {
@@ -975,26 +978,28 @@ export async function registerRoutes(
     }
   });
 
-  // Auto-check on startup after 10 seconds
-  setTimeout(async () => {
-    try {
-      console.log('[platform-check] بدء الفحص التلقائي الأول...');
-      const n = await runPlatformCheck(storage.supabase);
-      console.log(`[platform-check] اكتمل — ${n} تغيير`);
-    } catch (e) {
-      console.error('[platform-check] خطأ في الفحص الأول:', e);
-    }
-  }, 10_000);
+  if (options.enableScheduler !== false) {
+    // Auto-check on startup after 10 seconds
+    setTimeout(async () => {
+      try {
+        console.log('[platform-check] بدء الفحص التلقائي الأول...');
+        const n = await runPlatformCheck(storage.supabase);
+        console.log(`[platform-check] اكتمل — ${n} تغيير`);
+      } catch (e) {
+        console.error('[platform-check] خطأ في الفحص الأول:', e);
+      }
+    }, 10_000);
 
-  // Auto-check every 30 seconds
-  setInterval(async () => {
-    try {
-      const n = await runPlatformCheck(storage.supabase);
-      if (n > 0) console.log(`[platform-check] ${n} تغيير جديد`);
-    } catch (e) {
-      console.error('[platform-check] خطأ في الفحص الدوري:', e);
-    }
-  }, 30 * 1000);
+    // Auto-check every 30 seconds
+    setInterval(async () => {
+      try {
+        const n = await runPlatformCheck(storage.supabase);
+        if (n > 0) console.log(`[platform-check] ${n} تغيير جديد`);
+      } catch (e) {
+        console.error('[platform-check] خطأ في الفحص الدوري:', e);
+      }
+    }, 30 * 1000);
+  }
 
   return httpServer;
 }
