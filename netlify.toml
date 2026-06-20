@@ -1,11 +1,11 @@
 [build]
   base = "platform-admin"
-  command = "npm install --include=dev --legacy-peer-deps --no-scripts && node node_modules/vite/bin/vite.js build"
+  command = "pnpm install --frozen-lockfile --ignore-scripts && node node_modules/vite/bin/vite.js build"
   publish = "dist/public"
 
 [build.environment]
   NODE_VERSION = "20"
-  NPM_FLAGS = "--include=dev --legacy-peer-deps --no-scripts"
+  PNPM_VERSION = "9"
 
 [functions]
   directory = "netlify/functions"
