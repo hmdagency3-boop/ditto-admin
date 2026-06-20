@@ -429,7 +429,7 @@ export default function Admins() {
                         <MoreVertical className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
+                    <DropdownMenuContent align="end" onClick={e => e.stopPropagation()}>
                       <DropdownMenuItem onClick={() => openEditDialog(admin)}>
                         <Pencil className="h-4 w-4 ml-2" />
                         تعديل البيانات
