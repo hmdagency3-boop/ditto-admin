@@ -25,6 +25,7 @@ import PendingApproval from "@/pages/PendingApproval";
 import SearchPage from "@/pages/Search";
 import Settings from "@/pages/Settings";
 import ChangeLogs from "@/pages/ChangeLogs";
+import AdminProfile from "@/pages/AdminProfile";
 
 function ProtectedRoute({ component: Component, superAdminOnly = false }: { component: React.ComponentType; superAdminOnly?: boolean }) {
   const { user, loading, isSuperAdmin } = useAuth();
@@ -128,6 +129,9 @@ function Router() {
       </Route>
       <Route path="/change-logs">
         <ProtectedRoute component={ChangeLogs} superAdminOnly />
+      </Route>
+      <Route path="/admins/:id">
+        <ProtectedRoute component={AdminProfile} superAdminOnly />
       </Route>
       <Route component={NotFound} />
     </Switch>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'wouter';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -67,6 +68,7 @@ interface UserInfo {
 }
 
 export default function Admins() {
+  const [, navigate] = useLocation();
   const { toast } = useToast();
   const { token, user: currentUser, isSuperAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -406,8 +408,9 @@ export default function Admins() {
             return (
               <Card
                 key={admin.id}
-                className={`relative transition-all ${isDismissed ? 'opacity-60 grayscale' : ''}`}
+                className={`relative transition-all cursor-pointer hover:shadow-md hover:border-primary/40 ${isDismissed ? 'opacity-60 grayscale' : ''}`}
                 data-testid={`card-admin-${admin.id}`}
+                onClick={() => navigate(`/admins/${admin.id}`)}
               >
                 {/* حالة الفصل */}
                 {isDismissed && (
@@ -422,7 +425,7 @@ export default function Admins() {
                 {admin.id !== currentUser?.id && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="absolute top-4 left-4">
+                      <Button variant="ghost" size="icon" className="absolute top-4 left-4" onClick={e => e.stopPropagation()}>
                         <MoreVertical className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
