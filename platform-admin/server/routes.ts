@@ -1104,24 +1104,26 @@ export async function registerRoutes(
       if (!title || !assigned_to) {
         return res.status(400).json({ message: "العنوان والمشرف المكلّف مطلوبان" });
       }
-      const { data, error } = await storage.supabase
-        .from('tasks')
-        .insert({
-          title,
-          description: description || null,
-          assigned_to,
-          assigned_by: req.user!.userId,
-          priority: priority || 'medium',
-          due_date: due_date || null,
-          status: 'pending',
-        })
-        .select()
-        .single();
-      if (error) throw error;
-      res.status(201).json({ message: "تم إضافة المهمة", data });
-    } catch (error) {
+      const insertPayload = {
+        title,
+        description: description || null,
+        assigned_to,
+        assigned_by: req.user!.userId,
+        priority: priority || 'medium',
+        due_date: due_date || null,
+        status: 'pending',
+      };
+      console.log('[tasks] INSERT payload:', JSON.stringify(insertPayload));
+      const { error } = await storage.supabase.from('tasks').insert(insertPayload);
+      console.log('[tasks] INSERT error:', error);
+      if (error) {
+        console.error('[tasks] INSERT failed:', JSON.stringify(error));
+        return res.status(500).json({ message: error.message || "حدث خطأ أثناء الإضافة" });
+      }
+      res.status(201).json({ message: "تم إضافة المهمة" });
+    } catch (error: any) {
       console.error("Create task error:", error);
-      res.status(500).json({ message: "حدث خطأ" });
+      res.status(500).json({ message: error?.message || "حدث خطأ" });
     }
   });
 
@@ -1138,17 +1140,15 @@ export async function registerRoutes(
         if (priority !== undefined) updates.priority = priority;
         if (due_date !== undefined) updates.due_date = due_date || null;
       }
-      const { data, error } = await storage.supabase
-        .from('tasks')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-      res.json({ message: "تم تحديث المهمة", data });
-    } catch (error) {
+      const { error } = await storage.supabase.from('tasks').update(updates).eq('id', id);
+      if (error) {
+        console.error('[tasks] UPDATE failed:', JSON.stringify(error));
+        return res.status(500).json({ message: error.message || "حدث خطأ أثناء التحديث" });
+      }
+      res.json({ message: "تم تحديث المهمة" });
+    } catch (error: any) {
       console.error("Update task error:", error);
-      res.status(500).json({ message: "حدث خطأ" });
+      res.status(500).json({ message: error?.message || "حدث خطأ" });
     }
   });
 
@@ -1186,25 +1186,27 @@ export async function registerRoutes(
       if (!title || !start_date || !end_date) {
         return res.status(400).json({ message: "العنوان وتاريخي البداية والنهاية مطلوبة" });
       }
-      const { data, error } = await storage.supabase
-        .from('events')
-        .insert({
-          title,
-          description: description || null,
-          color: color || 'blue',
-          image_url: image_url || null,
-          start_date,
-          end_date,
-          is_active: true,
-          created_by: req.user!.userId,
-        })
-        .select()
-        .single();
-      if (error) throw error;
-      res.status(201).json({ message: "تم إنشاء الإيفنت", data });
-    } catch (error) {
+      const insertPayload = {
+        title,
+        description: description || null,
+        color: color || 'blue',
+        image_url: image_url || null,
+        start_date,
+        end_date,
+        is_active: true,
+        created_by: req.user!.userId,
+      };
+      console.log('[events] INSERT payload:', JSON.stringify(insertPayload));
+      const { error } = await storage.supabase.from('events').insert(insertPayload);
+      console.log('[events] INSERT error:', error);
+      if (error) {
+        console.error('[events] INSERT failed:', JSON.stringify(error));
+        return res.status(500).json({ message: error.message || "حدث خطأ أثناء الإنشاء" });
+      }
+      res.status(201).json({ message: "تم إنشاء الإيفنت" });
+    } catch (error: any) {
       console.error("Create event error:", error);
-      res.status(500).json({ message: "حدث خطأ" });
+      res.status(500).json({ message: error?.message || "حدث خطأ" });
     }
   });
 
@@ -1214,13 +1216,15 @@ export async function registerRoutes(
       const updates: Record<string, any> = { updated_at: new Date().toISOString() };
       const fields = ['title', 'description', 'color', 'image_url', 'start_date', 'end_date', 'is_active'];
       for (const f of fields) { if (req.body[f] !== undefined) updates[f] = req.body[f]; }
-      const { data, error } = await storage.supabase
-        .from('events').update(updates).eq('id', id).select().single();
-      if (error) throw error;
-      res.json({ message: "تم تحديث الإيفنت", data });
-    } catch (error) {
+      const { error } = await storage.supabase.from('events').update(updates).eq('id', id);
+      if (error) {
+        console.error('[events] UPDATE failed:', JSON.stringify(error));
+        return res.status(500).json({ message: error.message || "حدث خطأ أثناء التحديث" });
+      }
+      res.json({ message: "تم تحديث الإيفنت" });
+    } catch (error: any) {
       console.error("Update event error:", error);
-      res.status(500).json({ message: "حدث خطأ" });
+      res.status(500).json({ message: error?.message || "حدث خطأ" });
     }
   });
 
