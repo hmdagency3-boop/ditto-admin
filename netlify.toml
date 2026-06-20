@@ -1,9 +1,14 @@
 [build]
-  command = "cd platform-admin && npm install --include=dev && npm run build"
-  publish = "platform-admin/dist/public"
+  base = "platform-admin"
+  command = "npm run build"
+  publish = "dist/public"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--include=dev --legacy-peer-deps"
 
 [functions]
-  directory = "platform-admin/netlify/functions"
+  directory = "netlify/functions"
   node_bundler = "esbuild"
 
 [[redirects]]

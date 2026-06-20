@@ -1,0 +1,92 @@
+3:27:04 AM: build-image version: cbbb2660d860fe70694043ec05851a3910a2bf39 (noble-new-builds)
+3:27:04 AM: buildbot version: 12b3c6f417c1b3440df5ed3246d8285499c647e3
+3:27:05 AM: Fetching cached dependencies
+3:27:05 AM: Failed to fetch cache, continuing with build
+3:27:05 AM: Starting to prepare the repo for build
+3:27:05 AM: No cached dependencies found. Cloning fresh repo
+3:27:05 AM: git clone --filter=blob:none https://github.com/hmdagency3-boop/ditto-admin
+3:27:05 AM: Preparing Git Reference refs/heads/main
+3:27:06 AM: Installing dependencies
+3:27:06 AM: mise ~/.config/mise/config.toml tools: python@3.14.3
+3:27:06 AM: mise ~/.config/mise/config.toml tools: ruby@3.4.8
+3:27:07 AM: mise ~/.config/mise/config.toml tools: go@1.26.2
+3:27:07 AM: Downloading and installing node v22.23.0...
+3:27:07 AM: Downloading https://nodejs.org/dist/v22.23.0/node-v22.23.0-linux-x64.tar.xz...
+3:27:07 AM: Computing checksum with sha256sum
+3:27:07 AM: Checksums matched!
+3:27:10 AM: Now using node v22.23.0 (npm v10.9.8)
+3:27:10 AM: Enabling Node.js Corepack
+3:27:10 AM: No npm workspaces detected
+3:27:10 AM: Installing npm packages using npm version 10.9.8
+3:27:11 AM: up to date in 251ms
+3:27:11 AM: npm packages installed
+3:27:11 AM: Successfully installed dependencies
+3:27:11 AM: Detected 0 framework(s)
+3:27:12 AM: Starting build script
+3:27:12 AM: Section completed: initializing
+3:27:14 AM: ​
+3:27:14 AM: Netlify Build                                                 
+3:27:14 AM: ────────────────────────────────────────────────────────────────
+3:27:14 AM: ​
+3:27:14 AM: ❯ Version
+3:27:14 AM:   @netlify/build 36.0.0
+3:27:14 AM: ​
+3:27:14 AM: ❯ Flags
+3:27:14 AM:   accountId: 6a35d448aa88e2ee2512a568
+3:27:14 AM:   baseRelDir: true
+3:27:14 AM:   buildId: 6a35de57ad1e5800084c6f3f
+3:27:14 AM:   deployId: 6a35de57ad1e5800084c6f41
+3:27:14 AM: ​
+3:27:14 AM: ❯ Current directory
+3:27:14 AM:   /opt/build/repo
+3:27:14 AM: ​
+3:27:14 AM: ❯ Config file
+3:27:14 AM:   /opt/build/repo/netlify.toml
+3:27:14 AM: ​
+3:27:14 AM: ❯ Context
+3:27:14 AM:   production
+3:27:14 AM: ​
+3:27:14 AM: build.command from netlify.toml                               
+3:27:14 AM: ────────────────────────────────────────────────────────────────
+3:27:14 AM: ​
+3:27:14 AM: $ cd platform-admin && npm install --include=dev && npm run build
+3:27:17 AM: npm warn deprecated @esbuild-kit/esm-loader@2.6.5: Merged into tsx: https://tsx.is
+3:27:17 AM: npm warn deprecated @esbuild-kit/core-utils@3.3.2: Merged into tsx: https://tsx.is
+3:28:25 AM: Failed during stage 'building site': Build script returned non-zero exit code: 2
+3:28:25 AM: npm error Exit handler never called!
+3:28:25 AM: npm error This is an error with npm itself. Please report this error at:
+3:28:25 AM: npm error   <https://github.com/npm/cli/issues>
+3:28:25 AM: npm error A complete log of this run can be found in: /opt/buildhome/.npm/_logs/2026-06-20T00_27_14_593Z-debug-0.log
+3:28:25 AM: ​
+3:28:25 AM: "build.command" failed                                        
+3:28:25 AM: ────────────────────────────────────────────────────────────────
+3:28:25 AM: ​
+3:28:25 AM:   Error message
+3:28:25 AM:   Command failed with exit code 1: cd platform-admin && npm install --include=dev && npm run build
+3:28:25 AM: ​
+3:28:25 AM:   Error location
+3:28:25 AM:   In build.command from netlify.toml:
+3:28:25 AM:   cd platform-admin && npm install --include=dev && npm run build
+3:28:25 AM: ​
+3:28:25 AM:   Resolved config
+3:28:25 AM:   build:
+3:28:25 AM:     command: cd platform-admin && npm install --include=dev && npm run build
+3:28:25 AM:     commandOrigin: config
+3:28:25 AM:     publish: /opt/build/repo/platform-admin/dist/public
+3:28:25 AM:     publishOrigin: config
+3:28:25 AM:   functions:
+3:28:25 AM:     "*":
+3:28:25 AM:       node_bundler: esbuild
+3:28:25 AM:   functionsDirectory: /opt/build/repo/platform-admin/netlify/functions
+3:28:25 AM:   redirects:
+3:28:25 AM:     - force: true
+3:28:25 AM:       from: /api/*
+      status: 200
+      to: /.netlify/functions/api
+    - from: /*
+      status: 200
+      to: /index.html
+  redirectsOrigin: config
+3:28:25 AM: Build failed due to a user error: Build script returned non-zero exit code: 2
+3:28:25 AM: Failing build: Failed to build site
+3:28:26 AM: Finished processing build request in 1m21.262s
