@@ -1,6 +1,6 @@
 [build]
   base = "platform-admin"
-  command = "pnpm install --frozen-lockfile --ignore-scripts && node node_modules/vite/bin/vite.js build"
+  command = "pnpm install --frozen-lockfile --ignore-scripts --prod=false && node node_modules/vite/bin/vite.js build"
   publish = "dist/public"
 
 [build.environment]
