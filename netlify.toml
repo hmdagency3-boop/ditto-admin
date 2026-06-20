@@ -1,6 +1,6 @@
 [build]
   base = "platform-admin"
-  command = "npm run build"
+  command = "node_modules/.bin/vite build"
   publish = "dist/public"
 
 [build.environment]
