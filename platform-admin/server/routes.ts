@@ -983,10 +983,10 @@ export async function registerRoutes(
         .eq('user_id', id)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      res.json(data || []);
-    } catch (error) {
+      res.json(data ?? []);
+    } catch (error: any) {
       console.error("Get notes error:", error);
-      res.status(500).json({ message: "حدث خطأ أثناء جلب الملاحظات" });
+      res.status(500).json({ message: error?.message || "حدث خطأ أثناء جلب الملاحظات" });
     }
   });
 
