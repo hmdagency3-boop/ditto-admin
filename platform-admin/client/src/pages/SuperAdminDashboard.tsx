@@ -100,6 +100,19 @@ export default function SuperAdminDashboard() {
     fetchDashboardData();
   }, []);
 
+  useEffect(() => {
+    if (!token) return;
+    const runCheck = () => {
+      fetch('/api/change-logs/check-all', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      }).catch(() => {});
+    };
+    runCheck();
+    const interval = setInterval(runCheck, 30_000);
+    return () => clearInterval(interval);
+  }, [token]);
+
   async function fetchDashboardData() {
     try {
       const currShift = getCurrentShiftNumber();
