@@ -1,0 +1,106 @@
+4:09:52 PM: build-image version: cbbb2660d860fe70694043ec05851a3910a2bf39 (noble-new-builds)
+4:09:52 PM: buildbot version: 12b3c6f417c1b3440df5ed3246d8285499c647e3
+4:09:52 PM: Fetching cached dependencies
+4:09:52 PM: Starting to download cache of 67.1MB (Last modified: 2026-06-20 14:01:00 +0000 UTC)
+4:09:52 PM: Downloaded cache in 301ms
+4:09:53 PM: Extracted cache in 1.029s
+4:09:53 PM: Fetched cache in 1.37s
+4:09:53 PM: Starting to prepare the repo for build
+4:09:53 PM: Preparing Git Reference refs/heads/main
+4:09:54 PM: Custom build path detected. Proceeding with the specified path: 'platform-admin'
+4:09:54 PM: Custom build command detected. Proceeding with the specified command: 'NODE_ENV=development npm install && node node_modules/vite/bin/vite.js build'
+4:09:55 PM: Installing dependencies
+4:09:55 PM: mise ~/.config/mise/config.toml tools: python@3.14.3
+4:09:55 PM: mise ~/.config/mise/config.toml tools: ruby@3.4.8
+4:09:55 PM: mise ~/.config/mise/config.toml tools: go@1.26.2
+4:09:55 PM: v20.20.2 is already installed.
+4:09:56 PM: Now using node v20.20.2 (npm v10.8.2)
+4:09:56 PM: Enabling Node.js Corepack
+4:09:56 PM: WARNING: The environment variable 'NODE_ENV' is set to 'production'. Any 'devDependencies' in package.json will not be installed
+4:09:56 PM: No npm workspaces detected
+4:09:56 PM: Installing npm packages using npm version 10.8.2
+4:11:07 PM: npm error Exit handler never called!
+4:11:07 PM: npm error This is an error with npm itself. Please report this error at:
+4:11:07 PM: npm error   <https://github.com/npm/cli/issues>
+4:11:07 PM: npm error A complete log of this run can be found in: /opt/buildhome/.npm/_logs/2026-06-21T13_09_56_384Z-debug-0.log
+4:11:07 PM: npm packages installed
+4:11:07 PM: Successfully installed dependencies
+4:11:07 PM: Detected 1 framework(s)
+4:11:07 PM: "vite" at version "5.4.20"
+4:11:08 PM: Starting build script
+4:11:08 PM: Section completed: initializing
+4:11:09 PM: ​
+4:11:09 PM: Netlify Build                                                 
+4:11:09 PM: ────────────────────────────────────────────────────────────────
+4:11:09 PM: ​
+4:11:09 PM: ❯ Version
+4:11:09 PM:   @netlify/build 36.0.0
+4:11:09 PM: ​
+4:11:09 PM: ❯ Flags
+4:11:09 PM:   accountId: 6a35d448aa88e2ee2512a568
+4:11:09 PM:   baseRelDir: true
+4:11:09 PM:   buildId: 6a37e29f1a0acc00087cb1e6
+4:11:09 PM:   deployId: 6a37e29f1a0acc00087cb1e8
+4:11:09 PM: ​
+4:11:09 PM: ❯ Current directory
+4:11:09 PM:   /opt/build/repo/platform-admin
+4:11:09 PM: ​
+4:11:09 PM: ❯ Config file
+4:11:09 PM:   /opt/build/repo/netlify.toml
+4:11:09 PM: ​
+4:11:09 PM: ❯ Context
+4:11:09 PM:   production
+4:11:09 PM: ​
+4:11:09 PM: build.command from netlify.toml                               
+4:11:09 PM: ────────────────────────────────────────────────────────────────
+4:11:09 PM: ​
+4:11:09 PM: $ NODE_ENV=development npm install && node node_modules/vite/bin/vite.js build
+4:11:10 PM: Failed during stage 'building site': Build script returned non-zero exit code: 2 (https://ntl.fyi/exit-code-2)
+4:11:10 PM: npm error code ENOTDIR
+4:11:10 PM: npm error syscall rename
+4:11:10 PM: npm error path /opt/build/repo/platform-admin/node_modules/autoprefixer
+4:11:10 PM: npm error dest /opt/build/repo/platform-admin/node_modules/.autoprefixer-9HxuO55w
+4:11:10 PM: npm error errno -20
+4:11:10 PM: npm error ENOTDIR: not a directory, rename '/opt/build/repo/platform-admin/node_modules/autoprefixer' -> '/opt/build/repo/platform-admin/node_modules/.autoprefixer-9HxuO55w'
+4:11:10 PM: npm error A complete log of this run can be found in: /opt/buildhome/.npm/_logs/2026-06-21T13_11_09_982Z-debug-0.log
+4:11:10 PM: ​
+4:11:10 PM: "build.command" failed                                        
+4:11:10 PM: ────────────────────────────────────────────────────────────────
+4:11:10 PM: ​
+4:11:10 PM:   Error message
+4:11:10 PM:   Command failed with exit code 236: NODE_ENV=development npm install && node node_modules/vite/bin/vite.js build (https://ntl.fyi/exit-code-236)
+4:11:10 PM: ​
+4:11:10 PM:   Error location
+4:11:10 PM:   In build.command from netlify.toml:
+4:11:10 PM:   NODE_ENV=development npm install && node node_modules/vite/bin/vite.js build
+4:11:10 PM: ​
+4:11:10 PM:   Resolved config
+4:11:10 PM:   build:
+4:11:10 PM:     base: /opt/build/repo/platform-admin
+4:11:10 PM:     command: NODE_ENV=development npm install && node node_modules/vite/bin/vite.js build
+4:11:10 PM:     commandOrigin: config
+4:11:10 PM:     environment:
+4:11:10 PM:       - JWT_SECRET
+4:11:10 PM:       - NODE_ENV
+4:11:10 PM:       - SUPABASE_ANON_KEY
+4:11:10 PM:       - SUPABASE_URL
+4:11:10 PM:       - NODE_VERSION
+4:11:10 PM:       - PNPM_VERSION
+4:11:10 PM:     publish: /opt/build/repo/platform-admin/dist/public
+4:11:10 PM:     publishOrigin: config
+4:11:10 PM:   functions:
+4:11:10 PM:     "*":
+4:11:10 PM:       node_bundler: esbuild
+4:11:10 PM:   functionsDirectory: /opt/build/repo/platform-admin/netlify/functions
+4:11:10 PM:   redirects:
+4:11:10 PM:     - force: true
+4:11:10 PM:       from: /api/*
+      status: 200
+      to: /.netlify/functions/api
+    - from: /*
+      status: 200
+      to: /index.html
+  redirectsOrigin: config
+4:11:10 PM: Build failed due to a user error: Build script returned non-zero exit code: 2
+4:11:10 PM: Failing build: Failed to build site
+4:11:11 PM: Finished processing build request in 1m19.022s
