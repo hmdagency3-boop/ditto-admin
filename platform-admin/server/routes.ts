@@ -1268,6 +1268,131 @@ export async function registerRoutes(
     }
   });
 
+  // ── Work Management: Agencies & Supporters ────────────────────────────────
+
+  app.get("/api/agencies", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { admin_id } = req.query;
+      let query = storage.supabase.from('agencies').select('*').order('created_at', { ascending: false });
+      if (admin_id) query = (query as any).eq('admin_id', admin_id);
+      const { data, error } = await query;
+      if (error) throw error;
+      res.json(data || []);
+    } catch (error: any) {
+      console.error('Get agencies error:', error);
+      res.status(500).json({ message: error?.message || 'حدث خطأ' });
+    }
+  });
+
+  app.post("/api/agencies", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { code, admin_id, notes } = req.body;
+      if (!code || !admin_id) return res.status(400).json({ message: 'كود الوكالة والمشرف مطلوبان' });
+      const { error } = await storage.supabase.from('agencies').insert({ code: code.trim(), admin_id, notes: notes || null, status: 'activated' });
+      if (error) { console.error('[agencies] INSERT failed:', JSON.stringify(error)); return res.status(500).json({ message: error.message }); }
+      res.status(201).json({ message: 'تم إضافة الوكالة' });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || 'حدث خطأ' });
+    }
+  });
+
+  app.patch("/api/agencies/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, notes } = req.body;
+      const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (status) updates.status = status;
+      if (notes !== undefined) updates.notes = notes;
+      const { error } = await storage.supabase.from('agencies').update(updates).eq('id', id);
+      if (error) return res.status(500).json({ message: error.message });
+      res.json({ message: 'تم التحديث' });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || 'حدث خطأ' });
+    }
+  });
+
+  app.delete("/api/agencies/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { error } = await storage.supabase.from('agencies').delete().eq('id', id);
+      if (error) return res.status(500).json({ message: error.message });
+      res.json({ message: 'تم الحذف' });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || 'حدث خطأ' });
+    }
+  });
+
+  app.get("/api/supporters", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { admin_id } = req.query;
+      let query = storage.supabase.from('supporters').select('*').order('created_at', { ascending: false });
+      if (admin_id) query = (query as any).eq('admin_id', admin_id);
+      const { data, error } = await query;
+      if (error) throw error;
+      res.json(data || []);
+    } catch (error: any) {
+      console.error('Get supporters error:', error);
+      res.status(500).json({ message: error?.message || 'حدث خطأ' });
+    }
+  });
+
+  app.post("/api/supporters", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { supporter_code, admin_id, notes } = req.body;
+      if (!supporter_code || !admin_id) return res.status(400).json({ message: 'أيدي الداعم والمشرف مطلوبان' });
+      const { error } = await storage.supabase.from('supporters').insert({ supporter_code: supporter_code.trim(), admin_id, notes: notes || null });
+      if (error) { console.error('[supporters] INSERT failed:', JSON.stringify(error)); return res.status(500).json({ message: error.message }); }
+      res.status(201).json({ message: 'تم إضافة الداعم' });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || 'حدث خطأ' });
+    }
+  });
+
+  app.delete("/api/supporters/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { error } = await storage.supabase.from('supporters').delete().eq('id', id);
+      if (error) return res.status(500).json({ message: error.message });
+      res.json({ message: 'تم الحذف' });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || 'حدث خطأ' });
+    }
+  });
+
+  // توليد التقرير
+  app.get("/api/work-report", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { admin_id, year, month, period } = req.query;
+      if (!admin_id || !year || !month || !period) return res.status(400).json({ message: 'البيانات غير مكتملة' });
+      const y = parseInt(year as string);
+      const m = parseInt(month as string);
+      const p = parseInt(period as string);
+      const startDay = p === 1 ? 1 : p === 2 ? 11 : 21;
+      const endDay   = p === 1 ? 10 : p === 2 ? 20 : 31;
+      const startDate = new Date(y, m - 1, startDay, 0, 0, 0).toISOString();
+      const endDate   = new Date(y, m - 1, endDay, 23, 59, 59).toISOString();
+
+      const [agenciesRes, supportersRes, adminRes] = await Promise.all([
+        storage.supabase.from('agencies').select('*').eq('admin_id', admin_id).gte('created_at', startDate).lte('created_at', endDate).order('created_at', { ascending: true }),
+        storage.supabase.from('supporters').select('*').eq('admin_id', admin_id).gte('created_at', startDate).lte('created_at', endDate).order('created_at', { ascending: true }),
+        storage.supabase.from('users').select('id, username, full_name, platform_id').eq('id', admin_id as string).maybeSingle(),
+      ]);
+
+      if (agenciesRes.error) throw agenciesRes.error;
+      if (supportersRes.error) throw supportersRes.error;
+
+      const allAgencies  = agenciesRes.data || [];
+      const agenciesOpened = allAgencies.filter((a: any) => a.status === 'opened');
+      const supporters   = supportersRes.data || [];
+      const admin        = adminRes.data;
+
+      res.json({ agencies_activated: allAgencies, agencies_opened: agenciesOpened, supporters, admin });
+    } catch (error: any) {
+      console.error('Work report error:', error);
+      res.status(500).json({ message: error?.message || 'حدث خطأ' });
+    }
+  });
+
   if (options.enableScheduler !== false) {
     // Auto-check on startup after 10 seconds
     setTimeout(async () => {

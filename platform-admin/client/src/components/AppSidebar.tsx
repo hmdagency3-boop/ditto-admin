@@ -15,6 +15,7 @@ import {
   History,
   ClipboardList,
   Megaphone,
+  Briefcase,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -53,6 +54,7 @@ export function AppSidebar() {
     { key: 'nav.warnings', url: '/warnings', icon: AlertTriangle },
     { key: 'nav.tasks', url: '/tasks', icon: ClipboardList },
     { key: 'nav.events', url: '/events', icon: Megaphone },
+    { key: 'nav.workManagement', url: '/work-management', icon: Briefcase },
     { key: 'nav.changeLogs', url: '/change-logs', icon: History },
     { key: 'nav.settings', url: '/settings', icon: Settings },
   ];
