@@ -1286,9 +1286,16 @@ export async function registerRoutes(
 
   app.post("/api/agencies", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      const { code, admin_id, notes } = req.body;
-      if (!code || !admin_id) return res.status(400).json({ message: 'كود الوكالة والمشرف مطلوبان' });
-      const { error } = await storage.supabase.from('agencies').insert({ code: code.trim(), admin_id, notes: notes || null, status: 'activated' });
+      const { agent_id, agency_name, admin_id, country, agent_whatsapp, source_platform, creation_date, opening_date, notes } = req.body;
+      if (!agent_id || !admin_id) return res.status(400).json({ message: 'أيدي الوكيل والمشرف مطلوبان' });
+      const status = opening_date ? 'opened' : 'activated';
+      const { error } = await storage.supabase.from('agencies').insert({
+        agent_id: agent_id.trim(), agency_name: agency_name || null, admin_id,
+        country: country || null, agent_whatsapp: agent_whatsapp || null,
+        source_platform: source_platform || null,
+        creation_date: creation_date || null, opening_date: opening_date || null,
+        status, notes: notes || null,
+      });
       if (error) { console.error('[agencies] INSERT failed:', JSON.stringify(error)); return res.status(500).json({ message: error.message }); }
       res.status(201).json({ message: 'تم إضافة الوكالة' });
     } catch (error: any) {
@@ -1299,10 +1306,11 @@ export async function registerRoutes(
   app.patch("/api/agencies/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const { status, notes } = req.body;
+      const allowed = ['agent_id','agency_name','country','agent_whatsapp','source_platform','creation_date','opening_date','status','notes'];
       const updates: Record<string, any> = { updated_at: new Date().toISOString() };
-      if (status) updates.status = status;
-      if (notes !== undefined) updates.notes = notes;
+      for (const f of allowed) { if (req.body[f] !== undefined) updates[f] = req.body[f] || null; }
+      if (req.body.opening_date) updates.status = 'opened';
+      if (req.body.status) updates.status = req.body.status;
       const { error } = await storage.supabase.from('agencies').update(updates).eq('id', id);
       if (error) return res.status(500).json({ message: error.message });
       res.json({ message: 'تم التحديث' });
@@ -1338,11 +1346,29 @@ export async function registerRoutes(
 
   app.post("/api/supporters", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      const { supporter_code, admin_id, notes } = req.body;
-      if (!supporter_code || !admin_id) return res.status(400).json({ message: 'أيدي الداعم والمشرف مطلوبان' });
-      const { error } = await storage.supabase.from('supporters').insert({ supporter_code: supporter_code.trim(), admin_id, notes: notes || null });
+      const { supporter_id, source_platform, level, management, admin_id, notes } = req.body;
+      if (!supporter_id || !admin_id) return res.status(400).json({ message: 'أيدي الداعم والمشرف مطلوبان' });
+      const { error } = await storage.supabase.from('supporters').insert({
+        supporter_id: supporter_id.trim(), admin_id,
+        source_platform: source_platform || null, level: level || null,
+        management: management || null, notes: notes || null,
+      });
       if (error) { console.error('[supporters] INSERT failed:', JSON.stringify(error)); return res.status(500).json({ message: error.message }); }
       res.status(201).json({ message: 'تم إضافة الداعم' });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || 'حدث خطأ' });
+    }
+  });
+
+  app.patch("/api/supporters/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const allowed = ['supporter_id','source_platform','level','management','notes'];
+      const updates: Record<string, any> = {};
+      for (const f of allowed) { if (req.body[f] !== undefined) updates[f] = req.body[f] || null; }
+      const { error } = await storage.supabase.from('supporters').update(updates).eq('id', id);
+      if (error) return res.status(500).json({ message: error.message });
+      res.json({ message: 'تم التحديث' });
     } catch (error: any) {
       res.status(500).json({ message: error?.message || 'حدث خطأ' });
     }

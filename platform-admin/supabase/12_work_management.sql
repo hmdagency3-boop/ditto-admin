@@ -1,19 +1,25 @@
 -- ═══════════════════════════════════════════════════════
--- 12: Work Management (Agencies + Supporters)
+-- 12: Work Management (Agencies + Supporters) — Full Schema
 -- ═══════════════════════════════════════════════════════
 
 -- جدول الوكالات
 CREATE TABLE IF NOT EXISTS public.agencies (
-  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  code        TEXT NOT NULL,
-  admin_id    UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  status      TEXT NOT NULL DEFAULT 'activated' CHECK (status IN ('activated', 'opened')),
-  notes       TEXT,
-  created_at  TIMESTAMPTZ DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ DEFAULT NOW()
+  id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  admin_id        UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  agent_id        TEXT NOT NULL,
+  agency_name     TEXT,
+  country         TEXT,
+  agent_whatsapp  TEXT,
+  source_platform TEXT,
+  creation_date   DATE,
+  opening_date    DATE,
+  status          TEXT NOT NULL DEFAULT 'activated' CHECK (status IN ('activated', 'opened')),
+  notes           TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS agencies_admin_idx ON public.agencies(admin_id);
+CREATE INDEX IF NOT EXISTS agencies_admin_idx   ON public.agencies(admin_id);
 CREATE INDEX IF NOT EXISTS agencies_created_idx ON public.agencies(created_at);
 
 ALTER TABLE public.agencies ENABLE ROW LEVEL SECURITY;
@@ -22,21 +28,44 @@ CREATE POLICY "agencies_all" ON public.agencies FOR ALL USING (true) WITH CHECK 
 
 -- جدول الداعمين
 CREATE TABLE IF NOT EXISTS public.supporters (
-  id             UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  supporter_code TEXT NOT NULL,
-  admin_id       UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  notes          TEXT,
-  created_at     TIMESTAMPTZ DEFAULT NOW()
+  id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  admin_id        UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  supporter_id    TEXT NOT NULL,
+  source_platform TEXT,
+  level           TEXT,
+  management      TEXT,
+  notes           TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS supporters_admin_idx ON public.supporters(admin_id);
+CREATE INDEX IF NOT EXISTS supporters_admin_idx   ON public.supporters(admin_id);
 CREATE INDEX IF NOT EXISTS supporters_created_idx ON public.supporters(created_at);
 
 ALTER TABLE public.supporters ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "supporters_all" ON public.supporters;
 CREATE POLICY "supporters_all" ON public.supporters FOR ALL USING (true) WITH CHECK (true);
 
+-- ─── إذا الجداول موجودة مسبقاً (migration patch) ────────────────────────────
+-- أضف الأعمدة الجديدة إذا مش موجودة
+ALTER TABLE public.agencies ADD COLUMN IF NOT EXISTS agent_id        TEXT;
+ALTER TABLE public.agencies ADD COLUMN IF NOT EXISTS agency_name     TEXT;
+ALTER TABLE public.agencies ADD COLUMN IF NOT EXISTS country         TEXT;
+ALTER TABLE public.agencies ADD COLUMN IF NOT EXISTS agent_whatsapp  TEXT;
+ALTER TABLE public.agencies ADD COLUMN IF NOT EXISTS source_platform TEXT;
+ALTER TABLE public.agencies ADD COLUMN IF NOT EXISTS creation_date   DATE;
+ALTER TABLE public.agencies ADD COLUMN IF NOT EXISTS opening_date    DATE;
+
+-- نسخ البيانات القديمة من عمود code إلى agent_id لو موجودة
+UPDATE public.agencies SET agent_id = code WHERE agent_id IS NULL AND code IS NOT NULL;
+
+ALTER TABLE public.supporters ADD COLUMN IF NOT EXISTS supporter_id    TEXT;
+ALTER TABLE public.supporters ADD COLUMN IF NOT EXISTS source_platform TEXT;
+ALTER TABLE public.supporters ADD COLUMN IF NOT EXISTS level           TEXT;
+ALTER TABLE public.supporters ADD COLUMN IF NOT EXISTS management      TEXT;
+
+UPDATE public.supporters SET supporter_id = supporter_code WHERE supporter_id IS NULL AND supporter_code IS NOT NULL;
+
 -- تحقق
-SELECT 'agencies' AS table_name, count(*) FROM public.agencies
+SELECT 'agencies'  AS tbl, count(*) FROM public.agencies
 UNION ALL
 SELECT 'supporters', count(*) FROM public.supporters;
