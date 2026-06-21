@@ -106,12 +106,12 @@ function findAdmin(admins: Admin[], platformId: string, name: string): string {
   return '';
 }
 
-function parseAgencyText(text: string, admins: Admin[]): typeof EMPTY_AGENCY & { _warn?: string } {
+function parseAgencyText(text: string, admins: Admin[]): typeof EMPTY_AGENCY & { _warn?: string; _adminPid?: string; _adminName?: string } {
   const adminPid  = extractField(text, 'ايدي الادمن', 'ايدي الادمين', 'ID الادمن', 'id الادمن');
   const adminName = extractField(text, 'اسم الادمن', 'اسم المشرف');
   const admin_id  = findAdmin(admins, adminPid, adminName);
 
-  const result = {
+  return {
     agent_id:        extractField(text, 'ايدي الوكيل', 'id الوكيل', 'كود الوكالة'),
     agency_name:     extractField(text, 'اسم الوكالة'),
     country:         extractField(text, 'البلد', 'الدولة'),
@@ -121,14 +121,13 @@ function parseAgencyText(text: string, admins: Admin[]): typeof EMPTY_AGENCY & {
     opening_date:    parseDate(extractField(text, 'تاريخ الافتتاح')),
     admin_id,
     notes: '',
-    _warn: !admin_id && (adminPid || adminName)
-      ? `لم يُعثر على مشرف بـ: ${adminPid || adminName}`
-      : undefined,
+    _warn:      !admin_id && (adminPid || adminName) ? `لم يُعثر على مشرف: ${adminPid || adminName}` : undefined,
+    _adminPid:  adminPid  || undefined,
+    _adminName: adminName || undefined,
   };
-  return result;
 }
 
-function parseSupporterText(text: string, admins: Admin[]): typeof EMPTY_SUPPORTER & { _warn?: string } {
+function parseSupporterText(text: string, admins: Admin[]): typeof EMPTY_SUPPORTER & { _warn?: string; _adminPid?: string; _adminName?: string } {
   const adminPid  = extractField(text, 'ايدي الادمين', 'ايدي الادمن', 'ID الادمن', 'id الادمن');
   const adminName = extractField(text, 'اسم الادمن', 'اسم المشرف');
   const admin_id  = findAdmin(admins, adminPid, adminName);
@@ -143,9 +142,9 @@ function parseSupporterText(text: string, admins: Admin[]): typeof EMPTY_SUPPORT
     management,
     admin_id,
     notes: '',
-    _warn: !admin_id && (adminPid || adminName)
-      ? `لم يُعثر على مشرف بـ: ${adminPid || adminName}`
-      : undefined,
+    _warn:      !admin_id && (adminPid || adminName) ? `لم يُعثر على مشرف: ${adminPid || adminName}` : undefined,
+    _adminPid:  adminPid  || undefined,
+    _adminName: adminName || undefined,
   };
 }
 
@@ -216,23 +215,77 @@ export default function WorkManagement() {
   const setAF = (k: keyof typeof EMPTY_AGENCY, v: string) => setAgencyForm(f => ({ ...f, [k]: v }));
   const setSF = (k: keyof typeof EMPTY_SUPPORTER, v: string) => setSupporterForm(f => ({ ...f, [k]: v }));
 
+  // ── Auto admin helpers ──────────────────────────────────
+  function genUsername(pid?: string, name?: string): string {
+    if (pid && /^\d+$/.test(pid)) return `admin_${pid}`;
+    if (pid) return pid.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase() || `admin_${Date.now()}`;
+    if (name) return name.trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_\u0600-\u06FF]/g, '').slice(0, 20) || `admin_${Date.now()}`;
+    return `admin_${Date.now()}`;
+  }
+  function genPassword(): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#';
+    return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  }
+
+  async function autoCreateAdmin(
+    adminPid: string | undefined,
+    adminName: string | undefined,
+    onCreated: (id: string) => void
+  ) {
+    const fullName = adminName || adminPid || 'مشرف جديد';
+    const username = genUsername(adminPid, adminName);
+    const password = genPassword();
+
+    toast({ title: '⏳ يتم إنشاء المشرف تلقائياً...' });
+    try {
+      const r = await h('/api/users', {
+        method: 'POST',
+        body: JSON.stringify({ full_name: fullName, username, password, platform_id: adminPid || undefined }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message);
+      setAdmins(prev => [...prev, { id: d.id, username: d.username, full_name: d.full_name, platform_id: d.platform_id }]);
+      onCreated(d.id);
+      toast({
+        title: `✅ تم إنشاء المشرف "${fullName}" تلقائياً`,
+        description: `اسم الدخول: ${username}   |   كلمة المرور: ${password}`,
+        duration: 12000,
+      });
+    } catch (e: any) {
+      toast({ title: '⚠️ فشل إنشاء المشرف تلقائياً', description: e.message + ' — أنشئه يدوياً', variant: 'destructive' });
+      setNewAdminForm({ full_name: fullName, username, password, platform_id: adminPid || '' });
+    }
+  }
+
   // ── Parse handlers ─────────────────────────────────────
-  function applyAgencyPaste() {
-    const { _warn, ...parsed } = parseAgencyText(agencyPasteText, admins);
+  async function applyAgencyPaste() {
+    const { _warn, _adminPid, _adminName, ...parsed } = parseAgencyText(agencyPasteText, admins);
     setAgencyForm(f => ({ ...f, ...Object.fromEntries(Object.entries(parsed).filter(([,v]) => v !== '')) }));
     setAgencyPaste(false);
     setAgencyPasteText('');
-    if (_warn) toast({ title: '⚠️ تنبيه', description: _warn, variant: 'destructive' });
-    else toast({ title: '✅ تم تحليل البيانات', description: 'راجع الحقول وتأكد منها قبل الحفظ' });
+    if (_warn) {
+      await autoCreateAdmin(_adminPid, _adminName, (id) => {
+        setAF('admin_id', id);
+        setShowNewAdminAgency(false);
+      });
+    } else {
+      toast({ title: '✅ تم تحليل البيانات', description: 'راجع الحقول وتأكد منها قبل الحفظ' });
+    }
   }
 
-  function applySupporterPaste() {
-    const { _warn, ...parsed } = parseSupporterText(supporterPasteText, admins);
+  async function applySupporterPaste() {
+    const { _warn, _adminPid, _adminName, ...parsed } = parseSupporterText(supporterPasteText, admins);
     setSupporterForm(f => ({ ...f, ...Object.fromEntries(Object.entries(parsed).filter(([,v]) => v !== '')) }));
     setSupporterPaste(false);
     setSupporterPasteText('');
-    if (_warn) toast({ title: '⚠️ تنبيه', description: _warn, variant: 'destructive' });
-    else toast({ title: '✅ تم تحليل البيانات', description: 'راجع الحقول وتأكد منها قبل الحفظ' });
+    if (_warn) {
+      await autoCreateAdmin(_adminPid, _adminName, (id) => {
+        setSF('admin_id', id);
+        setShowNewAdminSupporter(false);
+      });
+    } else {
+      toast({ title: '✅ تم تحليل البيانات', description: 'راجع الحقول وتأكد منها قبل الحفظ' });
+    }
   }
 
   // ── Inline admin creation ──────────────────────────────
