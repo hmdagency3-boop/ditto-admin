@@ -242,7 +242,8 @@ export default function WorkManagement() {
         method: 'POST',
         body: JSON.stringify({ full_name: fullName, username, password, platform_id: adminPid || undefined }),
       });
-      const d = await r.json();
+      let d: any = {};
+      try { d = await r.json(); } catch { throw new Error(`خطأ ${r.status} — تأكد من تشغيل السيرفر`); }
       if (!r.ok) throw new Error(d.message);
       setAdmins(prev => [...prev, { id: d.id, username: d.username, full_name: d.full_name, platform_id: d.platform_id }]);
       onCreated(d.id);
