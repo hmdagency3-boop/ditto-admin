@@ -1,0 +1,58 @@
+3:54:09 PM: build-image version: cbbb2660d860fe70694043ec05851a3910a2bf39 (noble-new-builds)
+3:54:09 PM: buildbot version: 12b3c6f417c1b3440df5ed3246d8285499c647e3
+3:54:09 PM: Fetching cached dependencies
+3:54:09 PM: Starting to download cache of 67.1MB (Last modified: 2026-06-20 14:01:00 +0000 UTC)
+3:54:10 PM: Downloaded cache in 343ms
+3:54:11 PM: Extracted cache in 1.118s
+3:54:11 PM: Fetched cache in 1.498s
+3:54:11 PM: Starting to prepare the repo for build
+3:54:11 PM: Preparing Git Reference refs/heads/main
+3:54:12 PM: Custom build path detected. Proceeding with the specified path: 'platform-admin'
+3:54:12 PM: Custom build command detected. Proceeding with the specified command: 'npm ci && node node_modules/vite/bin/vite.js build'
+3:54:12 PM: Installing dependencies
+3:54:12 PM: mise ~/.config/mise/config.toml tools: python@3.14.3
+3:54:12 PM: mise ~/.config/mise/config.toml tools: ruby@3.4.8
+3:54:13 PM: mise ~/.config/mise/config.toml tools: go@1.26.2
+3:54:13 PM: v20.20.2 is already installed.
+3:54:13 PM: Now using node v20.20.2 (npm v10.8.2)
+3:54:13 PM: Enabling Node.js Corepack
+3:54:13 PM: WARNING: The environment variable 'NODE_ENV' is set to 'production'. Any 'devDependencies' in package.json will not be installed
+3:54:13 PM: No npm workspaces detected
+3:54:13 PM: Installing npm packages using npm version 10.8.2
+3:55:24 PM: npm error Exit handler never called!
+3:55:24 PM: npm error This is an error with npm itself. Please report this error at:
+3:55:24 PM: npm error   <https://github.com/npm/cli/issues>
+3:55:24 PM: npm error A complete log of this run can be found in: /opt/buildhome/.npm/_logs/2026-06-21T12_54_13_993Z-debug-0.log
+3:55:25 PM: npm packages installed
+3:55:25 PM: Successfully installed dependencies
+3:55:25 PM: Detected 1 framework(s)
+3:55:25 PM: "vite" at version "5.4.20"
+3:55:25 PM: Starting build script
+3:55:25 PM: Section completed: initializing
+3:55:27 PM: ​
+3:55:27 PM: Netlify Build                                                 
+3:55:27 PM: ────────────────────────────────────────────────────────────────
+3:55:27 PM: ​
+3:55:27 PM: ❯ Version
+3:55:27 PM:   @netlify/build 36.0.0
+3:55:27 PM: ​
+3:55:27 PM: ❯ Flags
+3:55:27 PM:   accountId: 6a35d448aa88e2ee2512a568
+3:55:27 PM:   baseRelDir: true
+3:55:27 PM:   buildId: 6a37def1b9eca2000813b00a
+3:55:27 PM:   deployId: 6a37def1b9eca2000813b00c
+3:55:27 PM: ​
+3:55:27 PM: ❯ Current directory
+3:55:27 PM:   /opt/build/repo/platform-admin
+3:55:27 PM: ​
+3:55:27 PM: ❯ Config file
+3:55:27 PM:   /opt/build/repo/netlify.toml
+3:55:27 PM: ​
+3:55:27 PM: ❯ Context
+3:55:27 PM:   production
+3:55:27 PM: ​
+3:55:27 PM: build.command from netlify.toml                               
+3:55:27 PM: ────────────────────────────────────────────────────────────────
+3:55:27 PM: ​
+3:55:27 PM: $ npm ci && node node_modules/vite/bin/vite.js build
+3:56:39 PM: Failed during stage 'building site': Build script returned non-zero exit code: 2 (https://ntl.fyi/exit-code-2)
