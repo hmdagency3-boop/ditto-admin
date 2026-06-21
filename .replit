@@ -40,7 +40,7 @@ externalPort = 80
 
 [deployment]
 deploymentTarget = "vm"
-build = ["bash", "-c", "cd platform-admin && npm run build"]
+build = ["bash", "-c", "cd platform-admin && npm install && npm run build"]
 publicDir = "admin-panel/dist"
 run = ["bash", "-c", "cd platform-admin && npm run start"]
 
