@@ -1,0 +1,23 @@
+[build]
+  base = "platform-admin"
+  command = "pnpm install --no-frozen-lockfile --ignore-scripts --prod=false && node node_modules/vite/bin/vite.js build"
+  publish = "dist/public"
+
+[build.environment]
+  NODE_VERSION = "20"
+  PNPM_VERSION = "9"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
