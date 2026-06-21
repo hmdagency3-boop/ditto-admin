@@ -194,10 +194,13 @@ export default function WorkManagement() {
       const [adminsRes, agenciesRes, supportersRes] = await Promise.all([
         h('/api/users'), h('/api/agencies'), h('/api/supporters'),
       ]);
-      setAdmins((adminsRes.ok ? await adminsRes.json() : []).filter((x:any) => x.id));
-      setAgencies(agenciesRes.ok ? await agenciesRes.json() : []);
-      setSupporters(supportersRes.ok ? await supportersRes.json() : []);
-    } finally { setLoading(false); }
+      const safeJson = async (r: Response, fallback: any[] = []) => {
+        try { return r.ok ? await r.json() : fallback; } catch { return fallback; }
+      };
+      setAdmins((await safeJson(adminsRes)).filter((x:any) => x.id));
+      setAgencies(await safeJson(agenciesRes));
+      setSupporters(await safeJson(supportersRes));
+    } catch { } finally { setLoading(false); }
   }, [h]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
@@ -332,9 +335,9 @@ export default function WorkManagement() {
   const years = Array.from({length:3},(_,i)=>now.getFullYear()-i);
 
   if (loading) return (
-    <div className="p-6 space-y-4">
+    <div className="page-wrapper">
       <Skeleton className="h-10 w-64" />
-      <div className="grid grid-cols-3 gap-4">{[1,2,3].map(i=><Skeleton key={i} className="h-32"/>)}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">{[1,2,3].map(i=><Skeleton key={i} className="h-32"/>)}</div>
     </div>
   );
 
