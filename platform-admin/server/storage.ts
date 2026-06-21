@@ -2,6 +2,7 @@ import { type User, type InsertUser } from "../shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import ws from "ws";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -27,7 +28,9 @@ export class SupabaseStorage implements IStorage {
       throw new Error("SUPABASE_URL and SUPABASE_ANON_KEY environment variables are required");
     }
 
-    this.supabase = createClient(supabaseUrl, supabaseKey);
+    this.supabase = createClient(supabaseUrl, supabaseKey, {
+      realtime: { transport: ws }
+    });
     this.initializeSuperAdmin();
   }
 
