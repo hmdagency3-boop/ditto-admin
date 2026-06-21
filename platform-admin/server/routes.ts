@@ -1310,7 +1310,11 @@ export async function registerRoutes(
       if (admin_id) query = (query as any).eq('admin_id', admin_id);
       const { data, error } = await query;
       if (error) throw error;
-      res.json(data || []);
+      const rows = (data || []).map((r: any) => ({
+        ...r,
+        agency_name: r.agency_name ?? r.name ?? null,
+      }));
+      res.json(rows);
     } catch (error: any) {
       console.error('Get agencies error:', error);
       res.status(500).json({ message: error?.message || 'حدث خطأ' });
@@ -1323,10 +1327,15 @@ export async function registerRoutes(
       if (!agent_id || !admin_id) return res.status(400).json({ message: 'أيدي الوكيل والمشرف مطلوبان' });
       const status = opening_date ? 'opened' : 'activated';
       const { error } = await storage.supabase.from('agencies').insert({
-        agent_id: agent_id.trim(), agency_name: agency_name || null, admin_id,
-        country: country || null, agent_whatsapp: agent_whatsapp || null,
+        agent_id: agent_id.trim(),
+        name: agency_name || '',
+        agency_name: agency_name || null,
+        admin_id,
+        country: country || null,
+        agent_whatsapp: agent_whatsapp || null,
         source_platform: source_platform || null,
-        creation_date: creation_date || null, opening_date: opening_date || null,
+        creation_date: creation_date || null,
+        opening_date: opening_date || null,
         status,
       });
       if (error) { console.error('[agencies] INSERT failed:', JSON.stringify(error)); return res.status(500).json({ message: error.message }); }
@@ -1342,6 +1351,8 @@ export async function registerRoutes(
       const allowed = ['agent_id','agency_name','country','agent_whatsapp','source_platform','creation_date','opening_date','status'];
       const updates: Record<string, any> = { updated_at: new Date().toISOString() };
       for (const f of allowed) { if (req.body[f] !== undefined) updates[f] = req.body[f] || null; }
+      // keep DB "name" column in sync with agency_name
+      if (req.body.agency_name !== undefined) updates.name = req.body.agency_name || '';
       if (req.body.opening_date) updates.status = 'opened';
       if (req.body.status) updates.status = req.body.status;
       const { error } = await storage.supabase.from('agencies').update(updates).eq('id', id);
