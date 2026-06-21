@@ -71,54 +71,124 @@ const EMPTY_SUPPORTER = { supporter_id:'', source_platform:'', level:'', managem
 // Smart Parsers
 // ══════════════════════════════════════════════════════════
 
-function extractField(text: string, ...keys: string[]): string {
+// ── نظّف كل سطر: اشطب الرموز البادئة (-، •، *، →، ...)
+function cleanLines(text: string): string {
+  return text.split('\n')
+    .map(l => l.replace(/^[\s\u200b\-\*•◦◆▪▸➤→＊]+/, '').trim())
+    .join('\n');
+}
+
+// ── استخراج ذكي: يدعم فواصل متعددة (: / | -) وتنظيف القيمة
+function extractField(rawText: string, ...keys: string[]): string {
+  const text = cleanLines(rawText);
+  const lines = text.split('\n');
+
   for (const key of keys) {
-    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const m = text.match(new RegExp(`${escaped}\\s*[:\\-：]?\\s*([^\\n]+)`, 'i'));
-    if (m && m[1].trim()) return m[1].trim();
+    const esc = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // بحث سطر بسطر أولاً (أدق)
+    const lineRx = new RegExp(`^${esc}\\s*[:\\-：/|]\\s*(.*)$`, 'i');
+    for (const line of lines) {
+      const m = line.match(lineRx);
+      if (m !== null) {
+        // نظّف القيمة: ابتر الفاصل المتبقي إن وُجد
+        const val = m[1].trim().replace(/^[:\-\/|]\s*/, '').trim();
+        if (val) return val;
+      }
+    }
+    // بحث في النص الكامل (احتياطي لقيم متعددة الكلمات)
+    const fullRx = new RegExp(`${esc}\\s*[:\\-：/|]\\s*([^\\n]+)`, 'i');
+    const m2 = text.match(fullRx);
+    if (m2) {
+      const val = m2[1].trim().replace(/^[:\-\/|]\s*/, '').trim();
+      if (val) return val;
+    }
   }
   return '';
 }
 
+// ── تحليل التاريخ: يدعم صيغ متعددة
 function parseDate(raw: string): string {
   if (!raw) return '';
-  const cleaned = raw.replace(/[،,]/g, '-').trim();
-  const ymd = cleaned.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  // ابتر أي نص بعد رقم السنة (مثل "2026 تسجيل...")
+  const trimmed = raw.replace(/[،,]/g, '/').trim();
+  // YYYY/MM/DD أو YYYY-MM-DD
+  const ymd = trimmed.match(/(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
   if (ymd) return `${ymd[1]}-${ymd[2].padStart(2,'0')}-${ymd[3].padStart(2,'0')}`;
-  const dmy = cleaned.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  // DD/MM/YYYY أو D/M/YYYY
+  const dmy = trimmed.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
   if (dmy) return `${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}`;
+  // DD/MM/YY
+  const dmy2 = trimmed.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2})$/);
+  if (dmy2) return `20${dmy2[3]}-${dmy2[2].padStart(2,'0')}-${dmy2[1].padStart(2,'0')}`;
   return '';
 }
 
+// ── تطابق ذكي للأرقام (أيدي) مع التسامح مع الأحرف الزائدة
+function normalizeId(s: string): string {
+  return s.replace(/\D/g, '');
+}
+
+// ── بحث عن الأدمن بمرونة: رقم أو اسم كامل أو جزء
 function findAdmin(admins: Admin[], platformId: string, name: string): string {
   if (platformId) {
-    const a = admins.find(x => x.platform_id === platformId || x.username === platformId);
-    if (a) return a.id;
+    const pid = normalizeId(platformId);
+    if (pid) {
+      const a = admins.find(x =>
+        normalizeId(x.platform_id || '') === pid ||
+        normalizeId(x.username || '')   === pid
+      );
+      if (a) return a.id;
+    }
+    // نصي
+    const a2 = admins.find(x =>
+      x.platform_id === platformId || x.username === platformId
+    );
+    if (a2) return a2.id;
   }
   if (name) {
-    const n = name.trim().toLowerCase();
-    const a = admins.find(x =>
-      (x.full_name || '').toLowerCase().includes(n) ||
-      (x.username || '').toLowerCase().includes(n)
-    );
+    const n = name.trim().toLowerCase().replace(/\s+/g, '');
+    const a = admins.find(x => {
+      const fn = (x.full_name || '').toLowerCase().replace(/\s+/g, '');
+      const un = (x.username  || '').toLowerCase().replace(/\s+/g, '');
+      return fn.includes(n) || n.includes(fn) || un.includes(n);
+    });
     if (a) return a.id;
   }
   return '';
 }
 
 function parseAgencyText(text: string, admins: Admin[]): typeof EMPTY_AGENCY & { _warn?: string; _adminPid?: string; _adminName?: string } {
-  const adminPid  = extractField(text, 'ايدي الادمن', 'ايدي الادمين', 'ID الادمن', 'id الادمن');
-  const adminName = extractField(text, 'اسم الادمن', 'اسم المشرف');
+  const adminPid  = extractField(text,
+    'ايدي الادمن', 'ايدي الادمين', 'ID الادمن', 'id الادمن',
+    'رقم الادمن', 'ايدي المشرف', 'id المشرف',
+  );
+  const adminName = extractField(text,
+    'اسم الادمن', 'اسم الادمين', 'اسم المشرف', 'المشرف',
+  );
   const admin_id  = findAdmin(admins, adminPid, adminName);
 
+  const rawWhatsapp = extractField(text,
+    'واتس الوكيل', 'واتساب الوكيل', 'الواتس', 'واتساب', 'رقم الواتس', 'رقم واتساب',
+  );
+
+  // تاريخ الإنشاء: يستوعب الأخطاء الإملائية الشائعة
+  const creationRaw = extractField(text,
+    'تاريخ الانشاء', 'تاريخ الإنشاء', 'تاريخ الانشهاء',
+    'تاريخ إنشاء', 'تاريخ انشاء', 'تاريخ الأنشاء',
+    'الانشاء', 'الإنشاء',
+  );
+
   return {
-    agent_id:        extractField(text, 'ايدي الوكيل', 'id الوكيل', 'كود الوكالة'),
-    agency_name:     extractField(text, 'اسم الوكالة'),
-    country:         extractField(text, 'البلد', 'الدولة'),
-    agent_whatsapp:  extractField(text, 'واتس الوكيل', 'واتساب الوكيل', 'الواتس'),
-    source_platform: extractField(text, 'برامج جاء منها', 'المنصة', 'البرنامج القادم', 'البرنامج'),
-    creation_date:   parseDate(extractField(text, 'تاريخ الانشاء', 'تاريخ الإنشاء')),
-    opening_date:    parseDate(extractField(text, 'تاريخ الافتتاح')),
+    agent_id:        extractField(text, 'ايدي الوكيل', 'id الوكيل', 'كود الوكالة', 'رقم الوكيل', 'ايدي الوكالة'),
+    agency_name:     extractField(text, 'اسم الوكالة', 'الوكالة'),
+    country:         extractField(text, 'البلد', 'الدولة', 'بلد الوكيل'),
+    agent_whatsapp:  rawWhatsapp,
+    source_platform: extractField(text,
+      'برامج جاء منها', 'البرنامج القادم منه', 'البرنامج القادم',
+      'المنصة', 'البرنامج', 'قادم من', 'جاء من',
+    ),
+    creation_date:   parseDate(creationRaw),
+    opening_date:    parseDate(extractField(text, 'تاريخ الافتتاح', 'تاريخ الفتح', 'الافتتاح')),
     admin_id,
     notes: '',
     _warn:      !admin_id && (adminPid || adminName) ? `لم يُعثر على مشرف: ${adminPid || adminName}` : undefined,
@@ -128,17 +198,26 @@ function parseAgencyText(text: string, admins: Admin[]): typeof EMPTY_AGENCY & {
 }
 
 function parseSupporterText(text: string, admins: Admin[]): typeof EMPTY_SUPPORTER & { _warn?: string; _adminPid?: string; _adminName?: string } {
-  const adminPid  = extractField(text, 'ايدي الادمين', 'ايدي الادمن', 'ID الادمن', 'id الادمن');
-  const adminName = extractField(text, 'اسم الادمن', 'اسم المشرف');
+  const adminPid  = extractField(text,
+    'ايدي الادمن', 'ايدي الادمين', 'ID الادمن', 'id الادمن',
+    'رقم الادمن', 'ايدي المشرف',
+  );
+  const adminName = extractField(text,
+    'اسم الادمن', 'اسم الادمين', 'اسم المشرف', 'المشرف',
+  );
   const admin_id  = findAdmin(admins, adminPid, adminName);
 
-  const mgmtLine  = text.split('\n').find(l => /^[\-\s]*إدار[ةه]/u.test(l.trim()));
-  const management = mgmtLine ? mgmtLine.replace(/^[\-\s]+/, '').trim() : '';
+  // الإدارة: سطر يبدأ بـ "إدارة" أو يحتوي عليها
+  const cleanedLines = cleanLines(text).split('\n');
+  const mgmtLine = cleanedLines.find(l => /^إدار[ةه]/u.test(l));
+  const management = mgmtLine?.trim() || extractField(text, 'الإدارة', 'إدارة', 'الادارة');
 
   return {
-    supporter_id:    extractField(text, 'ايدي الداعم', 'id الداعم', 'ID الداعم'),
-    source_platform: extractField(text, 'البرنامج القادم', 'البرنامج', 'المنصة'),
-    level:           extractField(text, 'ليفل', 'المستوى', 'level'),
+    supporter_id:    extractField(text, 'ايدي الداعم', 'id الداعم', 'ID الداعم', 'رقم الداعم'),
+    source_platform: extractField(text,
+      'البرنامج القادم منه', 'البرنامج القادم', 'البرنامج', 'المنصة', 'قادم من',
+    ),
+    level:           extractField(text, 'ليفل', 'المستوى', 'level', 'اللفل'),
     management,
     admin_id,
     notes: '',

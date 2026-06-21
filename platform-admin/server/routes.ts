@@ -1319,7 +1319,7 @@ export async function registerRoutes(
 
   app.post("/api/agencies", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      const { agent_id, agency_name, admin_id, country, agent_whatsapp, source_platform, creation_date, opening_date, notes } = req.body;
+      const { agent_id, agency_name, admin_id, country, agent_whatsapp, source_platform, creation_date, opening_date } = req.body;
       if (!agent_id || !admin_id) return res.status(400).json({ message: 'أيدي الوكيل والمشرف مطلوبان' });
       const status = opening_date ? 'opened' : 'activated';
       const { error } = await storage.supabase.from('agencies').insert({
@@ -1327,7 +1327,7 @@ export async function registerRoutes(
         country: country || null, agent_whatsapp: agent_whatsapp || null,
         source_platform: source_platform || null,
         creation_date: creation_date || null, opening_date: opening_date || null,
-        status, notes: notes || null,
+        status,
       });
       if (error) { console.error('[agencies] INSERT failed:', JSON.stringify(error)); return res.status(500).json({ message: error.message }); }
       res.status(201).json({ message: 'تم إضافة الوكالة' });
@@ -1339,7 +1339,7 @@ export async function registerRoutes(
   app.patch("/api/agencies/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const allowed = ['agent_id','agency_name','country','agent_whatsapp','source_platform','creation_date','opening_date','status','notes'];
+      const allowed = ['agent_id','agency_name','country','agent_whatsapp','source_platform','creation_date','opening_date','status'];
       const updates: Record<string, any> = { updated_at: new Date().toISOString() };
       for (const f of allowed) { if (req.body[f] !== undefined) updates[f] = req.body[f] || null; }
       if (req.body.opening_date) updates.status = 'opened';
