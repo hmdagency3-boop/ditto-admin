@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Building2, Users, FileText, Plus, Trash2,
-  Copy, Check, Pencil, ClipboardPaste, Wand2
+  Copy, Check, Pencil, ClipboardPaste, Wand2, UserPlus, EyeOff, Eye
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -174,6 +174,13 @@ export default function WorkManagement() {
   const [supporterPaste, setSupporterPaste]     = useState(false);
   const [supporterPasteText, setSupporterPasteText] = useState('');
 
+  const EMPTY_NEW_ADMIN = { full_name: '', username: '', password: '', platform_id: '' };
+  const [showNewAdminAgency, setShowNewAdminAgency]       = useState(false);
+  const [showNewAdminSupporter, setShowNewAdminSupporter] = useState(false);
+  const [newAdminForm, setNewAdminForm]   = useState(EMPTY_NEW_ADMIN);
+  const [creatingAdmin, setCreatingAdmin] = useState(false);
+  const [showNewAdminPwd, setShowNewAdminPwd] = useState(false);
+
   const now = new Date();
   const [reportAdmin, setReportAdmin]     = useState('');
   const [reportYear, setReportYear]       = useState(now.getFullYear());
@@ -228,8 +235,39 @@ export default function WorkManagement() {
     else toast({ title: '✅ تم تحليل البيانات', description: 'راجع الحقول وتأكد منها قبل الحفظ' });
   }
 
+  // ── Inline admin creation ──────────────────────────────
+  const setNA = (k: keyof typeof EMPTY_NEW_ADMIN, v: string) => setNewAdminForm(f => ({ ...f, [k]: v }));
+
+  async function createAdminInline(target: 'agency' | 'supporter') {
+    const { full_name, username, password, platform_id } = newAdminForm;
+    if (!full_name.trim() || !username.trim() || !password.trim()) {
+      toast({ title: 'الاسم الكامل واسم المستخدم وكلمة المرور مطلوبة', variant: 'destructive' }); return;
+    }
+    setCreatingAdmin(true);
+    try {
+      const r = await h('/api/users', {
+        method: 'POST',
+        body: JSON.stringify({ full_name: full_name.trim(), username: username.trim(), password, platform_id: platform_id.trim() || undefined }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message);
+      const newAdmin: Admin = { id: d.id, username: d.username, full_name: d.full_name, platform_id: d.platform_id };
+      setAdmins(prev => [...prev, newAdmin]);
+      if (target === 'agency')    { setAF('admin_id', d.id); setShowNewAdminAgency(false); }
+      if (target === 'supporter') { setSF('admin_id', d.id); setShowNewAdminSupporter(false); }
+      setNewAdminForm(EMPTY_NEW_ADMIN);
+      toast({ title: `✅ تم إنشاء المشرف "${d.full_name}" بنجاح` });
+    } catch (e: any) {
+      toast({ title: 'خطأ في إنشاء المشرف', description: e.message, variant: 'destructive' });
+    } finally { setCreatingAdmin(false); }
+  }
+
   // ── Agency CRUD ────────────────────────────────────────
-  function openAddAgency() { setEditingAgency(null); setAgencyForm(EMPTY_AGENCY); setAgencyPaste(false); setAgencyPasteText(''); setAgencyDlg(true); }
+  function openAddAgency() {
+    setEditingAgency(null); setAgencyForm(EMPTY_AGENCY); setAgencyPaste(false); setAgencyPasteText('');
+    setShowNewAdminAgency(false); setNewAdminForm(EMPTY_NEW_ADMIN);
+    setAgencyDlg(true);
+  }
   function openEditAgency(ag: Agency) {
     setEditingAgency(ag);
     setAgencyPaste(false); setAgencyPasteText('');
@@ -267,7 +305,11 @@ export default function WorkManagement() {
   }
 
   // ── Supporter CRUD ─────────────────────────────────────
-  function openAddSupporter() { setEditingSupporter(null); setSupporterForm(EMPTY_SUPPORTER); setSupporterPaste(false); setSupporterPasteText(''); setSupporterDlg(true); }
+  function openAddSupporter() {
+    setEditingSupporter(null); setSupporterForm(EMPTY_SUPPORTER); setSupporterPaste(false); setSupporterPasteText('');
+    setShowNewAdminSupporter(false); setNewAdminForm(EMPTY_NEW_ADMIN);
+    setSupporterDlg(true);
+  }
   function openEditSupporter(s: Supporter) {
     setEditingSupporter(s);
     setSupporterPaste(false); setSupporterPasteText('');
@@ -340,6 +382,63 @@ export default function WorkManagement() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">{[1,2,3].map(i=><Skeleton key={i} className="h-32"/>)}</div>
     </div>
   );
+
+  // ── New Admin inline box ────────────────────────────────
+  function NewAdminBox({ target, onClose }: { target: 'agency' | 'supporter'; onClose: () => void }) {
+    return (
+      <div className="rounded-lg border border-dashed border-orange-400/60 bg-orange-50/50 dark:bg-orange-950/20 p-4 space-y-3">
+        <p className="text-sm font-semibold text-orange-700 dark:text-orange-400 flex items-center gap-2">
+          <UserPlus className="h-4 w-4" />
+          إنشاء مشرف جديد وإضافته مباشرةً
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-xs font-medium">الاسم الكامل *</label>
+            <Input placeholder="مثال: أحمد محمد" value={newAdminForm.full_name} onChange={e => setNA('full_name', e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium">اسم المستخدم (للدخول) *</label>
+            <Input placeholder="مثال: ahmed123" value={newAdminForm.username} onChange={e => setNA('username', e.target.value)} dir="ltr" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium">كلمة المرور *</label>
+            <div className="relative">
+              <Input
+                type={showNewAdminPwd ? 'text' : 'password'}
+                placeholder="6 أحرف على الأقل"
+                value={newAdminForm.password}
+                onChange={e => setNA('password', e.target.value)}
+                dir="ltr"
+                className="pl-9"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewAdminPwd(v => !v)}
+                className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showNewAdminPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium">أيدي المنصة <span className="text-muted-foreground">(اختياري)</span></label>
+            <Input placeholder="مثال: 1234567" value={newAdminForm.platform_id} onChange={e => setNA('platform_id', e.target.value)} dir="ltr" />
+          </div>
+        </div>
+        <div className="flex gap-2 pt-1">
+          <Button
+            onClick={() => createAdminInline(target)}
+            disabled={creatingAdmin || !newAdminForm.full_name.trim() || !newAdminForm.username.trim() || !newAdminForm.password.trim()}
+            className="gap-2 flex-1 bg-orange-600 hover:bg-orange-700 text-white"
+          >
+            <UserPlus className="h-4 w-4" />
+            {creatingAdmin ? 'جاري الإنشاء...' : 'إنشاء المشرف وإضافته'}
+          </Button>
+          <Button variant="outline" onClick={onClose}>إلغاء</Button>
+        </div>
+      </div>
+    );
+  }
 
   // ── Paste Box component (reusable) ─────────────────────
   function PasteBox({ value, onChange, onApply, onCancel }: { value:string; onChange:(v:string)=>void; onApply:()=>void; onCancel:()=>void }) {
@@ -635,12 +734,24 @@ export default function WorkManagement() {
               <label className="text-sm font-medium">اسم الوكالة</label>
               <Input placeholder="اسم الوكالة" value={agencyForm.agency_name} onChange={e=>setAF('agency_name',e.target.value)}/>
             </div>
-            <div className="space-y-1 sm:col-span-2">
+            <div className="space-y-2 sm:col-span-2">
               <label className="text-sm font-medium">المشرف المسؤول *</label>
-              <Select value={agencyForm.admin_id} onValueChange={v=>setAF('admin_id',v)}>
+              <Select value={agencyForm.admin_id} onValueChange={v => { setAF('admin_id', v); setShowNewAdminAgency(false); }}>
                 <SelectTrigger><SelectValue placeholder="اختر المشرف"/></SelectTrigger>
                 <SelectContent>{admins.map(a=><SelectItem key={a.id} value={a.id}>{a.full_name||a.username}{a.platform_id ? ` — ${a.platform_id}`:''}</SelectItem>)}</SelectContent>
               </Select>
+              {!agencyForm.admin_id && !showNewAdminAgency && (
+                <Button
+                  type="button" variant="outline" size="sm"
+                  className="gap-2 text-orange-600 border-orange-300 hover:bg-orange-50 dark:hover:bg-orange-950/30"
+                  onClick={() => { setShowNewAdminAgency(true); setNewAdminForm(EMPTY_NEW_ADMIN); }}
+                >
+                  <UserPlus className="h-4 w-4" /> المشرف غير موجود؟ أنشئه الآن
+                </Button>
+              )}
+              {showNewAdminAgency && (
+                <NewAdminBox target="agency" onClose={() => setShowNewAdminAgency(false)} />
+              )}
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">البلد</label>
@@ -715,12 +826,24 @@ export default function WorkManagement() {
               <label className="text-sm font-medium">ليفل</label>
               <Input placeholder="مثال: ليفل 5" value={supporterForm.level} onChange={e=>setSF('level',e.target.value)}/>
             </div>
-            <div className="space-y-1 sm:col-span-2">
+            <div className="space-y-2 sm:col-span-2">
               <label className="text-sm font-medium">المشرف المسؤول *</label>
-              <Select value={supporterForm.admin_id} onValueChange={v=>setSF('admin_id',v)}>
+              <Select value={supporterForm.admin_id} onValueChange={v => { setSF('admin_id', v); setShowNewAdminSupporter(false); }}>
                 <SelectTrigger><SelectValue placeholder="اختر المشرف"/></SelectTrigger>
                 <SelectContent>{admins.map(a=><SelectItem key={a.id} value={a.id}>{a.full_name||a.username}{a.platform_id ? ` — ${a.platform_id}`:''}</SelectItem>)}</SelectContent>
               </Select>
+              {!supporterForm.admin_id && !showNewAdminSupporter && (
+                <Button
+                  type="button" variant="outline" size="sm"
+                  className="gap-2 text-orange-600 border-orange-300 hover:bg-orange-50 dark:hover:bg-orange-950/30"
+                  onClick={() => { setShowNewAdminSupporter(true); setNewAdminForm(EMPTY_NEW_ADMIN); }}
+                >
+                  <UserPlus className="h-4 w-4" /> المشرف غير موجود؟ أنشئه الآن
+                </Button>
+              )}
+              {showNewAdminSupporter && (
+                <NewAdminBox target="supporter" onClose={() => setShowNewAdminSupporter(false)} />
+              )}
             </div>
             <div className="space-y-1 sm:col-span-2">
               <label className="text-sm font-medium">البرنامج القادم منه</label>

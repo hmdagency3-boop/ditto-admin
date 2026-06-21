@@ -434,6 +434,39 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/users", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { username, password, full_name, platform_id } = req.body;
+      if (!username || !password || !full_name) {
+        return res.status(400).json({ message: "اسم المستخدم وكلمة المرور والاسم الكامل مطلوبة" });
+      }
+      if (username.length < 3) return res.status(400).json({ message: "اسم المستخدم يجب أن يكون 3 أحرف على الأقل" });
+      if (password.length < 6) return res.status(400).json({ message: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" });
+
+      const existing = await storage.getUserByUsername(username);
+      if (existing) return res.status(400).json({ message: "اسم المستخدم موجود مسبقاً" });
+
+      const user = await storage.createUser({ username, password, full_name, name: username });
+      const approved = await storage.approveUser(user.id, req.user!.userId);
+
+      if (platform_id) {
+        await storage.updateUser(user.id, { platform_id });
+      }
+
+      res.status(201).json({
+        id: approved?.id ?? user.id,
+        username,
+        full_name,
+        platform_id: platform_id || null,
+        role: 'admin',
+        status: 'approved',
+      });
+    } catch (error: any) {
+      console.error("Create user error:", error);
+      res.status(500).json({ message: error.message || "حدث خطأ أثناء إنشاء المشرف" });
+    }
+  });
+
   app.get("/api/users", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       res.setHeader('Cache-Control', 'no-store');
