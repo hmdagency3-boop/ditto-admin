@@ -1,11 +1,11 @@
 [build]
   base = "platform-admin"
-  command = "rm -rf node_modules && NODE_ENV=development npm install && node node_modules/vite/bin/vite.js build"
+  command = "node node_modules/vite/bin/vite.js build"
   publish = "dist/public"
 
 [build.environment]
   NODE_VERSION = "20"
-  PNPM_VERSION = "9"
+  NPM_FLAGS = "--include=dev"
 
 [functions]
   directory = "netlify/functions"

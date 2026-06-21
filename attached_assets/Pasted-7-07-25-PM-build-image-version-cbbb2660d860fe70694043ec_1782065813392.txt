@@ -1,0 +1,115 @@
+7:07:25 PM: build-image version: cbbb2660d860fe70694043ec05851a3910a2bf39 (noble-new-builds)
+7:07:25 PM: buildbot version: 12b3c6f417c1b3440df5ed3246d8285499c647e3
+7:07:25 PM: Building without cache
+7:07:25 PM: Starting to prepare the repo for build
+7:07:25 PM: No cached dependencies found. Cloning fresh repo
+7:07:25 PM: git clone --filter=blob:none https://github.com/hmdagency3-boop/ditto-admin
+7:07:25 PM: Preparing Git Reference refs/heads/main
+7:07:27 PM: Custom build path detected. Proceeding with the specified path: 'platform-admin'
+7:07:27 PM: Custom build command detected. Proceeding with the specified command: 'NODE_ENV=development npm install && node node_modules/vite/bin/vite.js build'
+7:07:27 PM: Installing dependencies
+7:07:27 PM: mise ~/.config/mise/config.toml tools: python@3.14.3
+7:07:27 PM: mise ~/.config/mise/config.toml tools: ruby@3.4.8
+7:07:27 PM: mise ~/.config/mise/config.toml tools: go@1.26.2
+7:07:28 PM: v20.20.2 is already installed.
+7:07:28 PM: Now using node v20.20.2 (npm v10.8.2)
+7:07:28 PM: Enabling Node.js Corepack
+7:07:28 PM: WARNING: The environment variable 'NODE_ENV' is set to 'production'. Any 'devDependencies' in package.json will not be installed
+7:07:28 PM: No npm workspaces detected
+7:07:28 PM: Installing npm packages using npm version 10.8.2
+7:08:39 PM: npm error Exit handler never called!
+7:08:39 PM: npm error This is an error with npm itself. Please report this error at:
+7:08:39 PM: npm error   <https://github.com/npm/cli/issues>
+7:08:39 PM: npm error A complete log of this run can be found in: /opt/buildhome/.npm/_logs/2026-06-21T16_07_28_594Z-debug-0.log
+7:08:39 PM: npm packages installed
+7:08:39 PM: Successfully installed dependencies
+7:08:40 PM: Detected 1 framework(s)
+7:08:40 PM: "vite" at version "5.4.20"
+7:08:40 PM: Starting build script
+7:08:40 PM: Section completed: initializing
+7:08:42 PM: ​
+7:08:42 PM: Netlify Build                                                 
+7:08:42 PM: ────────────────────────────────────────────────────────────────
+7:08:42 PM: ​
+7:08:42 PM: ❯ Version
+7:08:42 PM:   @netlify/build 36.0.0
+7:08:42 PM: ​
+7:08:42 PM: ❯ Flags
+7:08:42 PM:   accountId: 6a35d448aa88e2ee2512a568
+7:08:42 PM:   baseRelDir: true
+7:08:42 PM:   buildId: 6a380c3bb9fdc40b10716fd8
+7:08:42 PM:   deployId: 6a380c3bb9fdc40b10716fda
+7:08:42 PM: ​
+7:08:42 PM: ❯ Current directory
+7:08:42 PM:   /opt/build/repo/platform-admin
+7:08:42 PM: ​
+7:08:42 PM: ❯ Config file
+7:08:42 PM:   /opt/build/repo/netlify.toml
+7:08:42 PM: ​
+7:08:42 PM: ❯ Context
+7:08:42 PM:   production
+7:08:42 PM: ​
+7:08:42 PM: build.command from netlify.toml                               
+7:08:42 PM: ────────────────────────────────────────────────────────────────
+7:08:42 PM: ​
+7:08:42 PM: $ NODE_ENV=development npm install && node node_modules/vite/bin/vite.js build
+7:08:44 PM: npm warn deprecated @esbuild-kit/esm-loader@2.6.5: Merged into tsx: https://tsx.is
+7:08:44 PM: npm warn deprecated @esbuild-kit/core-utils@3.3.2: Merged into tsx: https://tsx.is
+7:09:53 PM: npm error Exit handler never called!
+7:09:53 PM: npm error This is an error with npm itself. Please report this error at:
+7:09:53 PM: npm error   <https://github.com/npm/cli/issues>
+7:09:53 PM: npm error A complete log of this run can be found in: /opt/buildhome/.npm/_logs/2026-06-21T16_08_42_843Z-debug-0.log
+7:09:53 PM: node:internal/modules/cjs/loader:1210
+7:09:53 PM:   throw err;
+7:09:53 PM:   ^
+7:09:53 PM: Error: Cannot find module '/opt/build/repo/platform-admin/node_modules/vite/bin/vite.js'
+7:09:53 PM:     at Module._resolveFilename (node:internal/modules/cjs/loader:1207:15)
+7:09:53 PM:     at Module._load (node:internal/modules/cjs/loader:1038:27)
+7:09:53 PM:     at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:164:12)
+7:09:53 PM:     at node:internal/main/run_main_module:28:49 {
+7:09:53 PM:   code: 'MODULE_NOT_FOUND',
+7:09:53 PM:   requireStack: []
+7:09:53 PM: }
+7:09:53 PM: Node.js v20.20.2
+7:09:53 PM: ​
+7:09:53 PM: "build.command" failed                                        
+7:09:53 PM: ────────────────────────────────────────────────────────────────
+7:09:53 PM: ​
+7:09:53 PM:   Error message
+7:09:53 PM:   Command failed with exit code 1: NODE_ENV=development npm install && node node_modules/vite/bin/vite.js build (https://ntl.fyi/exit-code-1)
+7:09:53 PM: ​
+7:09:53 PM:   Error location
+7:09:53 PM:   In build.command from netlify.toml:
+7:09:53 PM:   NODE_ENV=development npm install && node node_modules/vite/bin/vite.js build
+7:09:53 PM: ​
+7:09:53 PM:   Resolved config
+7:09:53 PM:   build:
+7:09:53 PM:     base: /opt/build/repo/platform-admin
+7:09:53 PM:     command: NODE_ENV=development npm install && node node_modules/vite/bin/vite.js build
+7:09:53 PM:     commandOrigin: config
+7:09:53 PM:     environment:
+7:09:53 PM:       - JWT_SECRET
+7:09:53 PM:       - NODE_ENV
+7:09:53 PM:       - SUPABASE_ANON_KEY
+7:09:53 PM:       - SUPABASE_URL
+7:09:53 PM:       - NODE_VERSION
+7:09:53 PM:       - PNPM_VERSION
+7:09:53 PM:     publish: /opt/build/repo/platform-admin/dist/public
+7:09:53 PM:     publishOrigin: config
+7:09:53 PM:   functions:
+7:09:53 PM:     "*":
+7:09:53 PM:       node_bundler: esbuild
+7:09:53 PM:   functionsDirectory: /opt/build/repo/platform-admin/netlify/functions
+7:09:53 PM:   redirects:
+7:09:53 PM:     - force: true
+7:09:54 PM: Failed during stage 'building site': Build script returned non-zero exit code: 2 (https://ntl.fyi/exit-code-2)
+7:09:54 PM:       from: /api/*
+      status: 200
+      to: /.netlify/functions/api
+    - from: /*
+      status: 200
+      to: /index.html
+  redirectsOrigin: config
+7:09:54 PM: Build failed due to a user error: Build script returned non-zero exit code: 2
+7:09:54 PM: Failing build: Failed to build site
+7:09:54 PM: Finished processing build request in 2m28.994s
