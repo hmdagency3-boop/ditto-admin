@@ -31,6 +31,9 @@ interface AdminUser {
   id: string;
   full_name: string;
   username: string;
+  platform_id?: string;
+  platformName?: string;
+  platformImage?: string;
 }
 
 export default function AgenciesPage() {
@@ -48,18 +51,30 @@ export default function AgenciesPage() {
         const h = (url: string) => fetch(url, { headers: { Authorization: `Bearer ${token}` } });
         const [agR, adR] = await Promise.all([h('/api/agencies'), h('/api/users')]);
         const agData: Agency[] = agR.ok ? await agR.json() : [];
-        if (adR.ok) setAdmins(await adR.json());
-
-        // Show data immediately
+        const adData: AdminUser[] = adR.ok ? await adR.json() : [];
         setAgencies(agData);
+        setAdmins(adData);
         setLoading(false);
 
-        // Fetch platform profiles in background
+        // Fetch agency agent profiles in background
         agData.forEach(async (ag) => {
           const profile = await fetchUserProfile(ag.agent_id);
           if (profile) {
             setAgencies(prev => prev.map(a =>
               a.id === ag.id
+                ? { ...a, platformName: profile.name, platformImage: profile.image }
+                : a
+            ));
+          }
+        });
+
+        // Fetch admin profiles in background
+        adData.forEach(async (admin) => {
+          if (!admin.platform_id) return;
+          const profile = await fetchUserProfile(admin.platform_id);
+          if (profile) {
+            setAdmins(prev => prev.map(a =>
+              a.id === admin.id
                 ? { ...a, platformName: profile.name, platformImage: profile.image }
                 : a
             ));
@@ -237,7 +252,24 @@ export default function AgenciesPage() {
                             {ag.status === 'opened' ? '🎉 مفتوحة' : '✅ مفعّلة'}
                           </Badge>
                         </td>
-                        <td className={cellCls}>{admin ? (admin.full_name || admin.username) : '—'}</td>
+                        <td className={cellCls}>
+                          {admin ? (
+                            <div className="flex items-center gap-2 min-w-[130px]">
+                              <Avatar className="h-7 w-7 shrink-0">
+                                {admin.platformImage && <AvatarImage src={admin.platformImage} />}
+                                <AvatarFallback className="text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 font-bold">
+                                  {getInitials(admin.full_name || admin.username)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0">
+                                <p className="font-medium truncate text-sm">{admin.full_name || admin.username}</p>
+                                {admin.platformName && admin.platformName !== admin.full_name && (
+                                  <p className="text-xs text-primary/70 truncate">{admin.platformName}</p>
+                                )}
+                              </div>
+                            </div>
+                          ) : '—'}
+                        </td>
                       </tr>
                     );
                   })}

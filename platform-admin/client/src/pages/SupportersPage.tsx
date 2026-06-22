@@ -27,6 +27,9 @@ interface AdminUser {
   id: string;
   full_name: string;
   username: string;
+  platform_id?: string;
+  platformName?: string;
+  platformImage?: string;
 }
 
 const LEVEL_BADGE: Record<string, string> = {
@@ -50,13 +53,12 @@ export default function SupportersPage() {
         const h = (url: string) => fetch(url, { headers: { Authorization: `Bearer ${token}` } });
         const [spR, adR] = await Promise.all([h('/api/supporters'), h('/api/users')]);
         const spData: Supporter[] = spR.ok ? await spR.json() : [];
-        if (adR.ok) setAdmins(await adR.json());
-
-        // Show data immediately
+        const adData: AdminUser[] = adR.ok ? await adR.json() : [];
         setSupporters(spData);
+        setAdmins(adData);
         setLoading(false);
 
-        // Fetch platform profiles in background
+        // Fetch supporter profiles in background
         spData.forEach(async (sp) => {
           const profile = await fetchUserProfile(sp.supporter_id);
           if (profile) {
@@ -64,6 +66,19 @@ export default function SupportersPage() {
               s.id === sp.id
                 ? { ...s, platformName: profile.name, platformImage: profile.image }
                 : s
+            ));
+          }
+        });
+
+        // Fetch admin profiles in background
+        adData.forEach(async (admin) => {
+          if (!admin.platform_id) return;
+          const profile = await fetchUserProfile(admin.platform_id);
+          if (profile) {
+            setAdmins(prev => prev.map(a =>
+              a.id === admin.id
+                ? { ...a, platformName: profile.name, platformImage: profile.image }
+                : a
             ));
           }
         });
@@ -223,7 +238,24 @@ export default function SupportersPage() {
                         <td className={`${cellCls} text-muted-foreground whitespace-nowrap`}>
                           {new Date(sp.created_at).toLocaleDateString('ar-EG')}
                         </td>
-                        <td className={cellCls}>{admin ? (admin.full_name || admin.username) : '—'}</td>
+                        <td className={cellCls}>
+                          {admin ? (
+                            <div className="flex items-center gap-2 min-w-[130px]">
+                              <Avatar className="h-7 w-7 shrink-0">
+                                {admin.platformImage && <AvatarImage src={admin.platformImage} />}
+                                <AvatarFallback className="text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 font-bold">
+                                  {getInitials(admin.full_name || admin.username)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0">
+                                <p className="font-medium truncate text-sm">{admin.full_name || admin.username}</p>
+                                {admin.platformName && admin.platformName !== admin.full_name && (
+                                  <p className="text-xs text-primary/70 truncate">{admin.platformName}</p>
+                                )}
+                              </div>
+                            </div>
+                          ) : '—'}
+                        </td>
                       </tr>
                     );
                   })}
