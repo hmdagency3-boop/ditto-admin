@@ -30,6 +30,8 @@ import Tasks from "@/pages/Tasks";
 import MyTasks from "@/pages/MyTasks";
 import Events from "@/pages/Events";
 import WorkManagement from "@/pages/WorkManagement";
+import AgenciesPage from "@/pages/AgenciesPage";
+import SupportersPage from "@/pages/SupportersPage";
 
 function ProtectedRoute({ component: Component, superAdminOnly = false }: { component: React.ComponentType; superAdminOnly?: boolean }) {
   const { user, loading, isSuperAdmin } = useAuth();
@@ -145,6 +147,12 @@ function Router() {
       </Route>
       <Route path="/work-management">
         <ProtectedRoute component={WorkManagement} superAdminOnly />
+      </Route>
+      <Route path="/agencies">
+        <ProtectedRoute component={AgenciesPage} superAdminOnly />
+      </Route>
+      <Route path="/supporters">
+        <ProtectedRoute component={SupportersPage} superAdminOnly />
       </Route>
       <Route path="/admins/:id">
         <ProtectedRoute component={AdminProfile} superAdminOnly />

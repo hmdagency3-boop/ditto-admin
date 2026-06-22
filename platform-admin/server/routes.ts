@@ -1323,7 +1323,7 @@ export async function registerRoutes(
 
   app.post("/api/agencies", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      const { agent_id, agency_name, agency_code, admin_id, country, agent_whatsapp, source_platform, creation_date, opening_date, period } = req.body;
+      const { agent_id, agency_name, agency_code, admin_id, country, agent_whatsapp, source_platform, creation_date, opening_date, period, agent_photo } = req.body;
       if (!agent_id || !admin_id) return res.status(400).json({ message: 'أيدي الوكيل والمشرف مطلوبان' });
       const status = opening_date ? 'opened' : 'activated';
       const periodNum = period ? parseInt(period) : null;
@@ -1340,6 +1340,7 @@ export async function registerRoutes(
         opening_date: opening_date || null,
         status,
         period: periodNum,
+        agent_photo: agent_photo || null,
       });
       if (error) { console.error('[agencies] INSERT failed:', JSON.stringify(error)); return res.status(500).json({ message: error.message }); }
       res.status(201).json({ message: 'تم إضافة الوكالة' });
@@ -1351,7 +1352,7 @@ export async function registerRoutes(
   app.patch("/api/agencies/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const allowed = ['agent_id','agency_name','agency_code','country','agent_whatsapp','source_platform','creation_date','opening_date','status'];
+      const allowed = ['agent_id','agency_name','agency_code','country','agent_whatsapp','source_platform','creation_date','opening_date','status','agent_photo'];
       const updates: Record<string, any> = { updated_at: new Date().toISOString() };
       for (const f of allowed) { if (req.body[f] !== undefined) updates[f] = req.body[f] || null; }
       // keep DB "name" column in sync with agency_name
@@ -1394,7 +1395,7 @@ export async function registerRoutes(
 
   app.post("/api/supporters", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      const { supporter_id, source_platform, level, management, admin_id, notes, period } = req.body;
+      const { supporter_id, source_platform, level, management, admin_id, notes, period, supporter_photo } = req.body;
       if (!supporter_id || !admin_id) return res.status(400).json({ message: 'أيدي الداعم والمشرف مطلوبان' });
       const periodNum = period ? parseInt(period) : null;
       const { error } = await storage.supabase.from('supporters').insert({
@@ -1402,6 +1403,7 @@ export async function registerRoutes(
         source_platform: source_platform || null, level: level || null,
         management: management || null, notes: notes || null,
         period: periodNum,
+        supporter_photo: supporter_photo || null,
       });
       if (error) { console.error('[supporters] INSERT failed:', JSON.stringify(error)); return res.status(500).json({ message: error.message }); }
       res.status(201).json({ message: 'تم إضافة الداعم' });
@@ -1413,7 +1415,7 @@ export async function registerRoutes(
   app.patch("/api/supporters/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const allowed = ['supporter_id','source_platform','level','management','notes'];
+      const allowed = ['supporter_id','source_platform','level','management','notes','supporter_photo'];
       const updates: Record<string, any> = {};
       for (const f of allowed) { if (req.body[f] !== undefined) updates[f] = req.body[f] || null; }
       if (req.body.period !== undefined) updates.period = req.body.period ? parseInt(req.body.period) : null;
