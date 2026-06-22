@@ -1462,7 +1462,7 @@ export async function registerRoutes(
           .lte('created_at', monthEnd)
           .eq('period', p)
           .order('created_at', { ascending: true }),
-        storage.supabase.from('users').select('id, username, full_name, platform_id').eq('id', admin_id as string).maybeSingle(),
+        storage.supabase.from('users').select('id, username, full_name, platform_id, phone').eq('id', admin_id as string).maybeSingle(),
       ]);
 
       if (agenciesRes.error) throw agenciesRes.error;

@@ -21,6 +21,7 @@ interface Admin {
   username: string;
   full_name: string;
   platform_id?: string;
+  phone?: string;
 }
 
 interface Agency {
@@ -1042,6 +1043,7 @@ export default function WorkManagement() {
                 <div className="space-y-1">
                   <p><span className="text-muted-foreground">اسم الادمن:</span> <strong>{reportData.admin?.full_name||'—'}</strong></p>
                   <p><span className="text-muted-foreground">أيدي الادمن:</span> <strong>{reportData.admin?.platform_id||reportData.admin?.username||'—'}</strong></p>
+                  {reportData.admin?.phone && <p><span className="text-muted-foreground">رقم الهاتف:</span> <strong>{reportData.admin.phone}</strong></p>}
                 </div>
                 <div>
                   <p className="font-bold mb-2">📋 عدد الوكالات التي تم تفعيلها  {reportData.agencies_activated.length}</p>
