@@ -1355,7 +1355,7 @@ export async function registerRoutes(
       if (!agent_id || !admin_id) return res.status(400).json({ message: 'أيدي الوكيل والمشرف مطلوبان' });
       const status = opening_date ? 'opened' : 'activated';
       const periodNum = period ? parseInt(period) : null;
-      const { error } = await storage.supabase.from('agencies').insert({
+      const insertData: Record<string, any> = {
         agent_id: agent_id.trim(),
         name: agency_name || '',
         agency_name: agency_name || null,
@@ -1368,8 +1368,9 @@ export async function registerRoutes(
         opening_date: opening_date || null,
         status,
         period: periodNum,
-        agent_photo: agent_photo || null,
-      });
+      };
+      if (agent_photo) insertData.agent_photo = agent_photo;
+      const { error } = await storage.supabase.from('agencies').insert(insertData);
       if (error) { console.error('[agencies] INSERT failed:', JSON.stringify(error)); return res.status(500).json({ message: error.message }); }
       res.status(201).json({ message: 'تم إضافة الوكالة' });
     } catch (error: any) {
@@ -1433,13 +1434,14 @@ export async function registerRoutes(
       const { supporter_id, source_platform, level, management, admin_id, notes, period, supporter_photo } = req.body;
       if (!supporter_id || !admin_id) return res.status(400).json({ message: 'أيدي الداعم والمشرف مطلوبان' });
       const periodNum = period ? parseInt(period) : null;
-      const { error } = await storage.supabase.from('supporters').insert({
+      const insertData: Record<string, any> = {
         supporter_id: supporter_id.trim(), admin_id,
         source_platform: source_platform || null, level: level || null,
         management: management || null, notes: notes || null,
         period: periodNum,
-        supporter_photo: supporter_photo || null,
-      });
+      };
+      if (supporter_photo) insertData.supporter_photo = supporter_photo;
+      const { error } = await storage.supabase.from('supporters').insert(insertData);
       if (error) { console.error('[supporters] INSERT failed:', JSON.stringify(error)); return res.status(500).json({ message: error.message }); }
       invalidateCache('supporters:');
       res.status(201).json({ message: 'تم إضافة الداعم' });
