@@ -16,6 +16,22 @@ interface JWTPayload {
   role: string;
 }
 
+// ── Simple in-memory cache ────────────────────────────────────────────────────
+interface CacheEntry { data: any; expiresAt: number; }
+const cache = new Map<string, CacheEntry>();
+function getCache(key: string): any | null {
+  const e = cache.get(key);
+  if (!e) return null;
+  if (Date.now() > e.expiresAt) { cache.delete(key); return null; }
+  return e.data;
+}
+function setCache(key: string, data: any, ttlMs: number) {
+  cache.set(key, { data, expiresAt: Date.now() + ttlMs });
+}
+function invalidateCache(prefix: string) {
+  for (const k of cache.keys()) { if (k.startsWith(prefix)) cache.delete(k); }
+}
+
 // ── Simple in-memory rate limiter for login ──────────────────────────────────
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_MAX     = 10;   // max attempts
@@ -420,13 +436,17 @@ export async function registerRoutes(
   app.get("/api/platform-profile/:identifier", authenticateToken, async (req, res) => {
     const { identifier } = req.params;
     if (!identifier) return res.status(400).json({ message: "identifier required" });
+    const cacheKey = `platform-profile:${identifier}`;
+    const cached = getCache(cacheKey);
+    if (cached) return res.json(cached);
     try {
       const response = await fetch(
         `https://www.sayyouditto.com/pay/payermax/getInfo?no=${encodeURIComponent(identifier)}`,
-        { headers: { Accept: "application/json" } }
+        { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(5000) }
       );
       if (!response.ok) return res.status(502).json({ message: "External API error" });
       const data = await response.json();
+      setCache(cacheKey, data, 30 * 60 * 1000);
       res.json(data);
     } catch (error) {
       console.error("Platform profile proxy error:", error);
@@ -469,22 +489,23 @@ export async function registerRoutes(
 
   app.get("/api/users", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      res.setHeader('Cache-Control', 'no-store');
+      const cached = getCache('users:all');
+      if (cached) return res.json(cached);
       const users = await storage.getAllUsers();
-      res.json(
-        users.map((u: any) => ({
-          id: u.id,
-          username: u.username,
-          full_name: u.full_name,
-          role: u.role,
-          status: u.status,
-          phone: u.phone,
-          avatar_url: u.avatar_url,
-          platform_id: u.platform_id || null,
-          created_at: u.created_at,
-          employment_status: u.employment_status || 'active',
-        }))
-      );
+      const result = users.map((u: any) => ({
+        id: u.id,
+        username: u.username,
+        full_name: u.full_name,
+        role: u.role,
+        status: u.status,
+        phone: u.phone,
+        avatar_url: u.avatar_url,
+        platform_id: u.platform_id || null,
+        created_at: u.created_at,
+        employment_status: u.employment_status || 'active',
+      }));
+      setCache('users:all', result, 2 * 60 * 1000);
+      res.json(result);
     } catch (error) {
       console.error("Get users error:", error);
       res.status(500).json({ message: "حدث خطأ" });
@@ -510,6 +531,7 @@ export async function registerRoutes(
         throw error;
       }
       console.log(`[employment-status] نجح: ${JSON.stringify(data)}`);
+      invalidateCache('users:');
       res.json({ message: "تم التحديث", data });
     } catch (error) {
       console.error("Employment status error:", error);
@@ -666,6 +688,7 @@ export async function registerRoutes(
         .single();
 
       if (error) throw error;
+      invalidateCache('users:');
       res.json({ message: "تم تحديث البيانات بنجاح", data });
     } catch (error) {
       console.error("Update user error:", error);
@@ -686,6 +709,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "المستخدم غير موجود" });
       }
 
+      invalidateCache('users:');
       res.json({ message: "تم حذف المستخدم بنجاح" });
     } catch (error) {
       console.error("Delete user error:", error);
@@ -1306,6 +1330,9 @@ export async function registerRoutes(
   app.get("/api/agencies", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { admin_id } = req.query;
+      const cacheKey = admin_id ? `agencies:${admin_id}` : 'agencies:all';
+      const cached = getCache(cacheKey);
+      if (cached) return res.json(cached);
       let query = storage.supabase.from('agencies').select('*').order('created_at', { ascending: false });
       if (admin_id) query = (query as any).eq('admin_id', admin_id);
       const { data, error } = await query;
@@ -1314,6 +1341,7 @@ export async function registerRoutes(
         ...r,
         agency_name: r.agency_name ?? r.name ?? null,
       }));
+      setCache(cacheKey, rows, 2 * 60 * 1000);
       res.json(rows);
     } catch (error: any) {
       console.error('Get agencies error:', error);
@@ -1362,6 +1390,7 @@ export async function registerRoutes(
       if (req.body.status) updates.status = req.body.status;
       const { error } = await storage.supabase.from('agencies').update(updates).eq('id', id);
       if (error) return res.status(500).json({ message: error.message });
+      invalidateCache('agencies:');
       res.json({ message: 'تم التحديث' });
     } catch (error: any) {
       res.status(500).json({ message: error?.message || 'حدث خطأ' });
@@ -1373,6 +1402,7 @@ export async function registerRoutes(
       const { id } = req.params;
       const { error } = await storage.supabase.from('agencies').delete().eq('id', id);
       if (error) return res.status(500).json({ message: error.message });
+      invalidateCache('agencies:');
       res.json({ message: 'تم الحذف' });
     } catch (error: any) {
       res.status(500).json({ message: error?.message || 'حدث خطأ' });
@@ -1382,11 +1412,16 @@ export async function registerRoutes(
   app.get("/api/supporters", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { admin_id } = req.query;
+      const cacheKey = admin_id ? `supporters:${admin_id}` : 'supporters:all';
+      const cached = getCache(cacheKey);
+      if (cached) return res.json(cached);
       let query = storage.supabase.from('supporters').select('*').order('created_at', { ascending: false });
       if (admin_id) query = (query as any).eq('admin_id', admin_id);
       const { data, error } = await query;
       if (error) throw error;
-      res.json(data || []);
+      const result = data || [];
+      setCache(cacheKey, result, 2 * 60 * 1000);
+      res.json(result);
     } catch (error: any) {
       console.error('Get supporters error:', error);
       res.status(500).json({ message: error?.message || 'حدث خطأ' });
@@ -1406,6 +1441,7 @@ export async function registerRoutes(
         supporter_photo: supporter_photo || null,
       });
       if (error) { console.error('[supporters] INSERT failed:', JSON.stringify(error)); return res.status(500).json({ message: error.message }); }
+      invalidateCache('supporters:');
       res.status(201).json({ message: 'تم إضافة الداعم' });
     } catch (error: any) {
       res.status(500).json({ message: error?.message || 'حدث خطأ' });
@@ -1421,6 +1457,7 @@ export async function registerRoutes(
       if (req.body.period !== undefined) updates.period = req.body.period ? parseInt(req.body.period) : null;
       const { error } = await storage.supabase.from('supporters').update(updates).eq('id', id);
       if (error) return res.status(500).json({ message: error.message });
+      invalidateCache('supporters:');
       res.json({ message: 'تم التحديث' });
     } catch (error: any) {
       res.status(500).json({ message: error?.message || 'حدث خطأ' });
@@ -1432,6 +1469,7 @@ export async function registerRoutes(
       const { id } = req.params;
       const { error } = await storage.supabase.from('supporters').delete().eq('id', id);
       if (error) return res.status(500).json({ message: error.message });
+      invalidateCache('supporters:');
       res.json({ message: 'تم الحذف' });
     } catch (error: any) {
       res.status(500).json({ message: error?.message || 'حدث خطأ' });

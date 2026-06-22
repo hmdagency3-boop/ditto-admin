@@ -101,18 +101,23 @@ export default function Admins() {
       if (!response.ok) throw new Error('Failed to fetch users');
       const data = await response.json();
       const approvedAdmins = data.filter((u: UserInfo) => u.status === 'approved');
-      
-      const adminsWithImages = await Promise.all(
-        approvedAdmins.map(async (admin: UserInfo) => {
-          const externalData = await fetchUserProfile(admin.platform_id || admin.username);
-          return { ...admin, externalName: externalData?.name, externalImage: externalData?.image };
-        })
-      );
-      setAdmins(adminsWithImages);
+      // Show admins immediately — no waiting for external profiles
+      setAdmins(approvedAdmins);
+      setLoading(false);
+      // Load platform profiles in background, update each admin as it arrives
+      approvedAdmins.forEach(async (admin: UserInfo) => {
+        const externalData = await fetchUserProfile(admin.platform_id || admin.username);
+        if (externalData) {
+          setAdmins(prev => prev.map(a =>
+            a.id === admin.id
+              ? { ...a, externalName: externalData.name, externalImage: externalData.image }
+              : a
+          ));
+        }
+      });
     } catch (error) {
       console.error('Error fetching admins:', error);
       toast({ title: 'خطأ', description: 'حدث خطأ أثناء جلب بيانات المشرفين', variant: 'destructive' });
-    } finally {
       setLoading(false);
     }
   }
