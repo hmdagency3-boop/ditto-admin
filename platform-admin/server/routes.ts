@@ -1323,9 +1323,10 @@ export async function registerRoutes(
 
   app.post("/api/agencies", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      const { agent_id, agency_name, admin_id, country, agent_whatsapp, source_platform, creation_date, opening_date } = req.body;
+      const { agent_id, agency_name, admin_id, country, agent_whatsapp, source_platform, creation_date, opening_date, period } = req.body;
       if (!agent_id || !admin_id) return res.status(400).json({ message: 'أيدي الوكيل والمشرف مطلوبان' });
       const status = opening_date ? 'opened' : 'activated';
+      const periodNum = period ? parseInt(period) : null;
       const { error } = await storage.supabase.from('agencies').insert({
         agent_id: agent_id.trim(),
         name: agency_name || '',
@@ -1337,6 +1338,7 @@ export async function registerRoutes(
         creation_date: creation_date || null,
         opening_date: opening_date || null,
         status,
+        period: periodNum,
       });
       if (error) { console.error('[agencies] INSERT failed:', JSON.stringify(error)); return res.status(500).json({ message: error.message }); }
       res.status(201).json({ message: 'تم إضافة الوكالة' });
@@ -1353,6 +1355,7 @@ export async function registerRoutes(
       for (const f of allowed) { if (req.body[f] !== undefined) updates[f] = req.body[f] || null; }
       // keep DB "name" column in sync with agency_name
       if (req.body.agency_name !== undefined) updates.name = req.body.agency_name || '';
+      if (req.body.period !== undefined) updates.period = req.body.period ? parseInt(req.body.period) : null;
       if (req.body.opening_date) updates.status = 'opened';
       if (req.body.status) updates.status = req.body.status;
       const { error } = await storage.supabase.from('agencies').update(updates).eq('id', id);
@@ -1390,12 +1393,14 @@ export async function registerRoutes(
 
   app.post("/api/supporters", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      const { supporter_id, source_platform, level, management, admin_id, notes } = req.body;
+      const { supporter_id, source_platform, level, management, admin_id, notes, period } = req.body;
       if (!supporter_id || !admin_id) return res.status(400).json({ message: 'أيدي الداعم والمشرف مطلوبان' });
+      const periodNum = period ? parseInt(period) : null;
       const { error } = await storage.supabase.from('supporters').insert({
         supporter_id: supporter_id.trim(), admin_id,
         source_platform: source_platform || null, level: level || null,
         management: management || null, notes: notes || null,
+        period: periodNum,
       });
       if (error) { console.error('[supporters] INSERT failed:', JSON.stringify(error)); return res.status(500).json({ message: error.message }); }
       res.status(201).json({ message: 'تم إضافة الداعم' });
@@ -1410,6 +1415,7 @@ export async function registerRoutes(
       const allowed = ['supporter_id','source_platform','level','management','notes'];
       const updates: Record<string, any> = {};
       for (const f of allowed) { if (req.body[f] !== undefined) updates[f] = req.body[f] || null; }
+      if (req.body.period !== undefined) updates.period = req.body.period ? parseInt(req.body.period) : null;
       const { error } = await storage.supabase.from('supporters').update(updates).eq('id', id);
       if (error) return res.status(500).json({ message: error.message });
       res.json({ message: 'تم التحديث' });
@@ -1437,14 +1443,24 @@ export async function registerRoutes(
       const y = parseInt(year as string);
       const m = parseInt(month as string);
       const p = parseInt(period as string);
-      const startDay = p === 1 ? 1 : p === 2 ? 11 : 21;
-      const endDay   = p === 1 ? 10 : p === 2 ? 20 : 31;
-      const startDate = new Date(y, m - 1, startDay, 0, 0, 0).toISOString();
-      const endDate   = new Date(y, m - 1, endDay, 23, 59, 59).toISOString();
+      // حدود الشهر كامل للفلترة بالشهر/السنة
+      const monthStart = new Date(y, m - 1, 1, 0, 0, 0).toISOString();
+      const monthEnd   = new Date(y, m, 0, 23, 59, 59).toISOString(); // آخر يوم في الشهر
 
       const [agenciesRes, supportersRes, adminRes] = await Promise.all([
-        storage.supabase.from('agencies').select('*').eq('admin_id', admin_id).gte('created_at', startDate).lte('created_at', endDate).order('created_at', { ascending: true }),
-        storage.supabase.from('supporters').select('*').eq('admin_id', admin_id).gte('created_at', startDate).lte('created_at', endDate).order('created_at', { ascending: true }),
+        // فلترة بعمود period المخزّن صراحةً (مع fallback لتاريخ الإضافة)
+        storage.supabase.from('agencies').select('*')
+          .eq('admin_id', admin_id)
+          .gte('created_at', monthStart)
+          .lte('created_at', monthEnd)
+          .eq('period', p)
+          .order('created_at', { ascending: true }),
+        storage.supabase.from('supporters').select('*')
+          .eq('admin_id', admin_id)
+          .gte('created_at', monthStart)
+          .lte('created_at', monthEnd)
+          .eq('period', p)
+          .order('created_at', { ascending: true }),
         storage.supabase.from('users').select('id, username, full_name, platform_id').eq('id', admin_id as string).maybeSingle(),
       ]);
 

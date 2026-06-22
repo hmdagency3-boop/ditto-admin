@@ -35,6 +35,7 @@ interface Agency {
   opening_date?: string;
   status: 'activated' | 'opened';
   notes?: string;
+  period?: number;
   created_at: string;
 }
 
@@ -46,6 +47,7 @@ interface Supporter {
   level?: string;
   management?: string;
   notes?: string;
+  period?: number;
   created_at: string;
 }
 
@@ -64,8 +66,8 @@ function getPeriodLabel(p: number) {
 }
 function getCurrentPeriod() { const d = new Date().getDate(); return d <= 10 ? 1 : d <= 20 ? 2 : 3; }
 
-const EMPTY_AGENCY = { agent_id:'', agency_name:'', admin_id:'', country:'', agent_whatsapp:'', source_platform:'', creation_date:'', opening_date:'', notes:'' };
-const EMPTY_SUPPORTER = { supporter_id:'', source_platform:'', level:'', management:'', admin_id:'', notes:'' };
+const EMPTY_AGENCY = { agent_id:'', agency_name:'', admin_id:'', country:'', agent_whatsapp:'', source_platform:'', creation_date:'', opening_date:'', notes:'', period: String(getCurrentPeriod()) };
+const EMPTY_SUPPORTER = { supporter_id:'', source_platform:'', level:'', management:'', admin_id:'', notes:'', period: String(getCurrentPeriod()) };
 
 // ══════════════════════════════════════════════════════════
 // Smart Parsers
@@ -411,6 +413,7 @@ export default function WorkManagement() {
       creation_date: ag.creation_date ? ag.creation_date.split('T')[0] : '',
       opening_date: ag.opening_date ? ag.opening_date.split('T')[0] : '',
       notes: ag.notes||'',
+      period: String(ag.period || getCurrentPeriod()),
     });
     setAgencyDlg(true);
   }
@@ -446,7 +449,7 @@ export default function WorkManagement() {
   function openEditSupporter(s: Supporter) {
     setEditingSupporter(s);
     setSupporterPaste(false); setSupporterPasteText('');
-    setSupporterForm({ supporter_id: s.supporter_id||'', source_platform: s.source_platform||'', level: s.level||'', management: s.management||'', admin_id: s.admin_id||'', notes: s.notes||'' });
+    setSupporterForm({ supporter_id: s.supporter_id||'', source_platform: s.source_platform||'', level: s.level||'', management: s.management||'', admin_id: s.admin_id||'', notes: s.notes||'', period: String(s.period || getCurrentPeriod()) });
     setSupporterDlg(true);
   }
   async function saveSupporter() {
@@ -907,6 +910,15 @@ export default function WorkManagement() {
               <Input type="date" value={agencyForm.opening_date} onChange={e=>setAF('opening_date',e.target.value)}/>
             </div>
             <div className="space-y-1 sm:col-span-2">
+              <label className="text-sm font-medium">المدة</label>
+              <Select value={agencyForm.period} onValueChange={v => setAF('period', v)}>
+                <SelectTrigger><SelectValue placeholder="اختر المدة"/></SelectTrigger>
+                <SelectContent>
+                  {[1,2,3].map(p => <SelectItem key={p} value={String(p)}>{getPeriodLabel(p)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1 sm:col-span-2">
               <label className="text-sm font-medium">ملاحظات</label>
               <Textarea placeholder="أي ملاحظات إضافية..." value={agencyForm.notes} onChange={e=>setAF('notes',e.target.value)} rows={2}/>
             </div>
@@ -985,6 +997,15 @@ export default function WorkManagement() {
             <div className="space-y-1 sm:col-span-2">
               <label className="text-sm font-medium">الإدارة</label>
               <Input placeholder="مثال: إدارة أميرة 10005" value={supporterForm.management} onChange={e=>setSF('management',e.target.value)}/>
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <label className="text-sm font-medium">المدة</label>
+              <Select value={supporterForm.period} onValueChange={v => setSF('period', v)}>
+                <SelectTrigger><SelectValue placeholder="اختر المدة"/></SelectTrigger>
+                <SelectContent>
+                  {[1,2,3].map(p => <SelectItem key={p} value={String(p)}>{getPeriodLabel(p)}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1 sm:col-span-2">
               <label className="text-sm font-medium">ملاحظات</label>
