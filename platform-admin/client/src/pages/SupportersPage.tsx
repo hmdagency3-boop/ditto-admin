@@ -7,6 +7,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { fetchUserProfile } from '@/lib/userProfileService';
 
 interface Supporter {
   id: string;
@@ -18,6 +19,8 @@ interface Supporter {
   notes?: string;
   admin_id: string;
   created_at: string;
+  platformName?: string;
+  platformImage?: string;
 }
 
 interface AdminUser {
@@ -46,11 +49,26 @@ export default function SupportersPage() {
       try {
         const h = (url: string) => fetch(url, { headers: { Authorization: `Bearer ${token}` } });
         const [spR, adR] = await Promise.all([h('/api/supporters'), h('/api/users')]);
-        if (spR.ok) setSupporters(await spR.json());
+        const spData: Supporter[] = spR.ok ? await spR.json() : [];
         if (adR.ok) setAdmins(await adR.json());
+
+        // Show data immediately
+        setSupporters(spData);
+        setLoading(false);
+
+        // Fetch platform profiles in background
+        spData.forEach(async (sp) => {
+          const profile = await fetchUserProfile(sp.supporter_id);
+          if (profile) {
+            setSupporters(prev => prev.map(s =>
+              s.id === sp.id
+                ? { ...s, platformName: profile.name, platformImage: profile.image }
+                : s
+            ));
+          }
+        });
       } catch {
         toast({ title: 'حدث خطأ أثناء تحميل البيانات', variant: 'destructive' });
-      } finally {
         setLoading(false);
       }
     }
@@ -63,6 +81,7 @@ export default function SupportersPage() {
     const q = search.toLowerCase();
     return !q ||
       sp.supporter_id?.toLowerCase().includes(q) ||
+      sp.platformName?.toLowerCase().includes(q) ||
       sp.level?.toLowerCase().includes(q) ||
       sp.management?.toLowerCase().includes(q) ||
       sp.source_platform?.toLowerCase().includes(q) ||
@@ -169,18 +188,25 @@ export default function SupportersPage() {
                     const levelClass = sp.level
                       ? LEVEL_BADGE[sp.level] || 'bg-primary/10 text-primary hover:bg-primary/10'
                       : '';
+                    const displayImage = sp.platformImage || sp.supporter_photo;
+                    const displayName  = sp.platformName  || sp.supporter_id;
                     return (
                       <tr key={sp.id} className="hover:bg-muted/40 transition-colors">
                         <td className={`${cellCls} text-muted-foreground text-center w-10`}>{idx + 1}</td>
                         <td className={cellCls}>
-                          <div className="flex items-center gap-2 min-w-[130px]">
-                            <Avatar className="h-7 w-7 shrink-0">
-                              {sp.supporter_photo && <AvatarImage src={sp.supporter_photo} />}
+                          <div className="flex items-center gap-2 min-w-[160px]">
+                            <Avatar className="h-8 w-8 shrink-0">
+                              {displayImage && <AvatarImage src={displayImage} />}
                               <AvatarFallback className="text-xs bg-primary/10 text-primary font-bold">
-                                {getInitials(sp.supporter_id)}
+                                {getInitials(displayName)}
                               </AvatarFallback>
                             </Avatar>
-                            <span className="font-mono font-semibold">{sp.supporter_id}</span>
+                            <div className="min-w-0">
+                              <p className="font-semibold truncate">{displayName}</p>
+                              {sp.platformName && (
+                                <p className="text-xs text-muted-foreground font-mono">{sp.supporter_id}</p>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className={cellCls}>

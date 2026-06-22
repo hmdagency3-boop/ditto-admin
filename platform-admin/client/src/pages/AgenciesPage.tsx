@@ -7,6 +7,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { fetchUserProfile } from '@/lib/userProfileService';
 
 interface Agency {
   id: string;
@@ -22,6 +23,8 @@ interface Agency {
   status: 'activated' | 'opened';
   admin_id: string;
   notes?: string;
+  platformName?: string;
+  platformImage?: string;
 }
 
 interface AdminUser {
@@ -44,11 +47,26 @@ export default function AgenciesPage() {
       try {
         const h = (url: string) => fetch(url, { headers: { Authorization: `Bearer ${token}` } });
         const [agR, adR] = await Promise.all([h('/api/agencies'), h('/api/users')]);
-        if (agR.ok) setAgencies(await agR.json());
+        const agData: Agency[] = agR.ok ? await agR.json() : [];
         if (adR.ok) setAdmins(await adR.json());
+
+        // Show data immediately
+        setAgencies(agData);
+        setLoading(false);
+
+        // Fetch platform profiles in background
+        agData.forEach(async (ag) => {
+          const profile = await fetchUserProfile(ag.agent_id);
+          if (profile) {
+            setAgencies(prev => prev.map(a =>
+              a.id === ag.id
+                ? { ...a, platformName: profile.name, platformImage: profile.image }
+                : a
+            ));
+          }
+        });
       } catch {
         toast({ title: 'حدث خطأ أثناء تحميل البيانات', variant: 'destructive' });
-      } finally {
         setLoading(false);
       }
     }
@@ -64,6 +82,7 @@ export default function AgenciesPage() {
       ag.agency_name?.toLowerCase().includes(q) ||
       ag.agency_code?.toLowerCase().includes(q) ||
       ag.country?.toLowerCase().includes(q) ||
+      ag.platformName?.toLowerCase().includes(q) ||
       adminMap[ag.admin_id]?.full_name?.toLowerCase().includes(q);
     const matchStatus = statusFilter === 'all' || ag.status === statusFilter;
     return matchSearch && matchStatus;
@@ -177,18 +196,27 @@ export default function AgenciesPage() {
                 <tbody>
                   {filtered.map((ag, idx) => {
                     const admin = adminMap[ag.admin_id];
+                    const displayName = ag.platformName || ag.agency_name || ag.agent_id;
+                    const displayImage = ag.platformImage || ag.agent_photo;
                     return (
                       <tr key={ag.id} className="hover:bg-muted/40 transition-colors">
                         <td className={`${cellCls} text-muted-foreground text-center w-10`}>{idx + 1}</td>
                         <td className={cellCls}>
-                          <div className="flex items-center gap-2 min-w-[120px]">
-                            <Avatar className="h-7 w-7 shrink-0">
-                              {ag.agent_photo && <AvatarImage src={ag.agent_photo} />}
+                          <div className="flex items-center gap-2 min-w-[160px]">
+                            <Avatar className="h-8 w-8 shrink-0">
+                              {displayImage && <AvatarImage src={displayImage} />}
                               <AvatarFallback className="text-xs bg-primary/10 text-primary font-bold">
-                                {getInitials(ag.agency_name || ag.agent_id)}
+                                {getInitials(displayName)}
                               </AvatarFallback>
                             </Avatar>
-                            <span className="font-mono font-semibold">{ag.agent_id}</span>
+                            <div className="min-w-0">
+                              <p className="font-semibold truncate">
+                                {ag.platformName || ag.agency_name || ag.agent_id}
+                              </p>
+                              {ag.platformName && (
+                                <p className="text-xs text-muted-foreground font-mono">{ag.agent_id}</p>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className={`${cellCls} font-medium`}>{ag.agency_name || '—'}</td>
