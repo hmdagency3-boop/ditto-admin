@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -70,14 +69,11 @@ export default function AgenciesPage() {
     return matchSearch && matchStatus;
   });
 
-  const stats = {
-    total: agencies.length,
-    activated: agencies.filter(a => a.status === 'activated').length,
-    opened: agencies.filter(a => a.status === 'opened').length,
-  };
-
   const getInitials = (name: string) =>
     name ? name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase() : '?';
+
+  const cellCls = 'border border-border px-3 py-2.5 text-sm';
+  const headCls = 'border border-border px-3 py-2.5 text-sm font-semibold bg-muted text-right';
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -94,39 +90,23 @@ export default function AgenciesPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-3 rounded-md bg-blue-100 dark:bg-blue-900/30">
-              <Building2 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold">{stats.total}</div>
-              <div className="text-sm text-muted-foreground">إجمالي الوكالات</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-3 rounded-md bg-green-100 dark:bg-green-900/30">
-              <Building2 className="h-5 w-5 text-green-600 dark:text-green-400" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold">{stats.activated}</div>
-              <div className="text-sm text-muted-foreground">مفعّلة</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-3 rounded-md bg-purple-100 dark:bg-purple-900/30">
-              <Building2 className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold">{stats.opened}</div>
-              <div className="text-sm text-muted-foreground">تم افتتاحها</div>
-            </div>
-          </CardContent>
-        </Card>
+        {[
+          { label: 'إجمالي الوكالات', value: agencies.length, color: 'bg-blue-100 dark:bg-blue-900/30', icon: 'text-blue-600 dark:text-blue-400' },
+          { label: 'مفعّلة', value: agencies.filter(a => a.status === 'activated').length, color: 'bg-green-100 dark:bg-green-900/30', icon: 'text-green-600 dark:text-green-400' },
+          { label: 'تم افتتاحها', value: agencies.filter(a => a.status === 'opened').length, color: 'bg-purple-100 dark:bg-purple-900/30', icon: 'text-purple-600 dark:text-purple-400' },
+        ].map(s => (
+          <Card key={s.label}>
+            <CardContent className="p-4 flex items-center gap-4">
+              <div className={`p-3 rounded-md ${s.color}`}>
+                <Building2 className={`h-5 w-5 ${s.icon}`} />
+              </div>
+              <div>
+                <div className="text-2xl font-bold">{s.value}</div>
+                <div className="text-sm text-muted-foreground">{s.label}</div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* Table Card */}
@@ -135,9 +115,7 @@ export default function AgenciesPage() {
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 flex-wrap">
             <div>
               <CardTitle>قائمة الوكالات</CardTitle>
-              <CardDescription>
-                {filtered.length} وكالة من إجمالي {agencies.length}
-              </CardDescription>
+              <CardDescription>{filtered.length} وكالة من إجمالي {agencies.length}</CardDescription>
             </div>
             <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
               <div className="relative flex-1 sm:flex-initial">
@@ -167,125 +145,77 @@ export default function AgenciesPage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {loading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-14 w-full" />
-              ))}
+            <div className="p-4 space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
+            <div className="text-center py-16 text-muted-foreground">
               <Building2 className="h-16 w-16 mx-auto mb-4 opacity-30" />
               <h3 className="text-lg font-medium mb-2">لا توجد وكالات</h3>
               <p>لم يتم العثور على وكالات تطابق البحث</p>
             </div>
           ) : (
-            <>
-              {/* Desktop table */}
-              <div className="hidden md:block overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-right">الوكيل</TableHead>
-                      <TableHead className="text-right">اسم الوكالة</TableHead>
-                      <TableHead className="text-right">الكود</TableHead>
-                      <TableHead className="text-right">البلد</TableHead>
-                      <TableHead className="text-right">واتساب</TableHead>
-                      <TableHead className="text-right">المنصة</TableHead>
-                      <TableHead className="text-right">تاريخ الإنشاء</TableHead>
-                      <TableHead className="text-right">تاريخ الافتتاح</TableHead>
-                      <TableHead className="text-right">الحالة</TableHead>
-                      <TableHead className="text-right">المشرف</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.map(ag => {
-                      const admin = adminMap[ag.admin_id];
-                      return (
-                        <TableRow key={ag.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Avatar className="h-8 w-8">
-                                {ag.agent_photo && <AvatarImage src={ag.agent_photo} alt={ag.agent_id} />}
-                                <AvatarFallback className="text-xs bg-primary/10 text-primary font-bold">
-                                  {getInitials(ag.agency_name || ag.agent_id)}
-                                </AvatarFallback>
-                              </Avatar>
-                              <span className="font-mono font-semibold text-sm">{ag.agent_id}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="font-medium">{ag.agency_name || '—'}</TableCell>
-                          <TableCell className="font-mono text-sm">{ag.agency_code || '—'}</TableCell>
-                          <TableCell>{ag.country || '—'}</TableCell>
-                          <TableCell dir="ltr" className="text-sm">{ag.agent_whatsapp || '—'}</TableCell>
-                          <TableCell>{ag.source_platform || '—'}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {ag.creation_date ? ag.creation_date.split('T')[0] : '—'}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {ag.opening_date ? ag.opening_date.split('T')[0] : '—'}
-                          </TableCell>
-                          <TableCell>
-                            <Badge className={ag.status === 'opened'
-                              ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 hover:bg-purple-100'
-                              : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 hover:bg-green-100'}>
-                              {ag.status === 'opened' ? '🎉 مفتوحة' : '✅ مفعّلة'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {admin ? (admin.full_name || admin.username) : '—'}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Mobile card view */}
-              <div className="md:hidden space-y-3">
-                {filtered.map(ag => {
-                  const admin = adminMap[ag.admin_id];
-                  return (
-                    <div key={ag.id} className="border rounded-lg p-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-9 w-9">
-                            {ag.agent_photo && <AvatarImage src={ag.agent_photo} />}
-                            <AvatarFallback className="text-xs bg-primary/10 text-primary font-bold">
-                              {getInitials(ag.agency_name || ag.agent_id)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-mono font-bold text-sm">{ag.agent_id}</p>
-                            {ag.agency_name && <p className="text-xs text-muted-foreground">{ag.agency_name}</p>}
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr>
+                    <th className={headCls}>#</th>
+                    <th className={headCls}>الوكيل</th>
+                    <th className={headCls}>اسم الوكالة</th>
+                    <th className={headCls}>كود الوكالة</th>
+                    <th className={headCls}>البلد</th>
+                    <th className={headCls}>واتساب</th>
+                    <th className={headCls}>المنصة</th>
+                    <th className={headCls}>تاريخ الإنشاء</th>
+                    <th className={headCls}>تاريخ الافتتاح</th>
+                    <th className={headCls}>الحالة</th>
+                    <th className={headCls}>المشرف</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((ag, idx) => {
+                    const admin = adminMap[ag.admin_id];
+                    return (
+                      <tr key={ag.id} className="hover:bg-muted/40 transition-colors">
+                        <td className={`${cellCls} text-muted-foreground text-center w-10`}>{idx + 1}</td>
+                        <td className={cellCls}>
+                          <div className="flex items-center gap-2 min-w-[120px]">
+                            <Avatar className="h-7 w-7 shrink-0">
+                              {ag.agent_photo && <AvatarImage src={ag.agent_photo} />}
+                              <AvatarFallback className="text-xs bg-primary/10 text-primary font-bold">
+                                {getInitials(ag.agency_name || ag.agent_id)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="font-mono font-semibold">{ag.agent_id}</span>
                           </div>
-                        </div>
-                        <Badge className={ag.status === 'opened'
-                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
-                          : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'}>
-                          {ag.status === 'opened' ? '🎉 مفتوحة' : '✅ مفعّلة'}
-                        </Badge>
-                      </div>
-                      <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
-                        {ag.agency_code    && <span>كود: <strong className="text-foreground">{ag.agency_code}</strong></span>}
-                        {ag.country        && <span>🌍 {ag.country}</span>}
-                        {ag.agent_whatsapp && <span>📞 {ag.agent_whatsapp}</span>}
-                        {ag.source_platform&& <span>📱 {ag.source_platform}</span>}
-                        {ag.creation_date  && <span>📅 {ag.creation_date.split('T')[0]}</span>}
-                        {ag.opening_date   && <span>🎉 {ag.opening_date.split('T')[0]}</span>}
-                      </div>
-                      {admin && (
-                        <p className="text-xs text-muted-foreground border-t pt-2">
-                          مشرف: {admin.full_name || admin.username}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </>
+                        </td>
+                        <td className={`${cellCls} font-medium`}>{ag.agency_name || '—'}</td>
+                        <td className={`${cellCls} font-mono`}>{ag.agency_code || '—'}</td>
+                        <td className={cellCls}>{ag.country || '—'}</td>
+                        <td className={`${cellCls} font-mono`} dir="ltr">{ag.agent_whatsapp || '—'}</td>
+                        <td className={cellCls}>{ag.source_platform || '—'}</td>
+                        <td className={`${cellCls} text-muted-foreground`}>
+                          {ag.creation_date ? ag.creation_date.split('T')[0] : '—'}
+                        </td>
+                        <td className={`${cellCls} text-muted-foreground`}>
+                          {ag.opening_date ? ag.opening_date.split('T')[0] : '—'}
+                        </td>
+                        <td className={cellCls}>
+                          <Badge className={ag.status === 'opened'
+                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 hover:bg-purple-100'
+                            : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 hover:bg-green-100'}>
+                            {ag.status === 'opened' ? '🎉 مفتوحة' : '✅ مفعّلة'}
+                          </Badge>
+                        </td>
+                        <td className={cellCls}>{admin ? (admin.full_name || admin.username) : '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>
