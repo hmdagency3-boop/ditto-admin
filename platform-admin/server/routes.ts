@@ -1351,7 +1351,7 @@ export async function registerRoutes(
     try {
       const { id } = req.params;
       const allowed = ['agent_id','agency_name','country','agent_whatsapp','source_platform','creation_date','opening_date','status'];
-      const updates: Record<string, any> = {};
+      const updates: Record<string, any> = { updated_at: new Date().toISOString() };
       for (const f of allowed) { if (req.body[f] !== undefined) updates[f] = req.body[f] || null; }
       // keep DB "name" column in sync with agency_name
       if (req.body.agency_name !== undefined) updates.name = req.body.agency_name || '';
