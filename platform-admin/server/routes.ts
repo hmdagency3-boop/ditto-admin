@@ -1323,7 +1323,7 @@ export async function registerRoutes(
 
   app.post("/api/agencies", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      const { agent_id, agency_name, admin_id, country, agent_whatsapp, source_platform, creation_date, opening_date, period } = req.body;
+      const { agent_id, agency_name, agency_code, admin_id, country, agent_whatsapp, source_platform, creation_date, opening_date, period } = req.body;
       if (!agent_id || !admin_id) return res.status(400).json({ message: 'أيدي الوكيل والمشرف مطلوبان' });
       const status = opening_date ? 'opened' : 'activated';
       const periodNum = period ? parseInt(period) : null;
@@ -1331,6 +1331,7 @@ export async function registerRoutes(
         agent_id: agent_id.trim(),
         name: agency_name || '',
         agency_name: agency_name || null,
+        agency_code: agency_code || null,
         admin_id,
         country: country || null,
         agent_whatsapp: agent_whatsapp || null,
@@ -1350,7 +1351,7 @@ export async function registerRoutes(
   app.patch("/api/agencies/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const allowed = ['agent_id','agency_name','country','agent_whatsapp','source_platform','creation_date','opening_date','status'];
+      const allowed = ['agent_id','agency_name','agency_code','country','agent_whatsapp','source_platform','creation_date','opening_date','status'];
       const updates: Record<string, any> = { updated_at: new Date().toISOString() };
       for (const f of allowed) { if (req.body[f] !== undefined) updates[f] = req.body[f] || null; }
       // keep DB "name" column in sync with agency_name

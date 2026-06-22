@@ -28,6 +28,7 @@ interface Agency {
   admin_id: string;
   agent_id: string;
   agency_name?: string;
+  agency_code?: string;
   country?: string;
   agent_whatsapp?: string;
   source_platform?: string;
@@ -66,7 +67,7 @@ function getPeriodLabel(p: number) {
 }
 function getCurrentPeriod() { const d = new Date().getDate(); return d <= 10 ? 1 : d <= 20 ? 2 : 3; }
 
-const EMPTY_AGENCY = { agent_id:'', agency_name:'', admin_id:'', country:'', agent_whatsapp:'', source_platform:'', creation_date:'', opening_date:'', notes:'', period: String(getCurrentPeriod()) };
+const EMPTY_AGENCY = { agent_id:'', agency_name:'', agency_code:'', admin_id:'', country:'', agent_whatsapp:'', source_platform:'', creation_date:'', opening_date:'', notes:'', period: String(getCurrentPeriod()) };
 const EMPTY_SUPPORTER = { supporter_id:'', source_platform:'', level:'', management:'', admin_id:'', notes:'', period: String(getCurrentPeriod()) };
 
 // ══════════════════════════════════════════════════════════
@@ -407,7 +408,7 @@ export default function WorkManagement() {
     setEditingAgency(ag);
     setAgencyPaste(false); setAgencyPasteText('');
     setAgencyForm({
-      agent_id: ag.agent_id||'', agency_name: ag.agency_name||'', admin_id: ag.admin_id||'',
+      agent_id: ag.agent_id||'', agency_name: ag.agency_name||'', agency_code: ag.agency_code||'', admin_id: ag.admin_id||'',
       country: ag.country||'', agent_whatsapp: ag.agent_whatsapp||'',
       source_platform: ag.source_platform||'',
       creation_date: ag.creation_date ? ag.creation_date.split('T')[0] : '',
@@ -869,6 +870,10 @@ export default function WorkManagement() {
             <div className="space-y-1">
               <label className="text-sm font-medium">اسم الوكالة</label>
               <Input placeholder="اسم الوكالة" value={agencyForm.agency_name} onChange={e=>setAF('agency_name',e.target.value)}/>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">كود الوكالة</label>
+              <Input placeholder="كود الوكالة" value={agencyForm.agency_code} onChange={e=>setAF('agency_code',e.target.value)}/>
             </div>
             <div className="space-y-2 sm:col-span-2">
               <label className="text-sm font-medium">المشرف المسؤول *</label>
