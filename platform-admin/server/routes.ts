@@ -733,6 +733,56 @@ export async function registerRoutes(
     }
   });
 
+  // زملاء الشيفت — متاح لكل الأدمنز (مش super_admin فقط)
+  app.get("/api/shifts/colleagues", authenticateToken, async (req, res) => {
+    try {
+      const currentUserId = req.user!.userId;
+      // جلب كل الشيفتات
+      const { data: allShifts, error } = await storage.supabase
+        .from('shifts')
+        .select('*')
+        .order('shift_number', { ascending: true });
+      if (error) throw error;
+
+      // شيفتات المستخدم الحالي
+      const myShiftNums = (allShifts || [])
+        .filter((s: any) => s.user_id === currentUserId)
+        .map((s: any) => s.shift_number);
+
+      if (myShiftNums.length === 0) return res.json([]);
+
+      // المستخدمون الآخرون في نفس الشيفتات
+      const colleagueIds = [...new Set(
+        (allShifts || [])
+          .filter((s: any) => myShiftNums.includes(s.shift_number) && s.user_id !== currentUserId)
+          .map((s: any) => ({ user_id: s.user_id, shift_number: s.shift_number }))
+      )];
+
+      if (colleagueIds.length === 0) return res.json([]);
+
+      const uniqueUserIds = [...new Set(colleagueIds.map((c: any) => c.user_id))];
+
+      // جلب بيانات المستخدمين (اسم، أيدي المنصة فقط)
+      const { data: users, error: usersErr } = await storage.supabase
+        .from('users')
+        .select('id, full_name, username, platform_id')
+        .in('id', uniqueUserIds)
+        .eq('status', 'approved');
+      if (usersErr) throw usersErr;
+
+      // دمج الشيفت مع بيانات المستخدم
+      const result = (users || []).map((u: any) => ({
+        ...u,
+        shift_number: colleagueIds.find((c: any) => c.user_id === u.id)?.shift_number,
+      }));
+
+      res.json(result);
+    } catch (error) {
+      console.error("Get shift colleagues error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
   app.post("/api/shifts", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { user_id, shift_number } = req.body;

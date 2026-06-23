@@ -151,23 +151,27 @@ export default function AdminDashboard() {
       const currShift = getCurrentShiftNumber();
       const nextShift = getNextShiftNumber(currShift);
       setCurrentShiftNumber(currShift);
-      setNextShiftNumber(nextShift);
 
-      // جلب بيانات المستخدمين للشيفت القادم
-      const usersRes = await fetch('/api/users', {
+      // إيجاد الشيفت القادم الخاص بالمشرف الحالي
+      const myShiftNumbers = shifts.map((s: Shift) => s.shift_number);
+      let myNextShift = nextShift;
+      if (myShiftNumbers.length > 0) {
+        const after = myShiftNumbers.filter((n: number) => n > currShift).sort((a: number, b: number) => a - b);
+        const before = myShiftNumbers.filter((n: number) => n <= currShift).sort((a: number, b: number) => a - b);
+        myNextShift = after.length > 0 ? after[0] : before[0];
+      }
+      setNextShiftNumber(myNextShift);
+
+      // جلب زملاء الشيفت عبر endpoint مخصص (لا يحتاج super_admin)
+      const colleaguesRes = await fetch('/api/shifts/colleagues', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (usersRes.ok) {
-        const allUsers: NextShiftUser[] = await usersRes.json();
-        const usersMap = Object.fromEntries(allUsers.map(u => [u.id, u]));
-        const nextShiftUserIds = (allShifts as Shift[])
-          .filter(s => s.shift_number === nextShift && s.user_id !== user.id)
-          .map(s => s.user_id);
-        const uniqueIds = [...new Set(nextShiftUserIds)];
+      if (colleaguesRes.ok) {
+        const colleagues: NextShiftUser[] = await colleaguesRes.json();
+        // نعرض فقط زملاء نفس الشيفت القادم للمشرف
+        const forNextShift = colleagues.filter((c: any) => c.shift_number === myNextShift);
         const usersWithProfiles = await Promise.all(
-          uniqueIds.map(async (uid) => {
-            const u = usersMap[uid];
-            if (!u) return null;
+          forNextShift.map(async (u) => {
             try {
               const p = await fetchUserProfile((u as any).platform_id || u.username);
               return { ...u, externalImage: p?.image, externalName: p?.name };
