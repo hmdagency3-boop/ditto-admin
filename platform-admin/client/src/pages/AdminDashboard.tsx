@@ -112,6 +112,8 @@ export default function AdminDashboard() {
   const [nextShiftUsers, setNextShiftUsers] = useState<NextShiftUser[]>([]);
   const [nextShiftNumber, setNextShiftNumber] = useState<number>(1);
   const [currentShiftNumber, setCurrentShiftNumber] = useState<number>(1);
+  const [canCheckInNow, setCanCheckInNow] = useState(false);
+  const [nextCheckInTime, setNextCheckInTime] = useState<string | null>(null);
 
   useEffect(() => {
     if (user?.id) {
@@ -193,6 +195,24 @@ export default function AdminDashboard() {
       setMyRatings(ratings);
       setMyWarnings(warnings);
 
+      // حساب هل يمكن تسجيل الحضور الآن (دقيقتين قبل الشيفت وحتى نهايته)
+      const egyptNow = new Date(Date.now() + 2 * 3600000);
+      const nowMins = egyptNow.getUTCHours() * 60 + egyptNow.getUTCMinutes();
+      let canNow = false;
+      let nextTime: string | null = null;
+      for (const s of shifts) {
+        const start = (s.shift_number - 1) * 120;
+        const end   = s.shift_number * 120;
+        if (nowMins >= start - 2 && nowMins < end) { canNow = true; break; }
+        if (start - 2 > nowMins && !nextTime) {
+          const h = Math.floor((start - 2) / 60);
+          const m = String((start - 2) % 60).padStart(2, '0');
+          nextTime = `${h}:${m}`;
+        }
+      }
+      setCanCheckInNow(canNow);
+      setNextCheckInTime(nextTime);
+
       if (monthlyAttendance) {
         const stats = {
           present: monthlyAttendance.filter((a: Attendance) => a.status === 'present').length,
@@ -256,11 +276,11 @@ export default function AdminDashboard() {
         title: 'تم تسجيل الحضور',
         description: `تم تسجيل حضورك في ${format(now, 'hh:mm a', { locale: ar })}`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error checking in:', error);
       toast({
-        title: 'خطأ في تسجيل الحضور',
-        description: 'حدث خطأ أثناء تسجيل الحضور، يرجى المحاولة مرة أخرى',
+        title: 'لا يمكن تسجيل الحضور',
+        description: error?.message || 'حدث خطأ أثناء تسجيل الحضور',
         variant: 'destructive',
       });
     } finally {
@@ -354,16 +374,26 @@ export default function AdminDashboard() {
         <CardContent>
           <div className="flex items-center gap-4 flex-wrap">
             {!todayAttendance ? (
-              <Button 
-                size="lg" 
-                onClick={handleCheckIn} 
-                disabled={checkingIn}
-                className="min-w-40"
-                data-testid="button-check-in"
-              >
-                <LogIn className="h-5 w-5 ml-2" />
-                {checkingIn ? 'جاري التسجيل...' : 'تسجيل الحضور'}
-              </Button>
+              <>
+                <Button 
+                  size="lg" 
+                  onClick={handleCheckIn} 
+                  disabled={checkingIn || !canCheckInNow}
+                  className="min-w-40"
+                  data-testid="button-check-in"
+                >
+                  <LogIn className="h-5 w-5 ml-2" />
+                  {checkingIn ? 'جاري التسجيل...' : 'تسجيل الحضور'}
+                </Button>
+                {!canCheckInNow && nextCheckInTime && (
+                  <p className="text-sm text-muted-foreground">
+                    ⏰ يمكنك التسجيل من الساعة <span className="font-semibold text-foreground">{nextCheckInTime}</span> (قبل دقيقتين من شيفتك)
+                  </p>
+                )}
+                {!canCheckInNow && !nextCheckInTime && upcomingShifts.length > 0 && (
+                  <p className="text-sm text-muted-foreground">⛔ انتهى وقت شيفتك اليوم</p>
+                )}
+              </>
             ) : !todayAttendance.check_out ? (
               <Button 
                 size="lg" 

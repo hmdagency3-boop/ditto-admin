@@ -759,21 +759,26 @@ export async function registerRoutes(
 
       if (!targetShiftNum) return res.json([]);
 
-      // المستخدمون في الشيفت المطلوب (باستثناء المستخدم الحالي)
+      // جميع المستخدمين في الشيفت المطلوب (بما فيهم المستخدم الحالي)
       const targetIds = (allShifts || [])
-        .filter((s: any) => s.shift_number === targetShiftNum && s.user_id !== currentUserId)
-        .map((s: any) => s.user_id);
+        .filter((s: any) => s.shift_number === targetShiftNum)
+        .map((s: any) => s.user_id as string);
 
       const uniqueIds = [...new Set<string>(targetIds)];
+      console.log(`[colleagues] shift=${targetShiftNum}, userIds=${JSON.stringify(uniqueIds)}`);
+
       if (uniqueIds.length === 0) return res.json([]);
 
-      // جلب بيانات المستخدمين
+      // جلب بيانات المستخدمين بدون فلتر status
       const { data: users, error: usersErr } = await storage.supabase
         .from('users')
-        .select('id, full_name, username, platform_id')
-        .in('id', uniqueIds)
-        .eq('status', 'approved');
-      if (usersErr) throw usersErr;
+        .select('id, full_name, username, platform_id, status')
+        .in('id', uniqueIds);
+      if (usersErr) {
+        console.error('[colleagues] users query error:', usersErr);
+        throw usersErr;
+      }
+      console.log(`[colleagues] found ${users?.length ?? 0} users`);
 
       res.json(users || []);
     } catch (error) {
@@ -851,16 +856,65 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/attendance", authenticateToken, requireSuperAdmin, async (req, res) => {
+  app.post("/api/attendance", authenticateToken, async (req, res) => {
     try {
+      const currentUserId = req.user!.userId;
+      const currentUserRole = req.user!.role;
       const { user_id, check_in, date, status } = req.body;
+
+      // السوبر أدمن يسجل لأي أحد مباشرة
+      if (currentUserRole === 'super_admin') {
+        const { data, error } = await storage.supabase
+          .from('attendance')
+          .insert({ user_id, check_in, date, status })
+          .select()
+          .single();
+        if (error) throw error;
+        return res.status(201).json({ message: "تم تسجيل الحضور", data });
+      }
+
+      // الأدمن العادي: يسجل لنفسه فقط
+      if (user_id !== currentUserId) {
+        return res.status(403).json({ message: "يمكنك تسجيل حضورك أنت فقط" });
+      }
+
+      // التحقق من نافذة الوقت: دقيقتين قبل بداية الشيفت وحتى نهايته
+      const egyptMs = Date.now() + 2 * 3600000; // مصر = UTC+2
+      const egyptDate = new Date(egyptMs);
+      const nowMinutes = egyptDate.getUTCHours() * 60 + egyptDate.getUTCMinutes();
+
+      const { data: myShifts, error: shiftErr } = await storage.supabase
+        .from('shifts')
+        .select('shift_number')
+        .eq('user_id', user_id);
+      if (shiftErr) throw shiftErr;
+
+      if (!myShifts || myShifts.length === 0) {
+        return res.status(403).json({ message: "لا يوجد شيفت معيّن لك" });
+      }
+
+      // كل شيفت مدته ساعتان (120 دقيقة) — الشيفت N يبدأ عند (N-1)*120 دقيقة من منتصف الليل
+      const isInWindow = myShifts.some((s: any) => {
+        const shiftStart = (s.shift_number - 1) * 120;
+        const shiftEnd   = s.shift_number * 120;
+        return nowMinutes >= shiftStart - 2 && nowMinutes < shiftEnd;
+      });
+
+      if (!isInWindow) {
+        // احسب متى يبدأ أقرب شيفت
+        const nextAllowed = myShifts.map((s: any) => (s.shift_number - 1) * 120 - 2)
+          .find((t: number) => t > nowMinutes);
+        const msg = nextAllowed != null
+          ? `لا يمكن تسجيل الحضور الآن. يمكنك التسجيل من الساعة ${Math.floor(nextAllowed / 60)}:${String(nextAllowed % 60).padStart(2, '0')} (قبل دقيقتين من شيفتك)`
+          : "لا يمكن تسجيل الحضور خارج نطاق وقت شيفتك";
+        return res.status(403).json({ message: msg });
+      }
 
       const { data, error } = await storage.supabase
         .from('attendance')
         .insert({ user_id, check_in, date, status })
         .select()
         .single();
-
       if (error) throw error;
       res.status(201).json({ message: "تم تسجيل الحضور", data });
     } catch (error) {
@@ -869,10 +923,24 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/attendance/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
+  app.patch("/api/attendance/:id", authenticateToken, async (req, res) => {
     try {
+      const currentUserId = req.user!.userId;
+      const currentUserRole = req.user!.role;
       const { id } = req.params;
       const { check_out } = req.body;
+
+      // الأدمن العادي يعدّل سجله هو فقط
+      if (currentUserRole !== 'super_admin') {
+        const { data: existing } = await storage.supabase
+          .from('attendance')
+          .select('user_id')
+          .eq('id', id)
+          .single();
+        if (!existing || existing.user_id !== currentUserId) {
+          return res.status(403).json({ message: "غير مصرح" });
+        }
+      }
 
       const { data, error } = await storage.supabase
         .from('attendance')
