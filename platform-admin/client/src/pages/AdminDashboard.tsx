@@ -152,26 +152,19 @@ export default function AdminDashboard() {
       const nextShift = getNextShiftNumber(currShift);
       setCurrentShiftNumber(currShift);
 
-      // إيجاد الشيفت القادم الخاص بالمشرف الحالي
-      const myShiftNumbers = shifts.map((s: Shift) => s.shift_number);
-      let myNextShift = nextShift;
-      if (myShiftNumbers.length > 0) {
-        const after = myShiftNumbers.filter((n: number) => n > currShift).sort((a: number, b: number) => a - b);
-        const before = myShiftNumbers.filter((n: number) => n <= currShift).sort((a: number, b: number) => a - b);
-        myNextShift = after.length > 0 ? after[0] : before[0];
-      }
-      setNextShiftNumber(myNextShift);
+      // الشيفت القادم = الشيفت الذي يلي الشيفت الحالي زمنياً
+      const displayNextShift = nextShift;
+      setNextShiftNumber(displayNextShift);
 
-      // جلب زملاء الشيفت عبر endpoint مخصص (لا يحتاج super_admin)
-      const colleaguesRes = await fetch('/api/shifts/colleagues', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      // جلب مشرفي الشيفت القادم (بدون حاجة صلاحية super_admin)
+      const colleaguesRes = await fetch(
+        `/api/shifts/colleagues?shift_number=${displayNextShift}`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
       if (colleaguesRes.ok) {
         const colleagues: NextShiftUser[] = await colleaguesRes.json();
-        // نعرض فقط زملاء نفس الشيفت القادم للمشرف
-        const forNextShift = colleagues.filter((c: any) => c.shift_number === myNextShift);
         const usersWithProfiles = await Promise.all(
-          forNextShift.map(async (u) => {
+          colleagues.map(async (u) => {
             try {
               const p = await fetchUserProfile((u as any).platform_id || u.username);
               return { ...u, externalImage: p?.image, externalName: p?.name };

@@ -733,10 +733,13 @@ export async function registerRoutes(
     }
   });
 
-  // زملاء الشيفت — متاح لكل الأدمنز (مش super_admin فقط)
+  // مشرفو شيفت معيّن — متاح لكل الأدمنز (بدون super_admin)
+  // يقبل ?shift_number=N للحصول على مشرفي شيفت محدد
   app.get("/api/shifts/colleagues", authenticateToken, async (req, res) => {
     try {
       const currentUserId = req.user!.userId;
+      const shiftNumParam = req.query.shift_number ? parseInt(req.query.shift_number as string) : null;
+
       // جلب كل الشيفتات
       const { data: allShifts, error } = await storage.supabase
         .from('shifts')
@@ -744,39 +747,35 @@ export async function registerRoutes(
         .order('shift_number', { ascending: true });
       if (error) throw error;
 
-      // شيفتات المستخدم الحالي
-      const myShiftNums = (allShifts || [])
-        .filter((s: any) => s.user_id === currentUserId)
-        .map((s: any) => s.shift_number);
+      // تحديد رقم الشيفت المطلوب
+      let targetShiftNum = shiftNumParam;
+      if (!targetShiftNum) {
+        // لو مفيش param — رجّع زملاء نفس شيفت المستخدم
+        const myNums = (allShifts || [])
+          .filter((s: any) => s.user_id === currentUserId)
+          .map((s: any) => s.shift_number);
+        targetShiftNum = myNums[0] ?? null;
+      }
 
-      if (myShiftNums.length === 0) return res.json([]);
+      if (!targetShiftNum) return res.json([]);
 
-      // المستخدمون الآخرون في نفس الشيفتات
-      const colleagueIds = [...new Set(
-        (allShifts || [])
-          .filter((s: any) => myShiftNums.includes(s.shift_number) && s.user_id !== currentUserId)
-          .map((s: any) => ({ user_id: s.user_id, shift_number: s.shift_number }))
-      )];
+      // المستخدمون في الشيفت المطلوب (باستثناء المستخدم الحالي)
+      const targetIds = (allShifts || [])
+        .filter((s: any) => s.shift_number === targetShiftNum && s.user_id !== currentUserId)
+        .map((s: any) => s.user_id);
 
-      if (colleagueIds.length === 0) return res.json([]);
+      const uniqueIds = [...new Set<string>(targetIds)];
+      if (uniqueIds.length === 0) return res.json([]);
 
-      const uniqueUserIds = [...new Set(colleagueIds.map((c: any) => c.user_id))];
-
-      // جلب بيانات المستخدمين (اسم، أيدي المنصة فقط)
+      // جلب بيانات المستخدمين
       const { data: users, error: usersErr } = await storage.supabase
         .from('users')
         .select('id, full_name, username, platform_id')
-        .in('id', uniqueUserIds)
+        .in('id', uniqueIds)
         .eq('status', 'approved');
       if (usersErr) throw usersErr;
 
-      // دمج الشيفت مع بيانات المستخدم
-      const result = (users || []).map((u: any) => ({
-        ...u,
-        shift_number: colleagueIds.find((c: any) => c.user_id === u.id)?.shift_number,
-      }));
-
-      res.json(result);
+      res.json(users || []);
     } catch (error) {
       console.error("Get shift colleagues error:", error);
       res.status(500).json({ message: "حدث خطأ" });
