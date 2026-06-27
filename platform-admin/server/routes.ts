@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
+import dittoRouter from "./dittoRoutes";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -266,6 +267,9 @@ export async function registerRoutes(
   app: Express,
   options: { enableScheduler?: boolean } = { enableScheduler: true }
 ): Promise<Server> {
+
+  // ── Ditto platform routes ─────────────────────────────────────────────────
+  app.use("/api/ditto", dittoRouter);
 
   app.post("/api/auth/register", async (req, res) => {
     try {

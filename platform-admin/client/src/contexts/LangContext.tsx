@@ -36,6 +36,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'nav.settings': 'الإعدادات',
     'nav.management': 'الإدارة',
     'nav.myAccount': 'حسابي',
+    'nav.dittoCenter': 'مركز Ditto',
+    'nav.dittoRooms': 'غرف Ditto',
+    'nav.dittoSearch': 'بحث Ditto',
     // Auth
     'auth.login': 'تسجيل الدخول',
     'auth.signup': 'حساب جديد',
@@ -144,6 +147,9 @@ const translations: Record<Lang, Record<string, string>> = {
     'nav.settings': 'Settings',
     'nav.management': 'Management',
     'nav.myAccount': 'My Account',
+    'nav.dittoCenter': 'Ditto Center',
+    'nav.dittoRooms': 'Ditto Rooms',
+    'nav.dittoSearch': 'Ditto Search',
     // Auth
     'auth.login': 'Login',
     'auth.signup': 'New Account',

@@ -18,6 +18,9 @@ import {
   Briefcase,
   Building2,
   HeartHandshake,
+  Activity,
+  LayoutGrid,
+  UserSearch,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -61,6 +64,9 @@ export function AppSidebar() {
     { key: 'nav.supporters', url: '/supporters', icon: HeartHandshake },
     { key: 'nav.changeLogs', url: '/change-logs', icon: History },
     { key: 'nav.settings', url: '/settings', icon: Settings },
+    { key: 'nav.dittoCenter', url: '/ditto-center', icon: Activity },
+    { key: 'nav.dittoRooms', url: '/ditto-rooms', icon: LayoutGrid },
+    { key: 'nav.dittoSearch', url: '/ditto-search', icon: UserSearch },
   ];
 
   const adminItems = [
