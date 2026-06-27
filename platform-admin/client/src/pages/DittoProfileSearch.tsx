@@ -12,6 +12,24 @@ import {
 
 type SearchMode = "uid" | "erban" | "name";
 
+interface VipInfoDto {
+  vipId?: number | null;
+  vipName?: string | null;
+  vipIcon?: string | null;
+  vipMedal?: string | null;
+  vipDate?: number | null;
+  hasEntranceEffect?: boolean;
+  hasVipGift?: boolean;
+  hasVipSeat?: boolean;
+  hasAntiKick?: boolean;
+  hasAntiMute?: boolean;
+}
+
+interface SvipInfo {
+  level?: number | null;
+  expirationTime?: number | null;
+}
+
 interface ExtendedProfile {
   ok?: boolean;
   uid?: string;
@@ -29,10 +47,12 @@ interface ExtendedProfile {
   countryName?: string | null;
   countryIcon?: string | null;
   countryGroup?: string | null;
+  countryGroupRank?: string | null;
   vipLevel?: number | null;
   vipName?: string | null;
   vipIcon?: string | null;
-  svipInfo?: { level?: number } | null;
+  vipInfoDto?: VipInfoDto | null;
+  svipInfo?: SvipInfo | null;
   gender?: number | null;
   age?: number | null;
   growthLevel?: number | null;
@@ -44,11 +64,15 @@ interface ExtendedProfile {
   noLv?: number | null;
   carName?: string | null;
   carUrl?: string | null;
+  carVideoUrl?: string | null;
   headwearName?: string | null;
   headwearUrl?: string | null;
   ban?: number | null;
-  userMedalList?: Array<{ id: number; url: string; name: string; expiration?: number }>;
-  userWearPropList?: Array<{ propId: number; propName: string; coverImg?: string | null; expireSecond?: number | null; wear?: boolean }>;
+  userMedalList?: Array<{ id: number; url: string; name: string; hasVggPic?: boolean; expiration?: number | null }>;
+  userWearPropList?: Array<{
+    propId: number; propName: string; propType?: number;
+    coverImg?: string | null; expireSecond?: number | null; wear?: boolean;
+  }>;
   source?: string;
   workerUsed?: boolean;
   workerNeeded?: boolean;
@@ -92,8 +116,20 @@ function Avatar({ src, size = 10 }: { src?: string | null; size?: number }) {
 function fmtExpiry(ts: number | null | undefined): string {
   if (ts == null || ts === -1) return "دائم";
   const d = new Date(ts);
-  if (d.getFullYear() > 2100) return "دائم";
+  if (d.getFullYear() > 2100) return "دائم ✦";
+  const now = Date.now();
+  const diffMs = ts - now;
+  if (diffMs <= 0) return "منتهية ⚠";
+  const diffDays = Math.ceil(diffMs / 86400000);
+  if (diffDays <= 30) return `${diffDays} يوم متبقي (${d.toLocaleDateString("ar-EG")})`;
   return d.toLocaleDateString("ar-EG");
+}
+
+function fmtVipDays(days: number | null | undefined): string {
+  if (days == null) return "";
+  if (days <= 0) return "منتهية ⚠";
+  if (days === 1) return "يوم واحد متبقي";
+  return `${days} يوم متبقي`;
 }
 
 export default function DittoProfileSearch() {
@@ -351,7 +387,22 @@ export default function DittoProfileSearch() {
                   <InfoCell label="ترتيب المجموعة" value={profile?.countryGroup ? profile.countryGroupRank : undefined} />
                   <InfoCell label="العمر" value={profile?.age != null ? `${profile.age} سنة` : undefined} />
                   <InfoCell label="VIP" value={profile?.vipName || (profile?.vipLevel ? `Level ${profile.vipLevel}` : undefined)} color="text-yellow-500" />
+                  {(profile?.vipInfoDto?.vipDate != null) && (
+                    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-2">
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">مدة VIP</div>
+                      <div className={`text-sm font-semibold ${(profile.vipInfoDto.vipDate ?? 0) <= 7 ? "text-destructive" : "text-yellow-500"}`}>
+                        {fmtVipDays(profile.vipInfoDto.vipDate)}
+                      </div>
+                      {profile.vipInfoDto.hasEntranceEffect && <div className="text-[9px] text-muted-foreground mt-0.5">✓ تأثير الدخول · {profile.vipInfoDto.hasVipGift ? "✓ هدية" : ""} · {profile.vipInfoDto.hasAntiKick ? "✓ حماية" : ""}</div>}
+                    </div>
+                  )}
                   <InfoCell label="SVIP" value={profile?.svipInfo?.level ? `Level ${profile.svipInfo.level}` : undefined} color="text-purple-500" />
+                  {profile?.svipInfo?.expirationTime != null && profile.svipInfo.expirationTime > 0 && (
+                    <div className="bg-purple-500/10 border border-purple-500/30 rounded p-2">
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">مدة SVIP</div>
+                      <div className="text-sm font-semibold text-purple-500">{fmtExpiry(profile.svipInfo.expirationTime)}</div>
+                    </div>
+                  )}
                   <InfoCell label="المتابعون" value={profile?.fansNum?.toLocaleString()} />
                   <InfoCell label="الماس" value={profile?.diamond != null ? String(profile.diamond) : undefined} color="text-blue-400" />
                   {profile?.signature && <InfoCell label="التوقيع" value={profile.signature} wide />}

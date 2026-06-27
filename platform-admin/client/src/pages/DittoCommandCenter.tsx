@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Activity, Database, Key, Zap, LayoutGrid, Users, Radio,
-  AlertTriangle, RefreshCw, X,
+  AlertTriangle, RefreshCw, X, Wifi, WifiOff, Copy, Check,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -41,6 +41,33 @@ interface RoomsData {
   total: number | null;
 }
 
+interface NimCredentials {
+  ok: boolean;
+  nimAppKey: string | null;
+  nimAccount: string | null;
+  nimToken: string | null;
+  hasToken: boolean;
+}
+
+interface NimAddresses {
+  ok: boolean;
+  addresses: string[];
+}
+
+function CopyBtn({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = useCallback(() => {
+    navigator.clipboard.writeText(text).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [text]);
+  return (
+    <button onClick={copy} className="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-0.5">
+      {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+    </button>
+  );
+}
+
 export default function DittoCommandCenter() {
   const queryClient = useQueryClient();
   const [showInject, setShowInject] = useState(false);
@@ -66,6 +93,19 @@ export default function DittoCommandCenter() {
     queryKey: ["/api/ditto/rooms", "POPULAR", 1, 4],
     queryFn: () => fetch("/api/ditto/rooms?tab=POPULAR&pageNum=1&pageSize=4").then(r => r.json()),
     refetchInterval: 60000,
+  });
+
+  const { data: nimCreds, isLoading: nimCredsLoading } = useQuery<NimCredentials>({
+    queryKey: ["/api/ditto/nim-credentials"],
+    queryFn: () => fetch("/api/ditto/nim-credentials").then(r => r.json()),
+    refetchInterval: 60000,
+  });
+
+  const { data: nimAddrs, isLoading: nimAddrsLoading } = useQuery<NimAddresses>({
+    queryKey: ["/api/ditto/nim-addresses"],
+    queryFn: () => fetch("/api/ditto/nim-addresses").then(r => r.json()),
+    enabled: nimCreds?.ok === true,
+    refetchInterval: 120000,
   });
 
   const sessionExpired = !sessionLoading && session?.ticket_expired;
@@ -267,6 +307,90 @@ export default function DittoCommandCenter() {
           </CardContent>
         </Card>
       </div>
+
+      {/* مفاتيح الدخول للغرف */}
+      <Card>
+        <CardHeader className="pb-3 border-b">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Wifi className="w-4 h-4 text-primary" />
+              مفاتيح الدخول للغرف (NIM)
+            </CardTitle>
+            <Badge variant={nimCreds?.hasToken ? "default" : "secondary"} className="text-[10px]">
+              {nimCredsLoading ? "..." : nimCreds?.hasToken ? "✓ مفعّل" : "⚠ بدون Token"}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-3">
+          {nimCredsLoading ? (
+            <div className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-2/3" /></div>
+          ) : (
+            <>
+              {/* NIM App Key */}
+              <div className="flex justify-between items-center border-b pb-2 gap-2">
+                <span className="text-muted-foreground text-xs shrink-0">NIM App Key</span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="font-mono text-xs truncate max-w-[220px]">
+                    {nimCreds?.nimAppKey ?? "—"}
+                  </span>
+                  {nimCreds?.nimAppKey && <CopyBtn text={nimCreds.nimAppKey} />}
+                </div>
+              </div>
+              {/* NIM Account (UID) */}
+              <div className="flex justify-between items-center border-b pb-2 gap-2">
+                <span className="text-muted-foreground text-xs shrink-0">NIM Account (UID)</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-xs font-bold">{nimCreds?.nimAccount ?? "—"}</span>
+                  {nimCreds?.nimAccount && <CopyBtn text={nimCreds.nimAccount} />}
+                </div>
+              </div>
+              {/* Token status */}
+              <div className="flex justify-between items-center border-b pb-2 gap-2">
+                <span className="text-muted-foreground text-xs shrink-0">NIM Token</span>
+                <div className="flex items-center gap-1.5">
+                  {nimCreds?.hasToken ? (
+                    <>
+                      <span className="font-mono text-xs truncate max-w-[150px]">
+                        {nimCreds.nimToken ? nimCreds.nimToken.slice(0, 12) + "..." : "—"}
+                      </span>
+                      <CopyBtn text={nimCreds.nimToken ?? ""} />
+                      <Badge className="text-[9px] h-4 py-0 bg-green-500/20 text-green-600 border border-green-500/30">صالح</Badge>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <WifiOff className="w-3 h-3 text-destructive" />
+                      <span className="text-xs text-destructive">مفقود — أضف netEaseToken في إعدادات الجلسة</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {/* NIM Addresses */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-muted-foreground text-xs">عناوين الخوادم (LBS)</span>
+                  {nimAddrsLoading && <span className="text-[10px] text-muted-foreground animate-pulse">جاري التحميل...</span>}
+                </div>
+                {nimAddrs?.addresses && nimAddrs.addresses.length > 0 ? (
+                  <div className="space-y-1">
+                    {nimAddrs.addresses.map((addr, i) => (
+                      <div key={i} className="flex items-center gap-2 bg-muted/20 border rounded px-2 py-1">
+                        <span className="font-mono text-[10px] text-muted-foreground flex-1 truncate">{addr}</span>
+                        <CopyBtn text={addr} />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground bg-muted/30 rounded px-2 py-1.5">
+                    {!nimCreds?.hasToken
+                      ? "العناوين تتطلب NIM Token صالح"
+                      : nimAddrsLoading ? "جاري الجلب..." : "لم يتم جلب العناوين"}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Live rooms preview */}
       <Card>
