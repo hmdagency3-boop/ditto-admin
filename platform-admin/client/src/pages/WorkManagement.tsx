@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Building2, Users, FileText, Plus, Trash2,
-  Copy, Check, Pencil, ClipboardPaste, Wand2, UserPlus, EyeOff, Eye
+  Copy, Check, Pencil, ClipboardPaste, Wand2, UserPlus, EyeOff, Eye, DownloadCloud, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -273,6 +273,17 @@ export default function WorkManagement() {
   const [reportDlg, setReportDlg]         = useState(false);
   const [copied, setCopied]               = useState(false);
 
+  // Bulk all-admins report
+  const [allReportsData, setAllReportsData]       = useState<ReportData[]>([]);
+  const [allReportsYear, setAllReportsYear]       = useState(now.getFullYear());
+  const [allReportsMonth, setAllReportsMonth]     = useState(now.getMonth() + 1);
+  const [allReportsPeriod, setAllReportsPeriod]   = useState<1|2|3>(getCurrentPeriod() as 1|2|3);
+  const [loadingAllReports, setLoadingAllReports] = useState(false);
+  const [allReportsDlg, setAllReportsDlg]         = useState(false);
+  const [copiedAll, setCopiedAll]                 = useState(false);
+  const [expandedReports, setExpandedReports]     = useState<Set<string>>(new Set());
+  const [copiedSingle, setCopiedSingle]           = useState<string|null>(null);
+
   const h = useCallback((url: string, opts?: RequestInit) =>
     fetch(url, { ...opts, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(opts?.headers||{}) } }),
   [token]);
@@ -508,6 +519,61 @@ export default function WorkManagement() {
     if (!reportData) return;
     await navigator.clipboard.writeText(buildReportText(reportData));
     setCopied(true); setTimeout(()=>setCopied(false), 2000);
+  }
+
+  // ── Bulk all-admins report ──────────────────────────────
+  async function generateAllReports() {
+    setLoadingAllReports(true);
+    try {
+      const r = await h(`/api/work-report-all?year=${allReportsYear}&month=${allReportsMonth}&period=${allReportsPeriod}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message);
+
+      // Build a map from the backend response
+      const reportsMap = new Map<string, ReportData>();
+      (d.reports || []).forEach((rd: ReportData) => {
+        if (rd.admin?.id) reportsMap.set(rd.admin.id, rd);
+      });
+
+      // Merge with ALL admins from frontend state so no one is missing (even with 0 work)
+      const merged: ReportData[] = admins.map(admin => {
+        return reportsMap.get(admin.id) ?? {
+          admin,
+          agencies_activated: [],
+          agencies_opened: [],
+          supporters: [],
+        };
+      });
+
+      // Sort: admins with most work appear first
+      merged.sort((a, b) => {
+        const aTotal = a.agencies_activated.length + a.supporters.length;
+        const bTotal = b.agencies_activated.length + b.supporters.length;
+        return bTotal - aTotal;
+      });
+
+      setAllReportsData(merged);
+      setExpandedReports(new Set());
+      setAllReportsDlg(true);
+    } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }); }
+    finally { setLoadingAllReports(false); }
+  }
+  function toggleExpand(adminId: string) {
+    setExpandedReports(prev => {
+      const next = new Set(prev);
+      next.has(adminId) ? next.delete(adminId) : next.add(adminId);
+      return next;
+    });
+  }
+  async function copyAllReports() {
+    const text = allReportsData.map(rd => buildReportText(rd)).join('\n\n' + '━'.repeat(32) + '\n\n');
+    await navigator.clipboard.writeText(text);
+    setCopiedAll(true); setTimeout(()=>setCopiedAll(false), 2000);
+  }
+  async function copySingleReport(rd: ReportData) {
+    await navigator.clipboard.writeText(buildReportText(rd));
+    const id = rd.admin?.id || '';
+    setCopiedSingle(id); setTimeout(()=>setCopiedSingle(null), 2000);
   }
 
   const filteredAgencies  = filterAdmin==='all' ? agencies  : agencies.filter(a=>a.admin_id===filterAdmin);
@@ -772,8 +838,54 @@ export default function WorkManagement() {
 
         {/* ══ REPORTS ══ */}
         <TabsContent value="reports" className="space-y-4 mt-4">
+
+          {/* Bulk all-admins report card */}
+          <Card className="border-primary/30 bg-primary/5">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-primary">
+                <DownloadCloud className="h-5 w-5"/>استخراج تقارير جميع الأدمنية دفعة واحدة
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">يولّد تقرير مستقل لكل أدمن في نفس الوقت بناءً على الشهر والفترة المحددة</p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">السنة</label>
+                  <Select value={String(allReportsYear)} onValueChange={v=>setAllReportsYear(Number(v))}>
+                    <SelectTrigger data-testid="select-all-reports-year"><SelectValue/></SelectTrigger>
+                    <SelectContent>{years.map(y=><SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">الشهر</label>
+                  <Select value={String(allReportsMonth)} onValueChange={v=>setAllReportsMonth(Number(v))}>
+                    <SelectTrigger data-testid="select-all-reports-month"><SelectValue/></SelectTrigger>
+                    <SelectContent>{MONTHS.map((m,i)=><SelectItem key={i+1} value={String(i+1)}>{m}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">الفترة</label>
+                  <Select value={String(allReportsPeriod)} onValueChange={v=>setAllReportsPeriod(Number(v) as 1|2|3)}>
+                    <SelectTrigger data-testid="select-all-reports-period"><SelectValue/></SelectTrigger>
+                    <SelectContent>{[1,2,3].map(p=><SelectItem key={p} value={String(p)}>{getPeriodLabel(p)}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Button
+                data-testid="button-generate-all-reports"
+                onClick={generateAllReports}
+                disabled={loadingAllReports}
+                className="gap-2 w-full sm:w-auto"
+              >
+                <DownloadCloud className="h-4 w-4"/>
+                {loadingAllReports ? `جاري الاستخراج... (${admins.length} أدمن)` : `استخراج تقارير الكل (${admins.length} أدمن)`}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Single admin report card */}
           <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5"/>توليد تقرير 10 أيام</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5"/>توليد تقرير أدمن محدد</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="space-y-1">
@@ -1023,6 +1135,108 @@ export default function WorkManagement() {
               {savingSupporter ? 'جاري الحفظ...' : editingSupporter ? 'حفظ التعديلات' : 'إضافة الداعم'}
             </Button>
             <Button variant="outline" onClick={()=>setSupporterDlg(false)}>إلغاء</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ══ ALL REPORTS DIALOG ══ */}
+      <Dialog open={allReportsDlg} onOpenChange={setAllReportsDlg}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DownloadCloud className="h-5 w-5 text-primary"/>
+              تقارير جميع الأدمنية — {getPeriodLabel(allReportsPeriod)} — {MONTHS[allReportsMonth-1]} {allReportsYear}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {/* Summary bar */}
+            <div className="flex flex-wrap items-center gap-2 bg-muted/50 rounded-lg p-3 text-sm">
+              <Badge variant="secondary">{allReportsData.length} أدمن</Badge>
+              <Badge variant="outline" className="text-green-700 border-green-300">
+                {allReportsData.reduce((s,r)=>s+r.agencies_activated.length,0)} وكالة مفعّلة
+              </Badge>
+              <Badge variant="outline" className="text-purple-700 border-purple-300">
+                {allReportsData.reduce((s,r)=>s+r.agencies_opened.length,0)} وكالة افتُتحت
+              </Badge>
+              <Badge variant="outline" className="text-orange-700 border-orange-300">
+                {allReportsData.reduce((s,r)=>s+r.supporters.length,0)} داعم
+              </Badge>
+              <Button
+                data-testid="button-copy-all-reports"
+                variant={copiedAll ? 'default' : 'outline'}
+                size="sm"
+                className="gap-1.5 mr-auto"
+                onClick={copyAllReports}
+              >
+                {copiedAll ? <><Check className="h-3.5 w-3.5"/>تم نسخ الكل!</> : <><Copy className="h-3.5 w-3.5"/>نسخ جميع التقارير</>}
+              </Button>
+            </div>
+
+            {/* Individual admin reports */}
+            {allReportsData.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground">
+                <Users className="h-10 w-10 mx-auto mb-2 opacity-30"/>
+                <p>لا يوجد أدمنية معتمدون</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {allReportsData.map(rd => {
+                  const id = rd.admin?.id || '';
+                  const isExpanded = expandedReports.has(id);
+                  const total = rd.agencies_activated.length + rd.agencies_opened.length + rd.supporters.length;
+                  return (
+                    <div key={id} className="border rounded-lg overflow-hidden">
+                      {/* Admin header row */}
+                      <div
+                        className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/40 transition-colors"
+                        onClick={()=>toggleExpand(id)}
+                        data-testid={`row-admin-report-${id}`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm truncate">{rd.admin?.full_name||rd.admin?.username||'—'}</p>
+                          <p className="text-xs text-muted-foreground">{rd.admin?.platform_id||rd.admin?.username||''}</p>
+                        </div>
+                        <div className="flex gap-2 text-xs shrink-0">
+                          <span className="text-green-700 font-medium">{rd.agencies_activated.length} وكالة</span>
+                          <span className="text-purple-700 font-medium">{rd.agencies_opened.length} افتتاح</span>
+                          <span className="text-orange-700 font-medium">{rd.supporters.length} داعم</span>
+                        </div>
+                        <Button
+                          variant="ghost" size="icon" className="shrink-0 h-7 w-7"
+                          onClick={e=>{e.stopPropagation(); copySingleReport(rd);}}
+                          data-testid={`button-copy-report-${id}`}
+                        >
+                          {copiedSingle===id ? <Check className="h-3.5 w-3.5 text-green-600"/> : <Copy className="h-3.5 w-3.5"/>}
+                        </Button>
+                        {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0"/> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0"/>}
+                      </div>
+
+                      {/* Expanded report content */}
+                      {isExpanded && (
+                        <div className="border-t bg-muted/20 p-3 font-mono text-xs space-y-3">
+                          <div>
+                            <p className="font-bold mb-1">📋 الوكالات المفعّلة ({rd.agencies_activated.length})</p>
+                            {rd.agencies_activated.length===0 ? <p className="text-muted-foreground">لا يوجد</p>
+                              : rd.agencies_activated.map((ag,i)=><p key={ag.id}>{i+1}: {ag.agent_id}{ag.agency_name?` (${ag.agency_name})`:''}</p>)}
+                          </div>
+                          <div>
+                            <p className="font-bold mb-1">🎉 الوكالات المفتوحة ({rd.agencies_opened.length})</p>
+                            {rd.agencies_opened.length===0 ? <p className="text-muted-foreground">لا يوجد</p>
+                              : rd.agencies_opened.map((ag,i)=><p key={ag.id}>{i+1}: {ag.agent_id}{ag.agency_name?` (${ag.agency_name})`:''}</p>)}
+                          </div>
+                          <div>
+                            <p className="font-bold mb-1">👥 الداعمون ({rd.supporters.length})</p>
+                            {rd.supporters.length===0 ? <p className="text-muted-foreground">لا يوجد</p>
+                              : rd.supporters.map((s,i)=><p key={s.id}>{i+1}: {s.supporter_id}{s.level?` | ليفل: ${s.level}`:''}</p>)}
+                          </div>
+                          {total===0 && <p className="text-center text-muted-foreground py-1">لا توجد بيانات لهذه الفترة</p>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

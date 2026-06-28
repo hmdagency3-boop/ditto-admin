@@ -1600,6 +1600,47 @@ export async function registerRoutes(
   });
 
   // توليد التقرير
+  app.get("/api/work-report-all", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { year, month, period } = req.query;
+      if (!year || !month || !period) return res.status(400).json({ message: 'البيانات غير مكتملة' });
+      const y = parseInt(year as string);
+      const m = parseInt(month as string);
+      const p = parseInt(period as string);
+      const monthStart = new Date(y, m - 1, 1, 0, 0, 0).toISOString();
+      const monthEnd   = new Date(y, m, 0, 23, 59, 59).toISOString();
+
+      const { data: allAdmins, error: adminsError } = await storage.supabase
+        .from('users').select('id, username, full_name, platform_id, phone')
+        .eq('status', 'approved').neq('role', 'super_admin');
+      if (adminsError) throw adminsError;
+
+      const [agenciesRes, supportersRes] = await Promise.all([
+        storage.supabase.from('agencies').select('*')
+          .gte('created_at', monthStart).lte('created_at', monthEnd).eq('period', p),
+        storage.supabase.from('supporters').select('*')
+          .gte('created_at', monthStart).lte('created_at', monthEnd).eq('period', p),
+      ]);
+      if (agenciesRes.error) throw agenciesRes.error;
+      if (supportersRes.error) throw supportersRes.error;
+
+      const allAgencies  = agenciesRes.data || [];
+      const allSupporters = supportersRes.data || [];
+
+      const reports = (allAdmins || []).map((admin: any) => {
+        const agencies_activated = allAgencies.filter((a: any) => a.admin_id === admin.id);
+        const agencies_opened    = agencies_activated.filter((a: any) => a.status === 'opened');
+        const supporters         = allSupporters.filter((s: any) => s.admin_id === admin.id);
+        return { admin, agencies_activated, agencies_opened, supporters };
+      });
+
+      res.json({ reports, year: y, month: m, period: p });
+    } catch (error: any) {
+      console.error('Work report all error:', error);
+      res.status(500).json({ message: error?.message || 'حدث خطأ' });
+    }
+  });
+
   app.get("/api/work-report", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { admin_id, year, month, period } = req.query;
