@@ -1,7 +1,7 @@
 modules = ["nodejs-20", "web", "bash"]
 [agent]
 expertMode = true
-stack = "BEST_EFFORT_FALLBACK"
+stack = "FULLSTACK_JS"
 
 [nix]
 channel = "stable-25_05"
@@ -39,10 +39,10 @@ localPort = 5000
 externalPort = 80
 
 [deployment]
-deploymentTarget = "vm"
-build = ["bash", "-c", "cd platform-admin && npm install && npm run build"]
+deploymentTarget = "autoscale"
+build = ["npm", "run", "build"]
 publicDir = "admin-panel/dist"
-run = ["bash", "-c", "cd platform-admin && npm run start"]
+run = ["node", "./dist/index.cjs"]
 
 [userenv]
 
