@@ -13,6 +13,7 @@ import {
 
 const TABS = ["POPULAR", "EG", "SA", "AE"];
 const AGORA_APP_ID = "1b77c926d478406cae3174ce0565db4b";
+const SESSION_UID = 281306;
 
 interface Room {
   roomId: string | null;
@@ -38,10 +39,9 @@ interface RoomsData {
 
 interface TrtcTokenData {
   ok: boolean;
-  appId?: string;
-  userId?: string;
-  userSig?: string;
-  roomId?: string | number;
+  token?: string;
+  privateMapKey?: string;
+  channel?: number;
   error?: unknown;
 }
 
@@ -264,7 +264,7 @@ export default function DittoRooms() {
         body: JSON.stringify({ roomId }),
       });
       const tokenData = await tokenRes.json() as TrtcTokenData;
-      if (!tokenData.ok || !tokenData.userSig) {
+      if (!tokenData.ok || !tokenData.token) {
         setListenStates(p => ({ ...p, [roomId]: "error" }));
         setTimeout(() => setListenStates(p => ({ ...p, [roomId]: "idle" })), 3000);
         return;
@@ -275,7 +275,7 @@ export default function DittoRooms() {
       AgoraRTC.setLogLevel(4);
       const client = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
       await client.setClientRole("audience");
-      await client.join(AGORA_APP_ID, roomId, tokenData.userSig!, parseInt(tokenData.userId ?? "0") || null);
+      await client.join(AGORA_APP_ID, roomId, tokenData.token, SESSION_UID);
 
       const audioTracks: any[] = [];
       const videoTracks: any[] = [];
