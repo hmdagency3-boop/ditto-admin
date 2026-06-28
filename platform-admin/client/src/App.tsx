@@ -7,6 +7,8 @@ import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/s
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { LangProvider, useLang } from "@/contexts/LangContext";
+import { DittoSessionProvider } from "@/contexts/DittoSessionContext";
+import { DittoSessionBar } from "@/components/DittoSessionBar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -84,11 +86,12 @@ function AppLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider style={style as React.CSSProperties}>
       <div className="flex min-h-screen w-full" dir={dir}>
         <AppSidebar />
-        <SidebarInset className="flex flex-col flex-1">
+        <SidebarInset className="flex flex-col flex-1 min-h-0">
           <header className="sticky top-0 z-50 flex items-center justify-between gap-2 p-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <SidebarTrigger />
             <ThemeToggle />
           </header>
+          <DittoSessionBar />
           <main className="flex-1 overflow-auto overflow-x-hidden">
             {children}
           </main>
@@ -180,12 +183,14 @@ function App() {
       <ThemeProvider>
         <LangProvider>
           <AuthProvider>
-            <TooltipProvider>
-              <AppLayout>
-                <Router />
-              </AppLayout>
-              <Toaster />
-            </TooltipProvider>
+            <DittoSessionProvider>
+              <TooltipProvider>
+                <AppLayout>
+                  <Router />
+                </AppLayout>
+                <Toaster />
+              </TooltipProvider>
+            </DittoSessionProvider>
           </AuthProvider>
         </LangProvider>
       </ThemeProvider>

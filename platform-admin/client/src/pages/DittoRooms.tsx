@@ -1,22 +1,18 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   LayoutGrid, Users, Radio, User, Zap, Copy, Check, Loader2, X,
-  Headphones, Volume2, VolumeX, Mic, MicOff, Search, XCircle,
-  MessageSquare, Video, VideoOff,
+  Headphones, Mic, Search, XCircle,
 } from "lucide-react";
 import AgoraRTC, {
-  IAgoraRTCClient, IRemoteAudioTrack, IRemoteVideoTrack, IMicrophoneAudioTrack,
+  IRemoteAudioTrack, IRemoteVideoTrack,
 } from "agora-rtc-sdk-ng";
+import { useDittoSession, AGORA_APP_ID, SESSION_UID } from "@/contexts/DittoSessionContext";
 
 const TABS = ["POPULAR", "EG", "SA", "AE"];
-const AGORA_APP_ID = "1b77c926d478406cae3174ce0565db4b";
-const SESSION_UID  = 281306;
-
-AgoraRTC.setLogLevel(4);
 
 type ListenState = "idle" | "fetching" | "connecting" | "listening" | "error";
 type TalkState   = "idle" | "fetching" | "connecting" | "talking"   | "error";
@@ -41,74 +37,8 @@ interface Room {
 
 interface RoomsData { ok: boolean; rooms: Room[]; total: number | null; }
 
-interface ActiveSession {
-  roomId:      string;
-  roomName:    string;
-  client:      IAgoraRTCClient;
-  audioTracks: IRemoteAudioTrack[];
-  videoTracks: IRemoteVideoTrack[];
-  muted:       boolean;
-  localTrack:  IMicrophoneAudioTrack | null;
-  isTalking:   boolean;
-  micMuted:    boolean;
-}
-
-interface ChatMessage { id: string; uid: string; nick: string; text: string; ts: number; }
-
-interface RoomMember {
-  uid:         number;
-  nick:        string;
-  avatar:      string | null;
-  gender:      number | null;
-  isManager:   boolean;
-  isCreator:   boolean;
-  onMic:       boolean;
-  inRoom:      boolean;
-  growthLevel: number;
-  charmLevel:  number;
-  carName:     string | null;
-  noLv:        number;
-  erbanNo:     number | null;
-}
-
 export default function DittoRooms() {
-  const [activeTab,    setActiveTab]    = useState(TABS[0]);
-  const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
-  const [isMuted,      setIsMuted]      = useState(false);
-  const [isMicMuted,   setIsMicMuted]   = useState(false);
-
-  const [videoOpen,        setVideoOpen]        = useState(false);
-  const videoContainerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if ((activeSession?.videoTracks.length ?? 0) > 0) setVideoOpen(true);
-  }, [activeSession?.videoTracks.length]);
-
-  useEffect(() => {
-    if (!videoOpen) return;
-    const tracks  = activeSession?.videoTracks ?? [];
-    const container = videoContainerRef.current;
-    if (!container) return;
-    container.innerHTML = "";
-    tracks.forEach(track => {
-      const el = document.createElement("div");
-      el.style.cssText = "width:100%;height:100%;position:absolute;inset:0";
-      container.appendChild(el);
-      try { track.play(el); } catch {}
-    });
-  }, [activeSession?.videoTracks, videoOpen]);
-
-  const [chatOpen,     setChatOpen]     = useState(false);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatStatus,   setChatStatus]   = useState<"idle"|"connecting"|"connected"|"failed"|"no_credentials">("idle");
-  const nimChatroomRef = useRef<unknown>(null);
-  const chatEndRef     = useRef<HTMLDivElement>(null);
-
-  const [membersOpen,        setMembersOpen]        = useState(false);
-  const [members,            setMembers]            = useState<RoomMember[]>([]);
-  const [membersLoading,     setMembersLoading]     = useState(false);
-  const [agoraPublisherUids, setAgoraPublisherUids] = useState<number[]>([]);
-
+  const [activeTab,     setActiveTab]     = useState(TABS[0]);
   const [searchQuery,   setSearchQuery]   = useState("");
   const [searchInput,   setSearchInput]   = useState("");
   const [searchResults, setSearchResults] = useState<Room[] | null>(null);
@@ -117,204 +47,17 @@ export default function DittoRooms() {
   const inputRef = useRef<HTMLInputElement>(null);
   const isSearchMode = searchQuery.length > 0;
 
+  const {
+    activeSession, setActiveSession,
+    setAgoraPublisherUids, setIsMicMuted, stopSession,
+  } = useDittoSession();
+
   const { data: roomList, isLoading } = useQuery<RoomsData>({
     queryKey: ["/api/ditto/rooms", activeTab],
-    queryFn: () => fetch(`/api/ditto/rooms?tab=${activeTab}&pageNum=1&pageSize=30`).then(r => r.json()),
+    queryFn:  () => fetch(`/api/ditto/rooms?tab=${activeTab}&pageNum=1&pageSize=30`).then(r => r.json()),
     refetchInterval: 30000,
     enabled: !isSearchMode,
   });
-
-  // NIM chatroom
-  useEffect(() => {
-    if (!activeSession) {
-      if (nimChatroomRef.current) {
-        try { (nimChatroomRef.current as any).exit(); } catch {}
-        nimChatroomRef.current = null;
-      }
-      setChatMessages([]);
-      setChatStatus("idle");
-      return;
-    }
-    setChatStatus("connecting");
-    setChatMessages([]);
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const [credsRes, addrRes] = await Promise.all([
-          fetch("/api/ditto/nim-credentials"),
-          fetch("/api/ditto/nim-addresses"),
-        ]);
-        const creds    = await credsRes.json() as { ok: boolean; nimAppKey: string; nimAccount: string | null; nimToken: string | null; hasToken: boolean };
-        const addrData = await addrRes.json() as { ok: boolean; addresses: string[] };
-        if (cancelled) return;
-        if (!creds.hasToken || !creds.nimToken) { if (!cancelled) setChatStatus("no_credentials"); return; }
-
-        const ChatroomMod = await import("nim-web-sdk-ng/dist/v1/CHATROOM_BROWSER_SDK.js" as any);
-        const Chatroom    = (ChatroomMod as any).default ?? ChatroomMod;
-        if (cancelled) return;
-
-        const chatroomAddresses: string[] = addrData.addresses ?? [];
-        if (chatroomAddresses.length === 0) { if (!cancelled) setChatStatus("no_credentials"); return; }
-
-        const chatroom = Chatroom.getInstance({
-          appkey:             creds.nimAppKey,
-          account:            creds.nimAccount ?? String(SESSION_UID),
-          token:              creds.nimToken,
-          chatroomId:         String(activeSession.roomId),
-          chatroomNick:       "monitor",
-          chatroomAddresses,
-          onconnect: () => { if (!cancelled) setChatStatus("connected"); },
-          onmsgs: (msgs: any[]) => {
-            if (cancelled) return;
-            const newMsgs: ChatMessage[] = msgs
-              .filter(m => m.type === "text" || m.text || m.type === "custom")
-              .map(m => ({
-                id:   m.idClient ?? (Date.now() + Math.random()).toString(),
-                uid:  m.fromAccount ?? "?",
-                nick: m.fromNick ?? "",
-                text: m.text ?? (typeof m.attach?.content === "string" ? m.attach.content : JSON.stringify(m.attach ?? "")),
-                ts:   m.time ?? Date.now(),
-              }));
-            if (newMsgs.length > 0) {
-              setChatMessages(prev => [...prev, ...newMsgs].slice(-300));
-              setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-            }
-            for (const m of msgs) {
-              if (m.type !== "chatroomNotification") continue;
-              const nType      = m.attach?.type as string | undefined;
-              const rawMembers: any[] = m.attach?.members ?? (m.attach?.member ? [m.attach.member] : []);
-              if (nType === "memberEnter" && rawMembers.length > 0) {
-                const entering: RoomMember[] = rawMembers.map((nm: any) => {
-                  let custom: Record<string, unknown> = {};
-                  try { custom = JSON.parse(nm.custom ?? "{}"); } catch {}
-                  return {
-                    uid:         parseInt(nm.account) || 0,
-                    nick:        nm.nick ?? "",
-                    avatar:      nm.avatar ?? null,
-                    gender:      null,
-                    isManager:   nm.chatroomMemberType === "manager" || nm.chatroomMemberType === "creator",
-                    isCreator:   nm.chatroomMemberType === "creator",
-                    onMic: false, inRoom: true,
-                    growthLevel: Number(custom.growthLevel ?? custom.lv ?? 0),
-                    charmLevel:  Number(custom.charmLevel ?? 0),
-                    carName:     (custom.carName as string) ?? null,
-                    noLv:        Number(custom.noLv ?? 0),
-                    erbanNo:     typeof custom.erbanNo === "number" ? custom.erbanNo : null,
-                  };
-                });
-                setMembers(prev => {
-                  const existing = new Set(prev.map(p => p.uid));
-                  return [...prev, ...entering.filter(e => !existing.has(e.uid))];
-                });
-              } else if (nType === "memberExit" && rawMembers.length > 0) {
-                const leavingUids = new Set(rawMembers.map((nm: any) => parseInt(nm.account)));
-                setMembers(prev => prev.filter(p => !leavingUids.has(p.uid)));
-              }
-            }
-          },
-          ondisconnect: () => { if (!cancelled) setChatStatus("idle"); },
-          onerror:      () => { if (!cancelled) setChatStatus("failed"); },
-        });
-        nimChatroomRef.current = chatroom;
-      } catch { if (!cancelled) setChatStatus("failed"); }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (nimChatroomRef.current) {
-        try { (nimChatroomRef.current as any).exit(); } catch {}
-        nimChatroomRef.current = null;
-      }
-    };
-  }, [activeSession?.roomId]);
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages.length]);
-
-  // Members: load profiles for Agora publishers
-  useEffect(() => {
-    if (!activeSession) { setMembers([]); return; }
-    if (agoraPublisherUids.length === 0) { setMembers([]); return; }
-    let cancelled = false;
-    setMembersLoading(true);
-
-    Promise.allSettled(
-      agoraPublisherUids.map(uid =>
-        fetch(`/api/ditto/user/${uid}/profile`).then(r => r.json())
-      )
-    ).then(results => {
-      if (cancelled) return;
-      const mapped: RoomMember[] = results
-        .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled")
-        .map(r => {
-          const v = r.value;
-          return {
-            uid:         Number(v.uid ?? 0),
-            nick:        v.nickname ?? v.nick ?? "",
-            avatar:      v.avatar ?? null,
-            gender:      v.gender ?? null,
-            isManager:   false,
-            isCreator:   false,
-            onMic:       true,
-            inRoom:      true,
-            growthLevel: v.level ?? 0,
-            charmLevel:  0,
-            carName:     null,
-            noLv:        0,
-            erbanNo:     v.erbanNo ?? null,
-          };
-        })
-        .filter(m => m.uid > 0);
-      setMembers(mapped);
-      setMembersLoading(false);
-    });
-
-    return () => { cancelled = true; };
-  }, [activeSession?.roomId, agoraPublisherUids]);
-
-  const stopSession = useCallback(async () => {
-    if (!activeSession) return;
-    try {
-      activeSession.audioTracks.forEach(t => t.stop());
-      activeSession.videoTracks.forEach(t => t.stop());
-      if (activeSession.localTrack) { activeSession.localTrack.stop(); activeSession.localTrack.close(); }
-      await activeSession.client.leave();
-    } catch {}
-    setActiveSession(null);
-    setIsMuted(false);
-    setIsMicMuted(false);
-    setVideoOpen(false);
-    setChatOpen(false);
-    setMembersOpen(false);
-    setAgoraPublisherUids([]);
-    setMembers([]);
-  }, [activeSession]);
-
-  const toggleMute = useCallback(() => {
-    if (!activeSession) return;
-    const newMuted = !isMuted;
-    activeSession.audioTracks.forEach(t => { if (newMuted) t.stop(); else t.play(); });
-    setIsMuted(newMuted);
-  }, [activeSession, isMuted]);
-
-  const toggleMic = useCallback(async () => {
-    if (!activeSession?.localTrack) return;
-    const newMicMuted = !isMicMuted;
-    await activeSession.localTrack.setMuted(newMicMuted);
-    setIsMicMuted(newMicMuted);
-  }, [activeSession, isMicMuted]);
-
-  useEffect(() => {
-    return () => {
-      if (activeSession) {
-        activeSession.audioTracks.forEach(t => t.stop());
-        if (activeSession.localTrack) { activeSession.localTrack.stop(); activeSession.localTrack.close(); }
-        activeSession.client.leave().catch(() => {});
-      }
-    };
-  }, []);
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -338,7 +81,6 @@ export default function DittoRooms() {
     setTimeout(() => inputRef.current?.focus(), 50);
   }
 
-  // Build onListen / onTalk handlers (same pattern as original)
   function buildJoinHandlers(room: Room) {
     const roomIdStr = String(room.roomId);
 
@@ -371,13 +113,15 @@ export default function DittoRooms() {
 
       await client.join(AGORA_APP_ID, roomIdStr, token, SESSION_UID);
 
-      // Catch users already publishing before we joined
       for (const u of client.remoteUsers) {
         setAgoraPublisherUids(prev => [...new Set([...prev, u.uid as number])]);
         if (u.hasAudio) { try { const t = await client.subscribe(u, "audio"); audioTracks.push(t); t.play(); } catch {} }
         if (u.hasVideo) { try { const t = await client.subscribe(u, "video") as IRemoteVideoTrack; videoTracks.push(t); } catch {} }
       }
-      setActiveSession({ roomId: roomIdStr, roomName: room.nick ?? room.roomName ?? "", client, audioTracks, videoTracks, muted: false, localTrack: null, isTalking: false, micMuted: false });
+      setActiveSession({
+        roomId: roomIdStr, roomName: room.nick ?? room.roomName ?? "",
+        client, audioTracks, videoTracks, muted: false, localTrack: null, isTalking: false, micMuted: false,
+      });
     };
 
     const onTalk = async (token: string) => {
@@ -412,7 +156,10 @@ export default function DittoRooms() {
         if (u.hasVideo) { try { const t = await client.subscribe(u, "video") as IRemoteVideoTrack; videoTracks.push(t); } catch {} }
       }
       await client.publish([localTrack]);
-      setActiveSession({ roomId: roomIdStr, roomName: room.nick ?? room.roomName ?? "", client, audioTracks, videoTracks, muted: false, localTrack, isTalking: true, micMuted: false });
+      setActiveSession({
+        roomId: roomIdStr, roomName: room.nick ?? room.roomName ?? "",
+        client, audioTracks, videoTracks, muted: false, localTrack, isTalking: true, micMuted: false,
+      });
       setIsMicMuted(false);
     };
 
@@ -422,14 +169,13 @@ export default function DittoRooms() {
   const displayRooms = isSearchMode ? (searchResults ?? []) : (roomList?.rooms ?? []);
 
   return (
-    <div className="p-6 space-y-0 h-full flex flex-col font-mono">
+    <div className="p-6 space-y-4 font-mono">
       {/* Header */}
-      <header className="border-b border-border pb-4 shrink-0 space-y-4">
+      <header className="border-b border-border pb-4 space-y-4">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2 text-primary">
-              <LayoutGrid className="w-6 h-6" />
-              الغرف الحية
+              <LayoutGrid className="w-6 h-6" /> الغرف الحية
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
               {isSearchMode
@@ -473,242 +219,40 @@ export default function DittoRooms() {
         </form>
       </header>
 
-      {/* Active session bar */}
-      {activeSession && (
-        <div className={`shrink-0 border px-4 py-3 flex items-center justify-between gap-4 flex-wrap ${activeSession.isTalking ? "border-green-500/60 bg-green-500/5" : "border-primary/60 bg-primary/5"}`}>
-          <div className="flex items-center gap-3">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${activeSession.isTalking ? "bg-green-400" : "bg-primary"}`} />
-              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${activeSession.isTalking ? "bg-green-400" : "bg-primary"}`} />
-            </span>
-            <span className={`text-xs font-bold tracking-widest uppercase ${activeSession.isTalking ? "text-green-400" : "text-primary"}`}>
-              {activeSession.isTalking ? "BROADCASTING" : "INTERCEPTING"}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              Channel <span className="text-foreground font-bold">{activeSession.roomId}</span>
-              {activeSession.roomName && <> · <span className="text-foreground truncate max-w-[200px] inline-block align-bottom">{activeSession.roomName}</span></>}
-            </span>
+      {/* Room grid */}
+      {isSearchMode && searchError && (
+        <div className="border border-destructive/40 bg-destructive/5 p-4 text-destructive text-xs font-bold">⚠ {searchError}</div>
+      )}
+      {(isLoading && !isSearchMode) || (isSearchMode && searchLoading) ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+          {Array.from({ length: 12 }).map((_, i) => <Skeleton key={i} className="h-72 w-full rounded-none" />)}
+        </div>
+      ) : displayRooms.length === 0 ? (
+        <div className="flex items-center justify-center border border-dashed border-border p-16 text-center text-muted-foreground mt-8">
+          <div>
+            <LayoutGrid className="w-12 h-12 mx-auto mb-4 opacity-20" />
+            <p className="font-bold tracking-widest uppercase">{isSearchMode ? "NO_RESULTS" : "NO_NODES_FOUND"}</p>
+            <p className="text-sm mt-2 opacity-60">{isSearchMode ? "لا توجد غرف بهذا البحث" : "لا توجد غرف نشطة"}</p>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {activeSession.isTalking && (
-              <button onClick={toggleMic}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracking-widest border transition-colors ${isMicMuted ? "border-destructive/50 text-destructive hover:bg-destructive/10" : "border-green-500/50 text-green-400 hover:bg-green-500/10"}`}>
-                {isMicMuted ? <MicOff className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
-                {isMicMuted ? "MIC_OFF" : "MIC_ON"}
-              </button>
-            )}
-            <button onClick={toggleMute}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracking-widest border transition-colors ${isMuted ? "border-destructive/50 text-destructive hover:bg-destructive/10" : "border-border text-muted-foreground hover:text-foreground hover:border-primary/40"}`}>
-              {isMuted ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
-              {isMuted ? "MUTED" : "LIVE"}
-            </button>
-            <button onClick={() => setVideoOpen(o => !o)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracking-widest border transition-colors relative ${videoOpen ? "border-primary/60 text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground hover:border-primary/40"}`}>
-              {(activeSession.videoTracks.length) > 0 ? <Video className="w-3 h-3" /> : <VideoOff className="w-3 h-3" />} VIDEO
-              {(activeSession.videoTracks.length) > 0 && <span className="absolute -top-1.5 -right-1.5 bg-green-400 w-2 h-2 rounded-full animate-pulse" />}
-            </button>
-            <button onClick={() => setMembersOpen(o => !o)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracking-widest border transition-colors relative ${membersOpen ? "border-primary/60 text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground hover:border-primary/40"}`}>
-              <Users className="w-3 h-3" /> MEMBERS
-              {members.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-muted text-muted-foreground text-[8px] font-black rounded-full w-4 h-4 flex items-center justify-center">
-                  {members.length > 99 ? "99" : members.length}
-                </span>
-              )}
-            </button>
-            <button onClick={() => setChatOpen(o => !o)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracking-widest border transition-colors relative ${chatOpen ? "border-primary/60 text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground hover:border-primary/40"}`}>
-              <MessageSquare className="w-3 h-3" /> CHAT
-              {chatMessages.length > 0 && !chatOpen && (
-                <span className="absolute -top-1.5 -right-1.5 bg-primary text-primary-foreground text-[8px] font-black rounded-full w-4 h-4 flex items-center justify-center">
-                  {chatMessages.length > 99 ? "99" : chatMessages.length}
-                </span>
-              )}
-            </button>
-            <button onClick={stopSession}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracking-widest border border-destructive/50 text-destructive hover:bg-destructive/10 transition-colors">
-              <X className="w-3 h-3" /> DISCONNECT
-            </button>
-          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+          {displayRooms.map((room, idx) => {
+            const { onListen, onTalk } = buildJoinHandlers(room);
+            return (
+              <RoomCard
+                key={room.roomId ?? idx}
+                room={room}
+                isActiveRoom={activeSession?.roomId === String(room.roomId)}
+                isTalking={activeSession?.isTalking ?? false}
+                onListen={onListen}
+                onTalk={onTalk}
+                onStop={stopSession}
+              />
+            );
+          })}
         </div>
       )}
-
-      {/* Panels + grid row */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
-
-        {/* Members panel */}
-        {membersOpen && activeSession && (
-          <div className="w-64 shrink-0 border-r border-border flex flex-col bg-background/50">
-            <div className="border-b border-border px-3 py-2 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <Users className="w-3 h-3 text-primary" />
-                <span className="text-[10px] font-bold tracking-widest uppercase text-primary">MEMBERS</span>
-                {membersLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
-              </div>
-              <span className="text-[9px] text-muted-foreground">{members.length} online</span>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {members.length === 0 && !membersLoading && (
-                <div className="flex items-center justify-center h-24 text-muted-foreground px-3">
-                  <div className="text-center">
-                    <Users className="w-4 h-4 mx-auto mb-1 opacity-30" />
-                    <p className="text-[9px] uppercase tracking-widest opacity-60">
-                      {agoraPublisherUids.length === 0 ? "Waiting for speakers..." : "Loading profiles..."}
-                    </p>
-                    <p className="text-[8px] opacity-30 mt-1">Shows active mic users</p>
-                  </div>
-                </div>
-              )}
-              {members.length > 0 && (
-                <div className="px-2 py-1 border-b border-border/20 bg-muted/10">
-                  <span className="text-[8px] text-primary/60 uppercase tracking-widest font-bold">🎙 ON MIC · {members.length}</span>
-                </div>
-              )}
-              {members.map(m => (
-                <div key={m.uid} className="px-2 py-1.5 flex items-center gap-2 border-b border-border/20 hover:bg-muted/20 transition-colors">
-                  <div className="relative shrink-0">
-                    {m.avatar ? (
-                      <img src={m.avatar} alt="" className="w-8 h-8 rounded-full object-cover bg-muted"
-                        onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-                        <User className="w-4 h-4 text-muted-foreground" />
-                      </div>
-                    )}
-                    {m.onMic && <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-400 rounded-full border-2 border-background" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      {m.isCreator  && <span className="text-[8px] bg-primary/20 text-primary px-1 py-px leading-none shrink-0">HOST</span>}
-                      {m.isManager && !m.isCreator && <span className="text-[8px] bg-yellow-500/20 text-yellow-400 px-1 py-px leading-none shrink-0">MOD</span>}
-                      <span className="text-[10px] text-foreground truncate">{m.nick || `UID:${m.uid}`}</span>
-                    </div>
-                    <div className="text-[8px] text-muted-foreground/50 flex items-center gap-1.5 mt-px">
-                      <span>Lv.{m.growthLevel}</span>
-                      {m.erbanNo && <span>#{m.erbanNo}</span>}
-                      {m.carName  && <span className="truncate max-w-[80px]">🚗 {m.carName}</span>}
-                    </div>
-                  </div>
-                  <span className="text-[8px] text-muted-foreground/30 shrink-0">{m.uid}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Video panel */}
-        {videoOpen && activeSession && (
-          <div className="w-80 shrink-0 border-r border-border flex flex-col bg-black">
-            <div className="border-b border-border/50 px-3 py-2 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <Video className="w-3 h-3 text-primary" />
-                <span className="text-[10px] font-bold tracking-widest uppercase text-primary">LIVE VIDEO</span>
-                {activeSession.videoTracks.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />}
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[9px] text-muted-foreground">{activeSession.videoTracks.length} stream(s)</span>
-                <button onClick={() => setVideoOpen(false)} className="text-muted-foreground hover:text-foreground">
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 relative bg-black">
-              <div ref={videoContainerRef} className="absolute inset-0" />
-              {activeSession.videoTracks.length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center text-center pointer-events-none">
-                  <div>
-                    <VideoOff className="w-8 h-8 mx-auto mb-2 text-muted-foreground/30" />
-                    <p className="text-[9px] uppercase tracking-widest text-muted-foreground/50">No video stream</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Chat panel */}
-        {chatOpen && activeSession && (
-          <div className="w-72 shrink-0 border-r border-border flex flex-col bg-background/50">
-            <div className="border-b border-border px-3 py-2 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="w-3 h-3 text-primary" />
-                <span className="text-[10px] font-bold tracking-widest uppercase text-primary">LIVE CHAT</span>
-                <span className={`w-1.5 h-1.5 rounded-full ${chatStatus === "connected" ? "bg-green-400" : chatStatus === "connecting" ? "bg-yellow-400 animate-pulse" : chatStatus === "failed" ? "bg-destructive" : chatStatus === "no_credentials" ? "bg-orange-400" : "bg-muted"}`} />
-                <span className="text-[9px] text-muted-foreground uppercase tracking-wider">{chatStatus}</span>
-              </div>
-              <span className="text-[9px] text-muted-foreground">{chatMessages.length} msgs</span>
-            </div>
-            <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1.5">
-              {chatStatus === "connecting" && chatMessages.length === 0 && (
-                <div className="flex items-center justify-center h-20 text-muted-foreground">
-                  <div className="text-center"><Loader2 className="w-4 h-4 animate-spin mx-auto mb-1" /><p className="text-[9px] uppercase tracking-widest">Connecting to NIM...</p></div>
-                </div>
-              )}
-              {chatStatus === "failed" && (
-                <div className="p-2 border border-destructive/30 bg-destructive/5 text-[9px] text-destructive">
-                  <p className="font-bold">NIM_CONNECT_FAILED</p>
-                  <p className="mt-1 text-destructive/70">Connection to NIM chatroom failed.</p>
-                </div>
-              )}
-              {chatStatus === "no_credentials" && (
-                <div className="p-2 border border-orange-400/30 bg-orange-400/5 text-[9px] text-orange-400">
-                  <p className="font-bold">NO_NIM_TOKEN</p>
-                  <p className="mt-1 text-orange-400/70">netEaseToken missing — add it via Session Inject dialog.</p>
-                </div>
-              )}
-              {chatStatus === "connected" && chatMessages.length === 0 && (
-                <div className="flex items-center justify-center h-20 text-muted-foreground">
-                  <div className="text-center"><MessageSquare className="w-4 h-4 mx-auto mb-1 opacity-30" /><p className="text-[9px] uppercase tracking-widest opacity-60">Waiting for messages...</p></div>
-                </div>
-              )}
-              {chatMessages.map(msg => (
-                <div key={msg.id} className="text-[10px] leading-relaxed">
-                  <span className="text-primary/70 font-bold mr-1">{msg.nick || `UID:${msg.uid}`}</span>
-                  <span className="text-foreground/80 break-words">{msg.text}</span>
-                </div>
-              ))}
-              <div ref={chatEndRef} />
-            </div>
-          </div>
-        )}
-
-        {/* Main room grid */}
-        <div className="flex-1 overflow-auto p-4 pb-8">
-          {isSearchMode && searchError && (
-            <div className="border border-destructive/40 bg-destructive/5 p-4 text-destructive text-xs font-bold mb-4">⚠ {searchError}</div>
-          )}
-          {(isLoading && !isSearchMode) || (isSearchMode && searchLoading) ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-              {Array.from({ length: 12 }).map((_, i) => <Skeleton key={i} className="h-72 w-full rounded-none" />)}
-            </div>
-          ) : displayRooms.length === 0 ? (
-            <div className="flex items-center justify-center border border-dashed border-border p-16 text-center text-muted-foreground mt-8">
-              <div>
-                <LayoutGrid className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                <p className="font-bold tracking-widest uppercase">{isSearchMode ? "NO_RESULTS" : "NO_NODES_FOUND"}</p>
-                <p className="text-sm mt-2 opacity-60">{isSearchMode ? "لا توجد غرف بهذا البحث" : "لا توجد غرف نشطة"}</p>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-              {displayRooms.map((room, idx) => {
-                const { onListen, onTalk } = buildJoinHandlers(room);
-                return (
-                  <RoomCard
-                    key={room.roomId ?? idx}
-                    room={room}
-                    isActiveRoom={activeSession?.roomId === String(room.roomId)}
-                    isTalking={activeSession?.isTalking ?? false}
-                    onListen={onListen}
-                    onTalk={onTalk}
-                    onStop={stopSession}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
@@ -724,24 +268,25 @@ interface RoomCardProps {
 }
 
 function RoomCard({ room, isActiveRoom, isTalking, onListen, onTalk, onStop }: RoomCardProps) {
-  const [showToken,   setShowToken]   = useState(false);
-  const [copied,      setCopied]      = useState(false);
-  const [tokenData,   setTokenData]   = useState<{ ok: boolean; token?: string } | null>(null);
+  const [showToken,    setShowToken]    = useState(false);
+  const [copied,       setCopied]       = useState(false);
+  const [tokenData,    setTokenData]    = useState<{ ok: boolean; token?: string } | null>(null);
   const [tokenPending, setTokenPending] = useState(false);
-  const [listenState, setListenState] = useState<ListenState>("idle");
-  const [listenError, setListenError] = useState<string | null>(null);
-  const [talkState,   setTalkState]   = useState<TalkState>("idle");
-  const [talkError,   setTalkError]   = useState<string | null>(null);
+  const [listenState,  setListenState]  = useState<ListenState>("idle");
+  const [listenError,  setListenError]  = useState<string | null>(null);
+  const [talkState,    setTalkState]    = useState<TalkState>("idle");
+  const [talkError,    setTalkError]    = useState<string | null>(null);
 
   const roomId = room.roomId != null ? String(room.roomId) : null;
 
-  useEffect(() => {
+  // Reset card state when this room is no longer active
+  useState(() => {
     if (!isActiveRoom) { setListenState("idle"); setTalkState("idle"); }
-  }, [isActiveRoom]);
+  });
 
   async function fetchToken(type: "1" | "0") {
     if (!roomId) return null;
-    const res  = await fetch("/api/ditto/trtc-token", {
+    const res = await fetch("/api/ditto/trtc-token", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ roomId, type, channel: "1" }),
     });
@@ -751,12 +296,9 @@ function RoomCard({ room, isActiveRoom, isTalking, onListen, onTalk, onStop }: R
   async function handleGetToken(e: React.MouseEvent) {
     e.stopPropagation();
     if (!roomId) return;
-    setShowToken(true);
-    setTokenPending(true);
-    setTokenData(null);
+    setShowToken(true); setTokenPending(true); setTokenData(null);
     const data = await fetchToken("1");
-    setTokenData(data);
-    setTokenPending(false);
+    setTokenData(data); setTokenPending(false);
   }
 
   async function handleListen(e: React.MouseEvent) {
@@ -807,7 +349,8 @@ function RoomCard({ room, isActiveRoom, isTalking, onListen, onTalk, onStop }: R
     : talkState === "error"      ? "ERROR"
     : "TALK";
 
-  const busy = listenState === "fetching" || listenState === "connecting" || talkState === "fetching" || talkState === "connecting";
+  const busy = listenState === "fetching" || listenState === "connecting"
+            || talkState   === "fetching" || talkState   === "connecting";
 
   return (
     <Card className={`rounded-none overflow-hidden group transition-colors relative flex flex-col ${isActiveRoom ? (isTalking ? "border-green-500" : "border-primary") : "border-border hover:border-primary/50"}`}>
@@ -820,7 +363,7 @@ function RoomCard({ room, isActiveRoom, isTalking, onListen, onTalk, onStop }: R
         </div>
         <div className="absolute top-2 left-2 z-10 flex flex-col gap-1 items-start">
           {room.countryIcon && <img src={room.countryIcon} alt={room.countryCode ?? ""} className="w-5 h-4 object-cover border border-white/20" />}
-          {room.vipName && <span className="bg-yellow-400 text-black text-[9px] font-black px-1.5 py-0.5 leading-none tracking-wide">{room.vipName}</span>}
+          {room.vipName     && <span className="bg-yellow-400 text-black text-[9px] font-black px-1.5 py-0.5 leading-none tracking-wide">{room.vipName}</span>}
         </div>
 
         {room.cover ? (
@@ -837,20 +380,22 @@ function RoomCard({ room, isActiveRoom, isTalking, onListen, onTalk, onStop }: R
 
         {roomId && (
           <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1">
-            {/* INTERCEPT (listen) */}
+            {/* INTERCEPT */}
             <button onClick={handleListen} disabled={busy}
               className={`flex items-center gap-1 border text-[10px] font-bold tracking-widest uppercase px-2 py-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${isActiveRoom && !isTalking ? "bg-primary/20 border-primary text-primary" : listenState === "error" ? "bg-destructive/20 border-destructive text-destructive" : "bg-black/70 border-primary/40 text-primary hover:bg-primary/20 hover:border-primary"}`}>
               {listenState === "fetching" || listenState === "connecting" ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                : isActiveRoom && !isTalking ? <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-primary" /></span>
-                : <Headphones className="w-2.5 h-2.5" />}
+                : isActiveRoom && !isTalking
+                  ? <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-primary" /></span>
+                  : <Headphones className="w-2.5 h-2.5" />}
               {listenLabel}
             </button>
             {/* TALK */}
             <button onClick={handleTalk} disabled={busy}
               className={`flex items-center gap-1 border text-[10px] font-bold tracking-widest uppercase px-2 py-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${isActiveRoom && isTalking ? "bg-green-500/20 border-green-500 text-green-400" : talkState === "error" ? "bg-destructive/20 border-destructive text-destructive" : "bg-black/70 border-green-500/40 text-green-400 hover:bg-green-500/20 hover:border-green-500"}`}>
               {talkState === "fetching" || talkState === "connecting" ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                : isActiveRoom && isTalking ? <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" /></span>
-                : <Mic className="w-2.5 h-2.5" />}
+                : isActiveRoom && isTalking
+                  ? <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" /></span>
+                  : <Mic className="w-2.5 h-2.5" />}
               {talkLabel}
             </button>
             {/* TRTC token */}
