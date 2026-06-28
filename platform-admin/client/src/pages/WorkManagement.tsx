@@ -526,6 +526,8 @@ export default function WorkManagement() {
     setLoadingAllReports(true);
     try {
       const r = await h(`/api/work-report-all?year=${allReportsYear}&month=${allReportsMonth}&period=${allReportsPeriod}`);
+      const ct = r.headers.get('content-type') || '';
+      if (!ct.includes('application/json')) throw new Error('خطأ في الاتصال بالخادم، حاول مجدداً');
       const d = await r.json();
       if (!r.ok) throw new Error(d.message);
 
