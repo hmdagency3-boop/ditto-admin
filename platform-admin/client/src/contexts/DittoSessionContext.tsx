@@ -11,6 +11,7 @@ export const SESSION_UID  = 281306;
 export interface ActiveSession {
   roomId:      string;
   roomName:    string;
+  cover:       string | null;
   client:      IAgoraRTCClient;
   audioTracks: IRemoteAudioTrack[];
   videoTracks: IRemoteVideoTrack[];
