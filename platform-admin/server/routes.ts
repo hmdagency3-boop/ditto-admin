@@ -1510,6 +1510,10 @@ export async function registerRoutes(
       if (req.body.period !== undefined) updates.period = req.body.period ? parseInt(req.body.period) : null;
       if (req.body.opening_date) updates.status = 'opened';
       if (req.body.status) updates.status = req.body.status;
+      // لو الوكالة اتفتحت ومفيش opening_date → حطّ تاريخ اليوم تلقائياً
+      if (updates.status === 'opened' && !updates.opening_date) {
+        updates.opening_date = new Date().toISOString().split('T')[0];
+      }
       const { error } = await storage.supabase.from('agencies').update(updates).eq('id', id);
       if (error) return res.status(500).json({ message: error.message });
       invalidateCache('agencies:');
@@ -1599,14 +1603,19 @@ export async function registerRoutes(
     }
   });
 
-  // حساب نطاق تواريخ الفترة من opening_date
-  function getPeriodDateRange(y: number, m: number, p: number): { start: string; end: string } {
+  // حساب نطاق تواريخ الفترة
+  function getPeriodDateRange(y: number, m: number, p: number) {
     const mm = String(m).padStart(2, '0');
     const yy = String(y);
-    if (p === 1) return { start: `${yy}-${mm}-01`, end: `${yy}-${mm}-10` };
-    if (p === 2) return { start: `${yy}-${mm}-11`, end: `${yy}-${mm}-20` };
-    const lastDay = new Date(y, m, 0).getDate();
-    return { start: `${yy}-${mm}-21`, end: `${yy}-${mm}-${String(lastDay).padStart(2, '0')}` };
+    let startDay: number, endDay: number;
+    if (p === 1)      { startDay = 1;  endDay = 10; }
+    else if (p === 2) { startDay = 11; endDay = 20; }
+    else              { startDay = 21; endDay = new Date(y, m, 0).getDate(); }
+    const startStr = `${yy}-${mm}-${String(startDay).padStart(2, '0')}`;
+    const endStr   = `${yy}-${mm}-${String(endDay).padStart(2, '0')}`;
+    const startISO = new Date(y, m - 1, startDay, 0, 0, 0).toISOString();
+    const endISO   = new Date(y, m - 1, endDay, 23, 59, 59).toISOString();
+    return { start: startStr, end: endStr, startISO, endISO };
   }
 
   // توليد التقرير
@@ -1619,30 +1628,39 @@ export async function registerRoutes(
       const p = parseInt(period as string);
       const monthStart = new Date(y, m - 1, 1, 0, 0, 0).toISOString();
       const monthEnd   = new Date(y, m, 0, 23, 59, 59).toISOString();
-      const { start: openStart, end: openEnd } = getPeriodDateRange(y, m, p);
+      const { start: openStart, end: openEnd, startISO: openStartISO, endISO: openEndISO } = getPeriodDateRange(y, m, p);
 
       const { data: allAdmins, error: adminsError } = await storage.supabase
         .from('users').select('id, username, full_name, platform_id, phone')
         .eq('status', 'approved').neq('role', 'super_admin');
       if (adminsError) throw adminsError;
 
-      const [agenciesRes, openedRes, supportersRes] = await Promise.all([
+      const [agenciesRes, openedByDateRes, openedByUpdatedRes, supportersRes] = await Promise.all([
         // الوكالات المضافة في هذه الفترة (تفعيل)
         storage.supabase.from('agencies').select('*')
           .gte('created_at', monthStart).lte('created_at', monthEnd).eq('period', p),
-        // الوكالات التي تم افتتاحها في هذه الفترة (بأي شهر أضيفت)
+        // الوكالات المفتوحة بـ opening_date في هذه الفترة
         storage.supabase.from('agencies').select('*')
           .eq('status', 'opened')
           .gte('opening_date', openStart).lte('opening_date', openEnd),
+        // fallback: opening_date=null لكن updated_at في نطاق الفترة وstatus=opened
+        storage.supabase.from('agencies').select('*')
+          .eq('status', 'opened')
+          .is('opening_date', null)
+          .gte('updated_at', openStartISO).lte('updated_at', openEndISO),
         storage.supabase.from('supporters').select('*')
           .gte('created_at', monthStart).lte('created_at', monthEnd).eq('period', p),
       ]);
       if (agenciesRes.error) throw agenciesRes.error;
-      if (openedRes.error) throw openedRes.error;
+      if (openedByDateRes.error) throw openedByDateRes.error;
+      if (openedByUpdatedRes.error) throw openedByUpdatedRes.error;
       if (supportersRes.error) throw supportersRes.error;
 
       const allAgencies   = agenciesRes.data || [];
-      const openedThisPeriod = openedRes.data || [];
+      // دمج المفتوحة بدون تكرار
+      const openedMap = new Map<string, any>();
+      [...(openedByDateRes.data||[]), ...(openedByUpdatedRes.data||[])].forEach(a => openedMap.set(a.id, a));
+      const openedThisPeriod = Array.from(openedMap.values());
       const allSupporters = supportersRes.data || [];
 
       const reports = (allAdmins || []).map((admin: any) => {
@@ -1669,20 +1687,24 @@ export async function registerRoutes(
       const p = parseInt(period as string);
       const monthStart = new Date(y, m - 1, 1, 0, 0, 0).toISOString();
       const monthEnd   = new Date(y, m, 0, 23, 59, 59).toISOString();
-      const { start: openStart, end: openEnd } = getPeriodDateRange(y, m, p);
+      const { start: openStart, end: openEnd, startISO: openStartISO, endISO: openEndISO } = getPeriodDateRange(y, m, p);
 
-      const [agenciesRes, openedRes, supportersRes, adminRes] = await Promise.all([
+      const [agenciesRes, openedByDateRes, openedByUpdatedRes, supportersRes, adminRes] = await Promise.all([
         // الوكالات المضافة في هذه الفترة (تفعيل)
         storage.supabase.from('agencies').select('*')
           .eq('admin_id', admin_id)
           .gte('created_at', monthStart).lte('created_at', monthEnd)
           .eq('period', p)
           .order('created_at', { ascending: true }),
-        // الوكالات التي تم افتتاحها في هذه الفترة
+        // الوكالات المفتوحة بـ opening_date في هذه الفترة
         storage.supabase.from('agencies').select('*')
-          .eq('admin_id', admin_id)
-          .eq('status', 'opened')
+          .eq('admin_id', admin_id).eq('status', 'opened')
           .gte('opening_date', openStart).lte('opening_date', openEnd),
+        // fallback: opening_date=null لكن updated_at في نطاق الفترة وstatus=opened
+        storage.supabase.from('agencies').select('*')
+          .eq('admin_id', admin_id).eq('status', 'opened')
+          .is('opening_date', null)
+          .gte('updated_at', openStartISO).lte('updated_at', openEndISO),
         storage.supabase.from('supporters').select('*')
           .eq('admin_id', admin_id)
           .gte('created_at', monthStart).lte('created_at', monthEnd)
@@ -1692,11 +1714,14 @@ export async function registerRoutes(
       ]);
 
       if (agenciesRes.error) throw agenciesRes.error;
-      if (openedRes.error) throw openedRes.error;
+      if (openedByDateRes.error) throw openedByDateRes.error;
+      if (openedByUpdatedRes.error) throw openedByUpdatedRes.error;
       if (supportersRes.error) throw supportersRes.error;
 
-      const allAgencies    = agenciesRes.data || [];
-      const agenciesOpened = openedRes.data || [];
+      const allAgencies = agenciesRes.data || [];
+      const openedMap2  = new Map<string, any>();
+      [...(openedByDateRes.data||[]), ...(openedByUpdatedRes.data||[])].forEach(a => openedMap2.set(a.id, a));
+      const agenciesOpened = Array.from(openedMap2.values());
       const supporters     = supportersRes.data || [];
       const admin          = adminRes.data;
 
