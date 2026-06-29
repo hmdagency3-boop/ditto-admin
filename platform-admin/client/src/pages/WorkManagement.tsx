@@ -445,7 +445,10 @@ export default function WorkManagement() {
   }
   async function toggleAgencyStatus(ag: Agency) {
     const newStatus = ag.status === 'activated' ? 'opened' : 'activated';
-    const r = await h(`/api/agencies/${ag.id}`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) });
+    const today = new Date().toISOString().split('T')[0];
+    const body: Record<string, string> = { status: newStatus };
+    if (newStatus === 'opened' && !ag.opening_date) body.opening_date = today;
+    const r = await h(`/api/agencies/${ag.id}`, { method: 'PATCH', body: JSON.stringify(body) });
     if (r.ok) { toast({ title: newStatus === 'opened' ? 'تم تسجيل الافتتاح ✅' : 'تم التراجع للتفعيل' }); fetchAll(); }
   }
   async function deleteAgency(id: string) {
