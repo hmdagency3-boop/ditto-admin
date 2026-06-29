@@ -497,23 +497,28 @@ export default function WorkManagement() {
   }
   function buildReportText(rd: ReportData) {
     const a = rd.admin;
-    return [
-      '══════════════════════════════',
-      '   📊 تقرير 10 ايام عمل الادمن',
-      '══════════════════════════════',
+    const lines: string[] = [
+      'تقرير 10 ايام عمل الادمن',
       `اسم الادمن: ${a?.full_name||'—'}`,
       `أيدي الادمن: ${a?.platform_id||a?.username||'—'}`,
       '',
-      `📋 عدد الوكالات التي تم تفعيلها  ${rd.agencies_activated.length}`,
-      ...rd.agencies_activated.map((ag,i)=>`${i+1}: ${[ag.agency_code, ag.agency_name].filter(Boolean).join(' - ')}`),
-      '',
-      `🎉 عدد الوكالات التي تم افتتاحها  ${rd.agencies_opened.length}`,
-      ...rd.agencies_opened.map((ag,i)=>`${i+1}: ${[ag.agency_code, ag.agency_name].filter(Boolean).join(' - ')}`),
-      '',
-      `👥 عدد الداعمين التي تم جلبهم  ${rd.supporters.length}`,
-      ...rd.supporters.map((s,i)=>`${i+1}: ${s.supporter_id}${s.level && s.level.includes('تم الشحن') ? ' تم الشحن' : ''}`),
-      '══════════════════════════════',
-    ].join('\n');
+      `عدد الوكالات التي تم تفعيلها  ${rd.agencies_activated.length}`,
+    ];
+    rd.agencies_activated.forEach((ag,i) =>
+      lines.push(`${i+1}: ${[ag.agency_code, ag.agency_name].filter(Boolean).join(' - ')}`)
+    );
+    lines.push('');
+    lines.push(`عدد الوكالات التي تم افتتاحها  ${rd.agencies_opened.length}`);
+    rd.agencies_opened.forEach((ag,i) =>
+      lines.push(`${i+1}: ${[ag.agency_code, ag.agency_name].filter(Boolean).join(' - ')}`)
+    );
+    lines.push('');
+    lines.push(`عدد الداعمين التي تم جلبهم  ${rd.supporters.length}`);
+    rd.supporters.forEach((s,i) => {
+      lines.push('');
+      lines.push(`${i+1} : ${s.supporter_id}${s.level && s.level.includes('تم الشحن') ? ' تم الشحن' : ''}`);
+    });
+    return lines.join('\n');
   }
   async function copyReport() {
     if (!reportData) return;
