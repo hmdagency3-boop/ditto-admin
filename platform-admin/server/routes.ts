@@ -1599,6 +1599,16 @@ export async function registerRoutes(
     }
   });
 
+  // حساب نطاق تواريخ الفترة من opening_date
+  function getPeriodDateRange(y: number, m: number, p: number): { start: string; end: string } {
+    const mm = String(m).padStart(2, '0');
+    const yy = String(y);
+    if (p === 1) return { start: `${yy}-${mm}-01`, end: `${yy}-${mm}-10` };
+    if (p === 2) return { start: `${yy}-${mm}-11`, end: `${yy}-${mm}-20` };
+    const lastDay = new Date(y, m, 0).getDate();
+    return { start: `${yy}-${mm}-21`, end: `${yy}-${mm}-${String(lastDay).padStart(2, '0')}` };
+  }
+
   // توليد التقرير
   app.get("/api/work-report-all", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
@@ -1609,27 +1619,36 @@ export async function registerRoutes(
       const p = parseInt(period as string);
       const monthStart = new Date(y, m - 1, 1, 0, 0, 0).toISOString();
       const monthEnd   = new Date(y, m, 0, 23, 59, 59).toISOString();
+      const { start: openStart, end: openEnd } = getPeriodDateRange(y, m, p);
 
       const { data: allAdmins, error: adminsError } = await storage.supabase
         .from('users').select('id, username, full_name, platform_id, phone')
         .eq('status', 'approved').neq('role', 'super_admin');
       if (adminsError) throw adminsError;
 
-      const [agenciesRes, supportersRes] = await Promise.all([
+      const [agenciesRes, openedRes, supportersRes] = await Promise.all([
+        // الوكالات المضافة في هذه الفترة (تفعيل)
         storage.supabase.from('agencies').select('*')
           .gte('created_at', monthStart).lte('created_at', monthEnd).eq('period', p),
+        // الوكالات التي تم افتتاحها في هذه الفترة (بأي شهر أضيفت)
+        storage.supabase.from('agencies').select('*')
+          .eq('status', 'opened')
+          .gte('opening_date', openStart).lte('opening_date', openEnd),
         storage.supabase.from('supporters').select('*')
           .gte('created_at', monthStart).lte('created_at', monthEnd).eq('period', p),
       ]);
       if (agenciesRes.error) throw agenciesRes.error;
+      if (openedRes.error) throw openedRes.error;
       if (supportersRes.error) throw supportersRes.error;
 
-      const allAgencies  = agenciesRes.data || [];
+      const allAgencies   = agenciesRes.data || [];
+      const openedThisPeriod = openedRes.data || [];
       const allSupporters = supportersRes.data || [];
 
       const reports = (allAdmins || []).map((admin: any) => {
         const agencies_activated = allAgencies.filter((a: any) => a.admin_id === admin.id);
-        const agencies_opened    = agencies_activated.filter((a: any) => a.status === 'opened');
+        // الافتتاح: وكالات فُتحت في هذه الفترة (بصرف النظر عن وقت إضافتها)
+        const agencies_opened    = openedThisPeriod.filter((a: any) => a.admin_id === admin.id);
         const supporters         = allSupporters.filter((s: any) => s.admin_id === admin.id);
         return { admin, agencies_activated, agencies_opened, supporters };
       });
@@ -1648,34 +1667,38 @@ export async function registerRoutes(
       const y = parseInt(year as string);
       const m = parseInt(month as string);
       const p = parseInt(period as string);
-      // حدود الشهر كامل للفلترة بالشهر/السنة
       const monthStart = new Date(y, m - 1, 1, 0, 0, 0).toISOString();
-      const monthEnd   = new Date(y, m, 0, 23, 59, 59).toISOString(); // آخر يوم في الشهر
+      const monthEnd   = new Date(y, m, 0, 23, 59, 59).toISOString();
+      const { start: openStart, end: openEnd } = getPeriodDateRange(y, m, p);
 
-      const [agenciesRes, supportersRes, adminRes] = await Promise.all([
-        // فلترة بعمود period المخزّن صراحةً (مع fallback لتاريخ الإضافة)
+      const [agenciesRes, openedRes, supportersRes, adminRes] = await Promise.all([
+        // الوكالات المضافة في هذه الفترة (تفعيل)
         storage.supabase.from('agencies').select('*')
           .eq('admin_id', admin_id)
-          .gte('created_at', monthStart)
-          .lte('created_at', monthEnd)
+          .gte('created_at', monthStart).lte('created_at', monthEnd)
           .eq('period', p)
           .order('created_at', { ascending: true }),
+        // الوكالات التي تم افتتاحها في هذه الفترة
+        storage.supabase.from('agencies').select('*')
+          .eq('admin_id', admin_id)
+          .eq('status', 'opened')
+          .gte('opening_date', openStart).lte('opening_date', openEnd),
         storage.supabase.from('supporters').select('*')
           .eq('admin_id', admin_id)
-          .gte('created_at', monthStart)
-          .lte('created_at', monthEnd)
+          .gte('created_at', monthStart).lte('created_at', monthEnd)
           .eq('period', p)
           .order('created_at', { ascending: true }),
         storage.supabase.from('users').select('id, username, full_name, platform_id, phone').eq('id', admin_id as string).maybeSingle(),
       ]);
 
       if (agenciesRes.error) throw agenciesRes.error;
+      if (openedRes.error) throw openedRes.error;
       if (supportersRes.error) throw supportersRes.error;
 
-      const allAgencies  = agenciesRes.data || [];
-      const agenciesOpened = allAgencies.filter((a: any) => a.status === 'opened');
-      const supporters   = supportersRes.data || [];
-      const admin        = adminRes.data;
+      const allAgencies    = agenciesRes.data || [];
+      const agenciesOpened = openedRes.data || [];
+      const supporters     = supportersRes.data || [];
+      const admin          = adminRes.data;
 
       res.json({ agencies_activated: allAgencies, agencies_opened: agenciesOpened, supporters, admin });
     } catch (error: any) {
