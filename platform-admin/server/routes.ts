@@ -1236,11 +1236,62 @@ export async function registerRoutes(
 
   const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
+    limits: { fileSize: 5 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
       if (file.mimetype.startsWith('image/')) cb(null, true);
       else cb(new Error('يُسمح بالصور فقط'));
     },
+  });
+
+  const uploadVideo = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 200 * 1024 * 1024 }, // 200 MB max
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype.startsWith('video/')) cb(null, true);
+      else cb(new Error('يُسمح بملفات الفيديو فقط'));
+    },
+  });
+
+  // إنشاء bucket التسجيلات إن لم يكن موجوداً
+  storage.supabase.storage.createBucket('recordings', {
+    public: false,
+    fileSizeLimit: 200 * 1024 * 1024,
+  }).catch(() => {});
+
+  app.get('/api/recordings', authenticateToken, requireSuperAdmin, async (_req, res) => {
+    try {
+      const { data, error } = await storage.supabase.storage.from('recordings').list('', {
+        sortBy: { column: 'created_at', order: 'desc' },
+      });
+      if (error) throw error;
+      const files = await Promise.all((data || []).map(async (f) => {
+        const { data: signed } = await storage.supabase.storage
+          .from('recordings').createSignedUrl(f.name, 3600);
+        return { ...f, url: signed?.signedUrl };
+      }));
+      res.json(files);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post('/api/recordings', authenticateToken, requireSuperAdmin, uploadVideo.single('recording'), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: 'لم يتم إرسال ملف' });
+      const filename = `${Date.now()}-${req.user.username}.webm`;
+      const { error } = await storage.supabase.storage
+        .from('recordings')
+        .upload(filename, req.file.buffer, { contentType: 'video/webm', upsert: false });
+      if (error) throw error;
+      res.json({ message: 'تم الرفع', filename });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.delete('/api/recordings/:filename', authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { error } = await storage.supabase.storage
+        .from('recordings').remove([req.params.filename]);
+      if (error) throw error;
+      res.json({ message: 'تم الحذف' });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   app.post("/api/upload/event-image", authenticateToken, requireSuperAdmin, upload.single('image'), async (req: any, res) => {

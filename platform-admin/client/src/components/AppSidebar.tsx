@@ -21,6 +21,7 @@ import {
   Activity,
   LayoutGrid,
   UserSearch,
+  Video,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -67,6 +68,7 @@ export function AppSidebar() {
     { key: 'nav.dittoCenter', url: '/ditto-center', icon: Activity },
     { key: 'nav.dittoRooms', url: '/ditto-rooms', icon: LayoutGrid },
     { key: 'nav.dittoSearch', url: '/ditto-search', icon: UserSearch },
+    { key: 'nav.recordings', url: '/recordings', icon: Video },
   ];
 
   const adminItems = [
