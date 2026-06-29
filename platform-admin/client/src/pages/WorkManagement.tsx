@@ -446,8 +446,9 @@ export default function WorkManagement() {
   async function toggleAgencyStatus(ag: Agency) {
     const newStatus = ag.status === 'activated' ? 'opened' : 'activated';
     const today = new Date().toISOString().split('T')[0];
-    const body: Record<string, string> = { status: newStatus };
+    const body: Record<string, string | null> = { status: newStatus };
     if (newStatus === 'opened' && !ag.opening_date) body.opening_date = today;
+    if (newStatus === 'activated') body.opening_date = null;
     const r = await h(`/api/agencies/${ag.id}`, { method: 'PATCH', body: JSON.stringify(body) });
     if (r.ok) { toast({ title: newStatus === 'opened' ? 'تم تسجيل الافتتاح ✅' : 'تم التراجع للتفعيل' }); fetchAll(); }
   }
