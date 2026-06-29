@@ -505,13 +505,13 @@ export default function WorkManagement() {
       `أيدي الادمن: ${a?.platform_id||a?.username||'—'}`,
       '',
       `📋 عدد الوكالات التي تم تفعيلها  ${rd.agencies_activated.length}`,
-      ...rd.agencies_activated.map((ag,i)=>`${i+1}: ${ag.agent_id}${ag.agency_name?` (${ag.agency_name})`:''}`),
+      ...rd.agencies_activated.map((ag,i)=>`${i+1}: ${[ag.agency_code, ag.agency_name].filter(Boolean).join(' - ')}`),
       '',
       `🎉 عدد الوكالات التي تم افتتاحها  ${rd.agencies_opened.length}`,
-      ...rd.agencies_opened.map((ag,i)=>`${i+1}: ${ag.agent_id}${ag.agency_name?` (${ag.agency_name})`:''}`),
+      ...rd.agencies_opened.map((ag,i)=>`${i+1}: ${[ag.agency_code, ag.agency_name].filter(Boolean).join(' - ')}`),
       '',
       `👥 عدد الداعمين التي تم جلبهم  ${rd.supporters.length}`,
-      ...rd.supporters.map((s,i)=>`${i+1}: ${s.supporter_id}${s.level?` | ليفل: ${s.level}`:''}`),
+      ...rd.supporters.map((s,i)=>`${i+1}: ${s.supporter_id}${s.level && s.level.includes('تم الشحن') ? ' تم الشحن' : ''}`),
       '══════════════════════════════',
     ].join('\n');
   }
@@ -1219,17 +1219,17 @@ export default function WorkManagement() {
                           <div>
                             <p className="font-bold mb-1">📋 الوكالات المفعّلة ({rd.agencies_activated.length})</p>
                             {rd.agencies_activated.length===0 ? <p className="text-muted-foreground">لا يوجد</p>
-                              : rd.agencies_activated.map((ag,i)=><p key={ag.id}>{i+1}: {ag.agent_id}{ag.agency_name?` (${ag.agency_name})`:''}</p>)}
+                              : rd.agencies_activated.map((ag,i)=><p key={ag.id||i}>{i+1}: {[ag.agency_code, ag.agency_name].filter(Boolean).join(' - ')}</p>)}
                           </div>
                           <div>
                             <p className="font-bold mb-1">🎉 الوكالات المفتوحة ({rd.agencies_opened.length})</p>
                             {rd.agencies_opened.length===0 ? <p className="text-muted-foreground">لا يوجد</p>
-                              : rd.agencies_opened.map((ag,i)=><p key={ag.id}>{i+1}: {ag.agent_id}{ag.agency_name?` (${ag.agency_name})`:''}</p>)}
+                              : rd.agencies_opened.map((ag,i)=><p key={ag.id||i}>{i+1}: {[ag.agency_code, ag.agency_name].filter(Boolean).join(' - ')}</p>)}
                           </div>
                           <div>
                             <p className="font-bold mb-1">👥 الداعمون ({rd.supporters.length})</p>
                             {rd.supporters.length===0 ? <p className="text-muted-foreground">لا يوجد</p>
-                              : rd.supporters.map((s,i)=><p key={s.id}>{i+1}: {s.supporter_id}{s.level?` | ليفل: ${s.level}`:''}</p>)}
+                              : rd.supporters.map((s,i)=><p key={s.id||i}>{i+1}: {s.supporter_id}{s.level && s.level.includes('تم الشحن') ? ' تم الشحن' : ''}</p>)}
                           </div>
                           {total===0 && <p className="text-center text-muted-foreground py-1">لا توجد بيانات لهذه الفترة</p>}
                         </div>
@@ -1264,17 +1264,17 @@ export default function WorkManagement() {
                 <div>
                   <p className="font-bold mb-2">📋 عدد الوكالات التي تم تفعيلها  {reportData.agencies_activated.length}</p>
                   {reportData.agencies_activated.length===0 ? <p className="text-muted-foreground text-xs">لا يوجد</p>
-                    : reportData.agencies_activated.map((ag,i)=><p key={ag.id}>{i+1}: {ag.agent_id}{ag.agency_name?` (${ag.agency_name})`:''}</p>)}
+                    : reportData.agencies_activated.map((ag,i)=><p key={ag.id||i}>{i+1}: {[ag.agency_code, ag.agency_name].filter(Boolean).join(' - ')}</p>)}
                 </div>
                 <div>
                   <p className="font-bold mb-2">🎉 عدد الوكالات التي تم افتتاحها  {reportData.agencies_opened.length}</p>
                   {reportData.agencies_opened.length===0 ? <p className="text-muted-foreground text-xs">لا يوجد</p>
-                    : reportData.agencies_opened.map((ag,i)=><p key={ag.id}>{i+1}: {ag.agent_id}{ag.agency_name?` (${ag.agency_name})`:''}</p>)}
+                    : reportData.agencies_opened.map((ag,i)=><p key={ag.id||i}>{i+1}: {[ag.agency_code, ag.agency_name].filter(Boolean).join(' - ')}</p>)}
                 </div>
                 <div>
                   <p className="font-bold mb-2">👥 عدد الداعمين التي تم جلبهم  {reportData.supporters.length}</p>
                   {reportData.supporters.length===0 ? <p className="text-muted-foreground text-xs">لا يوجد</p>
-                    : reportData.supporters.map((s,i)=><p key={s.id}>{i+1}: {s.supporter_id}{s.level?` | ليفل: ${s.level}`:''}</p>)}
+                    : reportData.supporters.map((s,i)=><p key={s.id||i}>{i+1}: {s.supporter_id}{s.level && s.level.includes('تم الشحن') ? ' تم الشحن' : ''}</p>)}
                 </div>
               </div>
               <Button onClick={copyReport} variant="outline" className="w-full gap-2">
