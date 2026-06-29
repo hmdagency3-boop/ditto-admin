@@ -547,14 +547,19 @@ export default function WorkManagement() {
         };
       });
 
+      // Filter: only admins with at least one item of work
+      const withWork = merged.filter(r =>
+        r.agencies_activated.length + r.agencies_opened.length + r.supporters.length > 0
+      );
+
       // Sort: admins with most work appear first
-      merged.sort((a, b) => {
-        const aTotal = a.agencies_activated.length + a.supporters.length;
-        const bTotal = b.agencies_activated.length + b.supporters.length;
+      withWork.sort((a, b) => {
+        const aTotal = a.agencies_activated.length + a.agencies_opened.length + a.supporters.length;
+        const bTotal = b.agencies_activated.length + b.agencies_opened.length + b.supporters.length;
         return bTotal - aTotal;
       });
 
-      setAllReportsData(merged);
+      setAllReportsData(withWork);
       setExpandedReports(new Set());
       setAllReportsDlg(true);
     } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }); }
