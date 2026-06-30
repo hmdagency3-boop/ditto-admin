@@ -84,10 +84,36 @@ export default function Recordings() {
   const blinkRef    = useRef(true);
   const blinkTimer  = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const videoElRef  = useRef<HTMLVideoElement | null>(null);
 
   const [recording, setRecording] = useState(false);
   const [elapsed,   setElapsed]   = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [hasLiveVideo, setHasLiveVideo] = useState(false);
+
+  // ── Set up hidden video element from Agora video tracks ───────────────────
+  useEffect(() => {
+    const tracks = activeSession?.videoTracks ?? [];
+    if (tracks.length === 0) {
+      videoElRef.current = null;
+      setHasLiveVideo(false);
+      return;
+    }
+    try {
+      const track = tracks[0];
+      const mt = (track as any).getMediaStreamTrack?.() as MediaStreamTrack | undefined;
+      if (mt) {
+        const el = document.createElement("video");
+        el.srcObject = new MediaStream([mt]);
+        el.muted     = true;
+        el.autoplay  = true;
+        el.playsInline = true;
+        el.play().catch(() => {});
+        videoElRef.current = el;
+        setHasLiveVideo(true);
+      }
+    } catch { videoElRef.current = null; setHasLiveVideo(false); }
+  }, [activeSession?.videoTracks]);
 
   // ── Canvas draw ──────────────────────────────────────────────────────────────
   const draw = useCallback(() => {
@@ -112,14 +138,44 @@ export default function Recordings() {
     // Pre-load speaker avatars
     speakers.forEach(m => { if (m.avatar) loadImg(m.avatar, cache); });
 
-    // ── Background ────────────────────────────────────────────────────────────
+    // ── Background / Live video ───────────────────────────────────────────────
     const coverImg = cover ? cache.get(cover) ?? null : null;
+    const videoEl  = videoElRef.current;
+    const liveReady = videoEl && videoEl.readyState >= 2 && videoEl.videoWidth > 0;
 
-    if (coverImg) {
-      // Blurred cover
+    if (liveReady && videoEl) {
+      // ── Live video mode: fill canvas with the video frame ──────────────
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, W, H);
+
+      // Center + fit (letterbox)
+      const vw = videoEl.videoWidth;
+      const vh = videoEl.videoHeight;
+      const scale = Math.min(W / vw, H / vh);
+      const dx = (W - vw * scale) / 2;
+      const dy = (H - vh * scale) / 2;
+      ctx.drawImage(videoEl, dx, dy, vw * scale, vh * scale);
+
+      // Translucent gradient at top for header
+      const topGrad = ctx.createLinearGradient(0, 0, 0, 100);
+      topGrad.addColorStop(0, "rgba(0,0,0,0.75)");
+      topGrad.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = topGrad;
+      ctx.fillRect(0, 0, W, 100);
+
+      // Translucent gradient at bottom for speaker bar
+      const btmGrad = ctx.createLinearGradient(0, H - 130, 0, H);
+      btmGrad.addColorStop(0, "rgba(0,0,0,0)");
+      btmGrad.addColorStop(1, "rgba(0,0,0,0.8)");
+      ctx.fillStyle = btmGrad;
+      ctx.fillRect(0, H - 130, W, 130);
+    } else if (coverImg) {
+      // Blurred cover as background
       ctx.filter = "blur(24px) brightness(0.22) saturate(1.4)";
       ctx.drawImage(coverImg, -30, -30, W + 60, H + 60);
       ctx.filter = "none";
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.fillRect(0, 0, W, H);
     } else {
       const bg = ctx.createLinearGradient(0, 0, W, H);
       bg.addColorStop(0, "#0b0f1a");
@@ -127,10 +183,6 @@ export default function Recordings() {
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, W, H);
     }
-
-    // Subtle dark overlay
-    ctx.fillStyle = "rgba(0,0,0,0.45)";
-    ctx.fillRect(0, 0, W, H);
 
     // ── Header bar ────────────────────────────────────────────────────────────
     const headerH = 88;
@@ -196,11 +248,45 @@ export default function Recordings() {
       ctx.fillText(`${mm}:${ss}`, W - 100, 60);
     }
 
-    // ── Speakers grid ─────────────────────────────────────────────────────────
+    // ── Speakers: grid (avatar mode) OR bottom bar (live video mode) ──────────
     const AREA_Y     = headerH + 18;
     const AREA_H     = H - AREA_Y - 18;
 
-    if (speakers.length === 0) {
+    if (liveReady && speakers.length > 0) {
+      // ── Live video: horizontal speaker bar at bottom ───────────────────
+      const barR   = 36;            // avatar radius
+      const barY   = H - barR - 22; // center Y
+      const slotW  = barR * 2 + 32;
+      const shown  = speakers.slice(0, Math.floor(W / slotW));
+      const totalW = shown.length * slotW;
+      const startX = (W - totalW) / 2 + barR + 8;
+
+      shown.forEach((m, i) => {
+        const cx = startX + i * slotW;
+        const isActive = pubSet.has(m.uid);
+        const img = m.avatar ? (cache.get(m.avatar) ?? null) : null;
+        drawCircleAvatar(ctx, img, m.nick, cx, barY, barR, isActive);
+
+        const trimmedNick = m.nick.length > 12 ? m.nick.slice(0, 11) + "…" : m.nick;
+        ctx.fillStyle = "#f1f5f9";
+        ctx.font = "12px Arial, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillText(trimmedNick, cx, barY + barR + 4);
+      });
+
+      // "LIVE" badge in bottom-right
+      ctx.fillStyle = "#ef4444";
+      ctx.beginPath();
+      ctx.roundRect?.(W - 76, H - 36, 60, 24, 6);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 13px Arial, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("● LIVE", W - 46, H - 24);
+
+    } else if (speakers.length === 0) {
       ctx.fillStyle = "#6b7280";
       ctx.font = "22px Arial, sans-serif";
       ctx.textAlign = "center";
@@ -253,7 +339,7 @@ export default function Recordings() {
     ctx.textBaseline = "bottom";
     ctx.fillText("Ditto Admin • " + new Date().toLocaleTimeString("ar-EG"), W - 12, H - 8);
 
-  }, [activeSession, members, agoraPublisherUids, recording]);
+  }, [activeSession, members, agoraPublisherUids, recording, hasLiveVideo]);
 
   // ── Animation loop ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -420,6 +506,13 @@ export default function Recordings() {
           <Users className="h-3 w-3" />
           {members.length} عضو
         </Badge>
+
+        {hasLiveVideo && (
+          <Badge className="gap-1.5 bg-red-600 text-white hover:bg-red-600">
+            <span className="w-2 h-2 rounded-full bg-white inline-block animate-pulse" />
+            فيديو مباشر
+          </Badge>
+        )}
 
         {recording && (
           <Badge variant="destructive" className="gap-1.5 animate-pulse">
