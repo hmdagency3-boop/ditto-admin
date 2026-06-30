@@ -120,6 +120,7 @@ export default function DittoRooms() {
       }
       setActiveSession({
         roomId: roomIdStr, roomName: room.nick ?? room.roomName ?? "",
+        cover: room.cover ?? null,
         client, audioTracks, videoTracks, muted: false, localTrack: null, isTalking: false, micMuted: false,
       });
     };
@@ -158,6 +159,7 @@ export default function DittoRooms() {
       await client.publish([localTrack]);
       setActiveSession({
         roomId: roomIdStr, roomName: room.nick ?? room.roomName ?? "",
+        cover: room.cover ?? null,
         client, audioTracks, videoTracks, muted: false, localTrack, isTalking: true, micMuted: false,
       });
       setIsMicMuted(false);

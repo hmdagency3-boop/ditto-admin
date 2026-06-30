@@ -1,260 +1,454 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Circle, Square, Download, Trash2, Video, Upload, Clock, RefreshCw } from "lucide-react";
+import { useDittoSession } from "@/contexts/DittoSessionContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Circle, Square, Users, Mic, Video } from "lucide-react";
+import { Link } from "wouter";
 
-interface RecFile {
-  name: string;
-  created_at: string;
-  metadata?: { size?: number };
-  url?: string;
+const W = 1280;
+const H = 720;
+
+type ImgCache = Map<string, HTMLImageElement | null>;
+
+function loadImg(url: string, cache: ImgCache) {
+  if (!url || cache.has(url)) return;
+  cache.set(url, null);
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload  = () => cache.set(url, img);
+  img.onerror = () => { /* keep null placeholder */ };
+  img.src = url;
+}
+
+function drawCircleAvatar(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement | null,
+  nick: string,
+  cx: number, cy: number, r: number,
+  isActive: boolean
+) {
+  // Glow ring for active speakers
+  if (isActive) {
+    const grd = ctx.createRadialGradient(cx, cy, r, cx, cy, r + 12);
+    grd.addColorStop(0, "rgba(34,197,94,0.8)");
+    grd.addColorStop(1, "rgba(34,197,94,0)");
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 12, 0, 2 * Math.PI);
+    ctx.fillStyle = grd;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 4, 0, 2 * Math.PI);
+    ctx.strokeStyle = "#22c55e";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+
+  // Clip to circle and draw image or colored placeholder
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+  ctx.clip();
+
+  if (img) {
+    ctx.drawImage(img, cx - r, cy - r, r * 2, r * 2);
+  } else {
+    const PALETTE = ["#3b82f6","#8b5cf6","#ec4899","#f59e0b","#10b981","#ef4444","#06b6d4"];
+    ctx.fillStyle = PALETTE[(nick.charCodeAt(0) || 0) % PALETTE.length];
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    ctx.fillStyle = "#fff";
+    ctx.font = `bold ${Math.round(r * 0.55)}px Arial`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(nick.slice(0, 2), cx, cy);
+  }
+
+  ctx.restore();
 }
 
 export default function Recordings() {
+  const { activeSession, members, agoraPublisherUids } = useDittoSession();
   const { token } = useAuth();
   const { toast } = useToast();
 
-  const h = useCallback((url: string, opts?: RequestInit) =>
-    fetch(url, {
-      ...opts,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(opts?.headers || {}),
-      },
-    }), [token]);
-
-  const [recording, setRecording]     = useState(false);
-  const [elapsed, setElapsed]         = useState(0);
-  const [uploading, setUploading]     = useState(false);
-  const [list, setList]               = useState<RecFile[]>([]);
-  const [loadingList, setLoadingList] = useState(true);
-
-  const streamRef   = useRef<MediaStream | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
+  const canvasRef   = useRef<HTMLCanvasElement>(null);
+  const recRef      = useRef<MediaRecorder | null>(null);
   const chunksRef   = useRef<Blob[]>([]);
   const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const frameRef    = useRef<number | null>(null);
+  const imgCache    = useRef<ImgCache>(new Map());
+  const elapsedRef  = useRef(0);
+  const blinkRef    = useRef(true);
+  const blinkTimer  = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchList = useCallback(async () => {
-    setLoadingList(true);
-    try {
-      const r = await h('/api/recordings');
-      if (r.ok) setList(await r.json());
-    } finally { setLoadingList(false); }
-  }, [h]);
+  const [recording, setRecording] = useState(false);
+  const [elapsed,   setElapsed]   = useState(0);
+  const [uploading, setUploading] = useState(false);
 
-  useEffect(() => { fetchList(); }, [fetchList]);
+  // ── Canvas draw ──────────────────────────────────────────────────────────────
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-  function formatTime(s: number) {
-    const m = Math.floor(s / 60);
-    return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-  }
+    const cache = imgCache.current;
+    const cover  = activeSession?.cover ?? null;
+    const rName  = activeSession?.roomName ?? "";
+    const pubSet = new Set(agoraPublisherUids);
 
-  function formatSize(bytes?: number) {
-    if (!bytes) return '';
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    // Pre-load room cover
+    if (cover) loadImg(cover, cache);
+
+    // Speakers: on-mic members first, fallback to all members
+    const speakers = members.filter(m => m.onMic).length > 0
+      ? members.filter(m => m.onMic)
+      : members;
+
+    // Pre-load speaker avatars
+    speakers.forEach(m => { if (m.avatar) loadImg(m.avatar, cache); });
+
+    // ── Background ────────────────────────────────────────────────────────────
+    const coverImg = cover ? cache.get(cover) ?? null : null;
+
+    if (coverImg) {
+      // Blurred cover
+      ctx.filter = "blur(24px) brightness(0.22) saturate(1.4)";
+      ctx.drawImage(coverImg, -30, -30, W + 60, H + 60);
+      ctx.filter = "none";
+    } else {
+      const bg = ctx.createLinearGradient(0, 0, W, H);
+      bg.addColorStop(0, "#0b0f1a");
+      bg.addColorStop(1, "#0f172a");
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // Subtle dark overlay
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fillRect(0, 0, W, H);
+
+    // ── Header bar ────────────────────────────────────────────────────────────
+    const headerH = 88;
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(0, 0, W, headerH);
+
+    // Room cover thumbnail
+    const thumbSize = 64;
+    const thumbX = 16, thumbY = 12;
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect?.(thumbX, thumbY, thumbSize, thumbSize, 8);
+    ctx.clip();
+    if (coverImg) {
+      ctx.drawImage(coverImg, thumbX, thumbY, thumbSize, thumbSize);
+    } else {
+      ctx.fillStyle = "#1e3a5f";
+      ctx.fillRect(thumbX, thumbY, thumbSize, thumbSize);
+      ctx.fillStyle = "#60a5fa";
+      ctx.font = "28px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("🎙", thumbX + thumbSize / 2, thumbY + thumbSize / 2);
+    }
+    ctx.restore();
+
+    // Room name
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 22px Arial, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    const displayName = rName.length > 38 ? rName.slice(0, 37) + "…" : rName;
+    ctx.fillText(displayName || "الروم", thumbX + thumbSize + 14, thumbY + 22);
+
+    // Members count
+    ctx.fillStyle = "#9ca3af";
+    ctx.font = "15px Arial, sans-serif";
+    ctx.fillText(`${speakers.length} على المايك • ${members.length} عضو`, thumbX + thumbSize + 14, thumbY + 48);
+
+    // ── LIVE / REC indicator (top right) ─────────────────────────────────────
+    if (recording || recRef.current) {
+      const s = elapsedRef.current;
+      const mm = String(Math.floor(s / 60)).padStart(2, "0");
+      const ss = String(s % 60).padStart(2, "0");
+
+      // Blinking dot
+      if (blinkRef.current) {
+        ctx.beginPath();
+        ctx.arc(W - 160, 28, 9, 0, 2 * Math.PI);
+        ctx.fillStyle = "#ef4444";
+        ctx.fill();
+      }
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 16px Arial, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText("REC", W - 145, 28);
+
+      ctx.fillStyle = "#d1d5db";
+      ctx.font = "bold 20px monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(`${mm}:${ss}`, W - 100, 60);
+    }
+
+    // ── Speakers grid ─────────────────────────────────────────────────────────
+    const AREA_Y     = headerH + 18;
+    const AREA_H     = H - AREA_Y - 18;
+
+    if (speakers.length === 0) {
+      ctx.fillStyle = "#6b7280";
+      ctx.font = "22px Arial, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("لا يوجد أحد على المايك حالياً", W / 2, H / 2);
+    } else {
+      const count = speakers.length;
+      const cols  = count <= 4 ? count : count <= 9 ? Math.ceil(Math.sqrt(count)) : 5;
+      const rows  = Math.ceil(count / cols);
+
+      const cellW  = W / cols;
+      const cellH  = AREA_H / rows;
+      const maxR   = Math.min(cellW, cellH) * 0.32;
+      const r      = Math.max(Math.min(maxR, 90), 38);
+      const nameFS = Math.max(Math.min(r * 0.28, 16), 11);
+
+      speakers.forEach((m, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const cx  = cellW * col + cellW / 2;
+        const cy  = AREA_Y + cellH * row + cellH * 0.45;
+        const isActive = pubSet.has(m.uid);
+
+        const img = m.avatar ? (cache.get(m.avatar) ?? null) : null;
+        drawCircleAvatar(ctx, img, m.nick, cx, cy, r, isActive);
+
+        // Name
+        const trimmedNick = m.nick.length > 16 ? m.nick.slice(0, 15) + "…" : m.nick;
+        ctx.fillStyle = "#f1f5f9";
+        ctx.font = `${nameFS}px Arial, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillText(trimmedNick, cx, cy + r + 8);
+
+        // Mic icon badge for active
+        if (isActive) {
+          ctx.fillStyle = "#22c55e";
+          ctx.font = `${nameFS}px Arial, sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "top";
+          ctx.fillText("🎤", cx, cy + r + 8 + nameFS + 4);
+        }
+      });
+    }
+
+    // ── Watermark ─────────────────────────────────────────────────────────────
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    ctx.font = "13px Arial, sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "bottom";
+    ctx.fillText("Ditto Admin • " + new Date().toLocaleTimeString("ar-EG"), W - 12, H - 8);
+
+  }, [activeSession, members, agoraPublisherUids, recording]);
+
+  // ── Animation loop ────────────────────────────────────────────────────────
+  useEffect(() => {
+    function loop() {
+      draw();
+      frameRef.current = requestAnimationFrame(loop);
+    }
+    frameRef.current = requestAnimationFrame(loop);
+    return () => { if (frameRef.current) cancelAnimationFrame(frameRef.current); };
+  }, [draw]);
+
+  // ── Blink dot every 500ms ─────────────────────────────────────────────────
+  useEffect(() => {
+    blinkTimer.current = setInterval(() => { blinkRef.current = !blinkRef.current; }, 500);
+    return () => { if (blinkTimer.current) clearInterval(blinkTimer.current); };
+  }, []);
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function fmt(s: number) {
+    return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
   }
 
   function downloadBlob(blob: Blob, name: string) {
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a   = document.createElement("a");
     a.href = url; a.download = name; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    setTimeout(() => URL.revokeObjectURL(url), 6000);
   }
 
-  async function uploadToServer(blob: Blob) {
-    const sizeMB = blob.size / (1024 * 1024);
-    if (sizeMB > 200) {
-      toast({
-        title: 'تنبيه — الملف كبير جداً',
-        description: `الحجم ${sizeMB.toFixed(0)} MB — تم التنزيل محلياً فقط. السيرفر يدعم حتى 200 MB`,
-        variant: 'destructive',
-      });
-      return;
-    }
+  async function uploadToServer(blob: Blob, filename: string) {
+    if (!token || blob.size > 200 * 1024 * 1024) return;
     setUploading(true);
     try {
       const form = new FormData();
-      const filename = `recording-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.webm`;
-      form.append('recording', blob, filename);
-      const r = await h('/api/recordings', { method: 'POST', body: form });
-      if (r.ok) {
-        toast({ title: 'تم الحفظ على السيرفر ✅' });
-        fetchList();
-      } else {
-        const d = await r.json().catch(() => ({}));
-        toast({ title: 'فشل الرفع', description: d.message || 'خطأ غير معروف', variant: 'destructive' });
+      form.append("recording", blob, filename);
+      const r  = await fetch("/api/recordings", {
+        method:  "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body:    form,
+      });
+      const ct = r.headers.get("content-type") ?? "";
+      if (r.ok && ct.includes("application/json")) {
+        toast({ title: "تم الحفظ على السيرفر ✅" });
       }
-    } catch (e: any) {
-      toast({ title: 'فشل الرفع', description: e.message, variant: 'destructive' });
-    } finally { setUploading(false); }
+    } catch { /* silent */ } finally { setUploading(false); }
   }
 
-  function handleStop() {
-    if (recorderRef.current?.state === 'recording') recorderRef.current.stop();
+  // ── Start recording ───────────────────────────────────────────────────────
+  async function startRecording() {
+    const canvas = canvasRef.current;
+    if (!canvas || !activeSession) return;
+
+    chunksRef.current = [];
+    const stream = canvas.captureStream(25);
+
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+      ? "video/webm;codecs=vp9"
+      : "video/webm";
+
+    const recorder = new MediaRecorder(stream, { mimeType });
+    recRef.current = recorder;
+
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+    recorder.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: "video/webm" });
+      const name = `room-${activeSession.roomId}-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.webm`;
+      downloadBlob(blob, name);
+      await uploadToServer(blob, name);
+      recRef.current = null;
+    };
+
+    recorder.start(1000);
+    elapsedRef.current = 0;
+    setElapsed(0);
+    setRecording(true);
+    timerRef.current = setInterval(() => {
+      elapsedRef.current += 1;
+      setElapsed(e => e + 1);
+    }, 1000);
+  }
+
+  // ── Stop recording ────────────────────────────────────────────────────────
+  function stopRecording() {
+    if (recRef.current?.state === "recording") recRef.current.stop();
     if (timerRef.current) clearInterval(timerRef.current);
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
     setRecording(false);
     setElapsed(0);
+    elapsedRef.current = 0;
   }
 
-  async function startRecording() {
-    try {
-      const stream = await (navigator.mediaDevices as any).getDisplayMedia({
-        video: { frameRate: 30 },
-        audio: true,
-      });
-      streamRef.current = stream;
-      chunksRef.current = [];
-
-      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-        ? 'video/webm;codecs=vp9,opus'
-        : MediaRecorder.isTypeSupported('video/webm')
-          ? 'video/webm'
-          : '';
-
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      recorderRef.current = recorder;
-
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-
-      recorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-        const name = `recording-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.webm`;
-        downloadBlob(blob, name);
-        await uploadToServer(blob);
-      };
-
-      stream.getVideoTracks()[0]?.addEventListener('ended', () => handleStop());
-
-      recorder.start(1000);
-      setRecording(true);
-      setElapsed(0);
-      timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
-
-    } catch (e: any) {
-      if (e.name !== 'AbortError' && e.name !== 'NotAllowedError') {
-        toast({ title: 'خطأ', description: 'تعذر الوصول للشاشة', variant: 'destructive' });
-      }
-    }
-  }
-
-  async function deleteRec(name: string) {
-    const r = await h(`/api/recordings/${encodeURIComponent(name)}`, { method: 'DELETE' });
-    if (r.ok) { toast({ title: 'تم الحذف' }); fetchList(); }
-    else toast({ title: 'فشل الحذف', variant: 'destructive' });
-  }
+  const onMicCount = members.filter(m => m.onMic).length;
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto" dir="rtl">
+    <div className="p-4 md:p-6 space-y-4 max-w-5xl mx-auto" dir="rtl">
+
+      {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Video className="h-6 w-6 text-red-500" /> تسجيل الرومات
+        <h1 className="text-xl font-bold flex items-center gap-2">
+          <Video className="h-5 w-5 text-red-500" /> تسجيل الروم
         </h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          سجّل شاشتك أثناء مشاهدة الرومات الصوتية والفيديو — يتنزّل على جهازك ويتحفظ على السيرفر تلقائياً
+        <p className="text-muted-foreground text-sm mt-0.5">
+          يسجل الروم مع صور المتحدثين — يتنزّل تلقائياً عند الإيقاف
         </p>
       </div>
 
-      <Card className={recording ? 'border-red-500 shadow-red-100 dark:shadow-red-900 shadow-lg' : ''}>
-        <CardContent className="p-8">
-          <div className="flex flex-col items-center gap-5">
-            {recording ? (
-              <>
-                <div className="flex items-center gap-3">
-                  <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-                  <span className="text-4xl font-mono font-bold tabular-nums">{formatTime(elapsed)}</span>
-                  <Badge variant="destructive" className="text-sm">جاري التسجيل</Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">عند الانتهاء اضغط إيقاف أو أغلق مشاركة الشاشة</p>
-                <Button size="lg" variant="destructive" onClick={handleStop} className="gap-2 px-8">
-                  <Square className="h-5 w-5 fill-white" /> إيقاف التسجيل
-                </Button>
-              </>
-            ) : (
-              <>
-                <div className="text-center space-y-1">
-                  <p className="font-medium">اضغط لتبدأ تسجيل الشاشة</p>
-                  <p className="text-sm text-muted-foreground">
-                    ستظهر نافذة لاختيار الشاشة أو التبويب اللي عايز تسجّله
-                  </p>
-                </div>
-                <Button
-                  size="lg"
-                  onClick={startRecording}
-                  className="gap-2 px-8 bg-red-600 hover:bg-red-700 text-white"
-                >
-                  <Circle className="h-5 w-5" /> ابدأ التسجيل
-                </Button>
-              </>
-            )}
+      {/* Status badges */}
+      <div className="flex flex-wrap gap-2 items-center">
+        {activeSession ? (
+          <Badge variant="secondary" className="gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+            {activeSession.roomName}
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="text-muted-foreground">
+            لم تدخل روم بعد
+          </Badge>
+        )}
 
-            {uploading && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
-                <Upload className="h-4 w-4" /> جاري رفع التسجيل على السيرفر...
-              </div>
-            )}
-          </div>
-        </CardContent>
+        <Badge variant="outline" className="gap-1">
+          <Mic className="h-3 w-3" />
+          {onMicCount} على المايك
+        </Badge>
+
+        <Badge variant="outline" className="gap-1">
+          <Users className="h-3 w-3" />
+          {members.length} عضو
+        </Badge>
+
+        {recording && (
+          <Badge variant="destructive" className="gap-1.5 animate-pulse">
+            <span className="w-2 h-2 rounded-full bg-white inline-block" />
+            {fmt(elapsed)}
+          </Badge>
+        )}
+      </div>
+
+      {/* Canvas preview */}
+      <Card className={`overflow-hidden p-0 ${recording ? "ring-2 ring-red-500 shadow-lg shadow-red-900/30" : ""}`}>
+        <canvas
+          ref={canvasRef}
+          width={W}
+          height={H}
+          className="w-full block"
+          style={{ aspectRatio: "16/9" }}
+        />
       </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Video className="h-5 w-5" /> التسجيلات على السيرفر
-            <Badge variant="secondary">{list.length}</Badge>
-          </CardTitle>
-          <Button variant="ghost" size="sm" onClick={fetchList} className="gap-1">
-            <RefreshCw className="h-4 w-4" /> تحديث
+      {/* Controls */}
+      <div className="flex justify-center gap-3">
+        {!recording ? (
+          <Button
+            size="lg"
+            onClick={startRecording}
+            disabled={!activeSession}
+            className="gap-2 bg-red-600 hover:bg-red-700 text-white px-10"
+          >
+            <Circle className="h-5 w-5" />
+            ابدأ التسجيل
           </Button>
-        </CardHeader>
-        <CardContent>
-          {loadingList ? (
-            <p className="text-muted-foreground text-sm text-center py-6">جاري التحميل...</p>
-          ) : list.length === 0 ? (
-            <div className="text-center py-10 space-y-2">
-              <Video className="h-10 w-10 mx-auto text-muted-foreground opacity-30" />
-              <p className="text-muted-foreground text-sm">لا توجد تسجيلات محفوظة على السيرفر بعد</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {list.map(rec => (
-                <div
-                  key={rec.name}
-                  className="flex items-center justify-between p-3 border rounded-lg gap-3 hover:bg-muted/40 transition-colors"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="font-mono text-sm truncate font-medium">{rec.name}</p>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                      <Clock className="h-3 w-3" />
-                      <span>{new Date(rec.created_at).toLocaleString('ar-EG')}</span>
-                      {rec.metadata?.size != null && (
-                        <span>• {formatSize(rec.metadata.size)}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 shrink-0">
-                    {rec.url && (
-                      <Button size="sm" variant="outline" asChild>
-                        <a href={rec.url} download={rec.name} target="_blank" rel="noreferrer">
-                          <Download className="h-4 w-4" />
-                        </a>
-                      </Button>
-                    )}
-                    <Button size="sm" variant="destructive" onClick={() => deleteRec(rec.name)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        ) : (
+          <Button
+            size="lg"
+            variant="destructive"
+            onClick={stopRecording}
+            className="gap-2 px-10"
+          >
+            <Square className="h-5 w-5 fill-white" />
+            إيقاف التسجيل
+          </Button>
+        )}
+      </div>
+
+      {uploading && (
+        <p className="text-center text-sm text-muted-foreground animate-pulse">
+          ⬆️ جاري رفع التسجيل على السيرفر...
+        </p>
+      )}
+
+      {/* Guide if no session */}
+      {!activeSession && (
+        <Card className="border-dashed border-2">
+          <CardContent className="p-6 text-center space-y-3">
+            <div className="text-4xl">🎙️</div>
+            <p className="font-semibold">ادخل روم أولاً للتسجيل</p>
+            <p className="text-sm text-muted-foreground">
+              روح <strong>غرف Ditto</strong> من القائمة الجانبية واضغط <strong>استمع</strong> على أي روم،
+              ثم ارجع لهذه الصفحة وابدأ التسجيل
+            </p>
+            <Link href="/ditto-rooms">
+              <Button variant="outline" size="sm" className="gap-2 mt-2">
+                <Video className="h-4 w-4" /> روح لغرف Ditto
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
