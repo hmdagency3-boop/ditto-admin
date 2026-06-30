@@ -1,0 +1,33 @@
+1:18:33 PM: build-image version: cbbb2660d860fe70694043ec05851a3910a2bf39 (noble-new-builds)
+1:18:33 PM: buildbot version: 863d78834c7df98fbadcc32a31460eb244115cc2
+1:18:33 PM: Fetching cached dependencies
+1:18:33 PM: Failed to fetch cache, continuing with build
+1:18:33 PM: Starting to prepare the repo for build
+1:18:33 PM: No cached dependencies found. Cloning fresh repo
+1:18:33 PM: git clone --filter=blob:none https://github.com/hmdagency3-boop/ditto-admin
+1:18:34 PM: Preparing Git Reference refs/heads/main
+1:18:35 PM: Custom build path detected. Proceeding with the specified path: 'platform-admin'
+1:18:35 PM: Custom publish path detected. Proceeding with the specified path: 'platform-admin/dist/public'
+1:18:35 PM: Custom functions path detected. Proceeding with the specified path: 'platform-admin/netlify/functions'
+1:18:35 PM: Custom build command detected. Proceeding with the specified command: 'npm install && npm run build'
+1:18:35 PM: Installing dependencies
+1:18:35 PM: mise ~/.config/mise/config.toml tools: python@3.14.3
+1:18:35 PM: mise ~/.config/mise/config.toml tools: ruby@3.4.8
+1:18:36 PM: mise ~/.config/mise/config.toml tools: go@1.26.2
+1:18:36 PM: v20.20.2 is already installed.
+1:18:36 PM: Now using node v20.20.2 (npm v10.8.2)
+1:18:36 PM: Enabling Node.js Corepack
+1:18:37 PM: No pnpm workspaces detected
+1:18:37 PM: Installing npm packages using pnpm version 10.30.3
+1:18:38 PM: Failed during stage 'Install dependencies': dependency_installation script returned non-zero exit code: 1
+1:18:38 PM:  ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with "frozen-lockfile" because pnpm-lock.yaml is not up to date with <ROOT>/package.json
+1:18:38 PM: Note that in CI environments this setting is true by default. If you still need to run install in such cases, use "pnpm install --no-frozen-lockfile"
+1:18:38 PM:   Failure reason:
+1:18:38 PM:   specifiers in the lockfile don't match specifiers in package.json:
+* 2 dependencies were added: agora-rtc-sdk-ng@^4.24.5, nim-web-sdk-ng@^10.10.0
+1:18:38 PM: * 2 dependencies are mismatched:
+1:18:38 PM:   - @replit/vite-plugin-cartographer (lockfile: ^0.4.4, manifest: ^0.4.11)
+1:18:38 PM:   - @replit/vite-plugin-dev-banner (lockfile: ^0.1.1, manifest: ^0.1.2)
+1:18:38 PM: Error during pnpm install
+1:18:38 PM: Failing build: Failed to install dependencies
+1:18:38 PM: Finished processing build request in 5.045s
