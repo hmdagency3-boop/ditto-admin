@@ -83,6 +83,7 @@ export default function Recordings() {
   const elapsedRef  = useRef(0);
   const blinkRef    = useRef(true);
   const blinkTimer  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const [recording, setRecording] = useState(false);
   const [elapsed,   setElapsed]   = useState(0);
@@ -308,15 +309,52 @@ export default function Recordings() {
     chunksRef.current = [];
     const stream = canvas.captureStream(25);
 
-    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-      ? "video/webm;codecs=vp9"
-      : "video/webm";
+    // ── Capture Agora audio ──────────────────────────────────────────────
+    const audioTracks = activeSession.audioTracks ?? [];
+    if (audioTracks.length > 0) {
+      try {
+        // Close previous AudioContext if any
+        audioCtxRef.current?.close().catch(() => {});
 
-    const recorder = new MediaRecorder(stream, { mimeType });
+        const audioCtx = new AudioContext();
+        audioCtxRef.current = audioCtx;
+        const dest = audioCtx.createMediaStreamDestination();
+
+        for (const agoraTrack of audioTracks) {
+          try {
+            // getMediaStreamTrack() gives the raw browser MediaStreamTrack
+            const mt = (agoraTrack as any).getMediaStreamTrack?.() as MediaStreamTrack | undefined;
+            if (mt) {
+              // createMediaStreamSource reads from the track WITHOUT rerouting
+              // so Agora's own audio output (speakers) is unaffected
+              const src = audioCtx.createMediaStreamSource(new MediaStream([mt]));
+              src.connect(dest);
+            }
+          } catch { /* skip this track */ }
+        }
+
+        // Add mixed audio track to canvas stream so recorder captures it
+        dest.stream.getAudioTracks().forEach(at => stream.addTrack(at));
+      } catch (err) {
+        console.warn("Audio capture setup failed:", err);
+      }
+    }
+
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+      ? "video/webm;codecs=vp9,opus"
+      : MediaRecorder.isTypeSupported("video/webm")
+        ? "video/webm"
+        : "";
+
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     recRef.current = recorder;
 
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     recorder.onstop = async () => {
+      // Clean up AudioContext
+      audioCtxRef.current?.close().catch(() => {});
+      audioCtxRef.current = null;
+
       const blob = new Blob(chunksRef.current, { type: "video/webm" });
       const name = `room-${activeSession.roomId}-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.webm`;
       downloadBlob(blob, name);
@@ -338,6 +376,8 @@ export default function Recordings() {
   function stopRecording() {
     if (recRef.current?.state === "recording") recRef.current.stop();
     if (timerRef.current) clearInterval(timerRef.current);
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
     setRecording(false);
     setElapsed(0);
     elapsedRef.current = 0;
