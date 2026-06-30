@@ -1,0 +1,104 @@
+1:21:01 PM: build-image version: cbbb2660d860fe70694043ec05851a3910a2bf39 (noble-new-builds)
+1:21:01 PM: buildbot version: 863d78834c7df98fbadcc32a31460eb244115cc2
+1:21:01 PM: Fetching cached dependencies
+1:21:02 PM: Failed to fetch cache, continuing with build
+1:21:02 PM: Starting to prepare the repo for build
+1:21:02 PM: No cached dependencies found. Cloning fresh repo
+1:21:02 PM: git clone --filter=blob:none https://github.com/hmdagency3-boop/ditto-admin
+1:21:02 PM: Preparing Git Reference refs/heads/main
+1:21:03 PM: Custom build path detected. Proceeding with the specified path: 'platform-admin'
+1:21:03 PM: Custom publish path detected. Proceeding with the specified path: 'platform-admin/dist/public'
+1:21:03 PM: Custom functions path detected. Proceeding with the specified path: 'platform-admin/netlify/functions'
+1:21:03 PM: Custom build command detected. Proceeding with the specified command: 'npm install && npm run build'
+1:21:03 PM: Installing dependencies
+1:21:03 PM: mise ~/.config/mise/config.toml tools: python@3.14.3
+1:21:04 PM: mise ~/.config/mise/config.toml tools: ruby@3.4.8
+1:21:04 PM: mise ~/.config/mise/config.toml tools: go@1.26.2
+1:21:04 PM: v20.20.2 is already installed.
+1:21:05 PM: Now using node v20.20.2 (npm v10.8.2)
+1:21:05 PM: Enabling Node.js Corepack
+1:21:05 PM: No npm workspaces detected
+1:21:05 PM: Installing npm packages using npm version 10.8.2
+1:21:08 PM: npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+npm warn deprecated @esbuild-kit/esm-loader@2.6.5: Merged into tsx: https://tsx.is
+1:21:08 PM: npm warn deprecated @esbuild-kit/core-utils@3.3.2: Merged into tsx: https://tsx.is
+1:22:16 PM: npm error Exit handler never called!
+1:22:16 PM: npm error This is an error with npm itself. Please report this error at:
+1:22:16 PM: npm error   <https://github.com/npm/cli/issues>
+1:22:16 PM: npm error A complete log of this run can be found in: /opt/buildhome/.npm/_logs/2026-06-30T10_21_05_248Z-debug-0.log
+1:22:16 PM: npm packages installed
+1:22:16 PM: Successfully installed dependencies
+1:22:17 PM: Detected 1 framework(s)
+1:22:17 PM: "vite" at version "5.4.20"
+1:22:17 PM: Starting build script
+1:22:17 PM: Section completed: initializing
+1:22:19 PM: ​
+1:22:19 PM: Netlify Build                                                 
+1:22:19 PM: ────────────────────────────────────────────────────────────────
+1:22:19 PM: ​
+1:22:19 PM: ❯ Version
+1:22:19 PM:   @netlify/build 36.0.0
+1:22:19 PM: ​
+1:22:19 PM: ❯ Flags
+1:22:19 PM:   accountId: 6a42c21395e09b16f546c5b8
+1:22:19 PM:   baseRelDir: true
+1:22:19 PM:   buildId: 6a43988c2f337500083116ab
+1:22:19 PM:   deployId: 6a43988c2f337500083116ad
+1:22:19 PM: ​
+1:22:19 PM: ❯ Current directory
+1:22:19 PM:   /opt/build/repo/platform-admin
+1:22:19 PM: ​
+1:22:19 PM: ❯ Config file
+1:22:19 PM:   /opt/build/repo/netlify.toml
+1:22:19 PM: ​
+1:22:19 PM: ❯ Context
+1:22:19 PM:   production
+1:22:19 PM: ​
+1:22:19 PM: build.command from netlify.toml                               
+1:22:19 PM: ────────────────────────────────────────────────────────────────
+1:22:19 PM: ​
+1:22:19 PM: $ npm install && npm run build
+1:23:30 PM: Failed during stage 'building site': Build script returned non-zero exit code: 2 (https://ntl.fyi/exit-code-2)
+1:23:30 PM: npm error Exit handler never called!
+1:23:30 PM: npm error This is an error with npm itself. Please report this error at:
+1:23:30 PM: npm error   <https://github.com/npm/cli/issues>
+1:23:30 PM: npm error A complete log of this run can be found in: /opt/buildhome/.npm/_logs/2026-06-30T10_22_19_556Z-debug-0.log
+1:23:30 PM: > rest-express@1.0.0 build
+1:23:30 PM: > tsx script/build.ts
+1:23:30 PM: sh: 1: tsx: not found
+1:23:30 PM: ​
+1:23:30 PM: "build.command" failed                                        
+1:23:30 PM: ────────────────────────────────────────────────────────────────
+1:23:30 PM: ​
+1:23:30 PM:   Error message
+1:23:30 PM:   Command failed with exit code 127: npm install && npm run build (https://ntl.fyi/exit-code-127)
+1:23:30 PM: ​
+1:23:30 PM:   Error location
+1:23:30 PM:   In build.command from netlify.toml:
+1:23:30 PM:   npm install && npm run build
+1:23:30 PM: ​
+1:23:30 PM:   Resolved config
+1:23:30 PM:   build:
+1:23:30 PM:     base: /opt/build/repo/platform-admin
+1:23:30 PM:     command: npm install && npm run build
+1:23:30 PM:     commandOrigin: config
+1:23:30 PM:     environment:
+1:23:30 PM:       - NODE_VERSION
+1:23:30 PM:     publish: /opt/build/repo/platform-admin/dist/public
+1:23:30 PM:     publishOrigin: config
+1:23:30 PM:   functions:
+1:23:30 PM:     "*":
+1:23:30 PM:       node_bundler: esbuild
+1:23:30 PM:   functionsDirectory: /opt/build/repo/platform-admin/netlify/functions
+1:23:30 PM:   redirects:
+1:23:30 PM:     - force: true
+1:23:30 PM:       from: /api/*
+      status: 200
+      to: /.netlify/functions/api/:splat
+    - from: /*
+      status: 200
+      to: /index.html
+  redirectsOrigin: config
+1:23:30 PM: Build failed due to a user error: Build script returned non-zero exit code: 2
+1:23:30 PM: Failing build: Failed to build site
+1:23:31 PM: Finished processing build request in 2m29.348s
