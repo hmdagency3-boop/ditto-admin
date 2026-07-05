@@ -30,6 +30,7 @@ interface Agency {
   agent_id: string;
   agency_name?: string;
   agency_code?: string;
+  agency_type?: 'voice' | 'live' | '';
   country?: string;
   agent_whatsapp?: string;
   source_platform?: string;
@@ -53,6 +54,18 @@ interface Supporter {
   created_at: string;
 }
 
+interface DuplicateSupporterInfo {
+  id: string;
+  supporter_id: string;
+  admin_id: string;
+  source_platform?: string;
+  level?: string;
+  management?: string;
+  created_at: string;
+  period?: number;
+  admin?: { id: string; full_name?: string; username: string; platform_id?: string } | null;
+}
+
 interface ReportData {
   agencies_activated: Agency[];
   agencies_opened: Agency[];
@@ -68,7 +81,7 @@ function getPeriodLabel(p: number) {
 }
 function getCurrentPeriod() { const d = new Date().getDate(); return d <= 10 ? 1 : d <= 20 ? 2 : 3; }
 
-const EMPTY_AGENCY = { agent_id:'', agency_name:'', agency_code:'', admin_id:'', country:'', agent_whatsapp:'', source_platform:'', creation_date:'', opening_date:'', notes:'', period: String(getCurrentPeriod()) };
+const EMPTY_AGENCY = { agent_id:'', agency_name:'', agency_code:'', agency_type:'', admin_id:'', country:'', agent_whatsapp:'', source_platform:'', creation_date:'', opening_date:'', notes:'', period: String(getCurrentPeriod()) };
 const EMPTY_SUPPORTER = { supporter_id:'', source_platform:'', level:'', management:'', admin_id:'', notes:'', period: String(getCurrentPeriod()) };
 
 // ══════════════════════════════════════════════════════════
@@ -255,6 +268,8 @@ export default function WorkManagement() {
   const [savingSupporter, setSavingSupporter]   = useState(false);
   const [supporterPaste, setSupporterPaste]     = useState(false);
   const [supporterPasteText, setSupporterPasteText] = useState('');
+  const [duplicateSupporterDlg, setDuplicateSupporterDlg] = useState(false);
+  const [duplicateSupporterInfo, setDuplicateSupporterInfo] = useState<DuplicateSupporterInfo | null>(null);
 
   const EMPTY_NEW_ADMIN = { full_name: '', username: '', password: '', platform_id: '' };
   const [showNewAdminAgency, setShowNewAdminAgency]       = useState(false);
@@ -424,7 +439,8 @@ export default function WorkManagement() {
     setEditingAgency(ag);
     setAgencyPaste(false); setAgencyPasteText('');
     setAgencyForm({
-      agent_id: ag.agent_id||'', agency_name: ag.agency_name||'', agency_code: ag.agency_code||'', admin_id: ag.admin_id||'',
+      agent_id: ag.agent_id||'', agency_name: ag.agency_name||'', agency_code: ag.agency_code||'',
+      agency_type: ag.agency_type||'', admin_id: ag.admin_id||'',
       country: ag.country||'', agent_whatsapp: ag.agent_whatsapp||'',
       source_platform: ag.source_platform||'',
       creation_date: ag.creation_date ? ag.creation_date.split('T')[0] : '',
@@ -480,6 +496,13 @@ export default function WorkManagement() {
       const url = editingSupporter ? `/api/supporters/${editingSupporter.id}` : '/api/supporters';
       const r = await h(url, { method: editingSupporter ? 'PATCH' : 'POST', body: JSON.stringify(supporterForm) });
       const d = await r.json();
+      if (r.status === 409) {
+        // داعم مسجل مسبقاً — أغلق فورم الإضافة وافتح نافذة التكرار
+        setSupporterDlg(false);
+        setDuplicateSupporterInfo(d.existing);
+        setDuplicateSupporterDlg(true);
+        return;
+      }
       if (!r.ok) throw new Error(d.message);
       toast({ title: editingSupporter ? 'تم التحديث' : 'تم إضافة الداعم' });
       setSupporterDlg(false); fetchAll();
@@ -785,6 +808,12 @@ export default function WorkManagement() {
                             : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'}>
                             {ag.status==='opened' ? '🎉 تم الافتتاح' : '✅ مفعّلة'}
                           </Badge>
+                          {ag.agency_type === 'voice' && (
+                            <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">🎙️ صوتي</Badge>
+                          )}
+                          {ag.agency_type === 'live' && (
+                            <Badge className="bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">📺 لايف</Badge>
+                          )}
                         </div>
                         <p className="text-sm font-medium">المشرف: {adminName(ag.admin_id)}</p>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -1038,6 +1067,31 @@ export default function WorkManagement() {
             <div className="space-y-1">
               <label className="text-sm font-medium">كود الوكالة</label>
               <Input placeholder="كود الوكالة" value={agencyForm.agency_code} onChange={e=>setAF('agency_code',e.target.value)}/>
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <label className="text-sm font-medium">نوع الوكالة *</label>
+              <div className="flex gap-3">
+                {[
+                  { value: 'voice', label: '🎙️ صوتي' },
+                  { value: 'live',  label: '📺 لايف'  },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setAF('agency_type', agencyForm.agency_type === opt.value ? '' : opt.value)}
+                    className={[
+                      'flex-1 rounded-lg border-2 py-3 text-sm font-semibold transition-all',
+                      agencyForm.agency_type === opt.value
+                        ? opt.value === 'voice'
+                          ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+                          : 'border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
+                        : 'border-muted bg-transparent text-muted-foreground hover:border-primary/40',
+                    ].join(' ')}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="space-y-2 sm:col-span-2">
               <label className="text-sm font-medium">المشرف المسؤول *</label>

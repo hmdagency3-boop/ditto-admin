@@ -1523,7 +1523,7 @@ export async function registerRoutes(
 
   app.post("/api/agencies", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      const { agent_id, agency_name, agency_code, admin_id, country, agent_whatsapp, source_platform, creation_date, opening_date, period, agent_photo } = req.body;
+      const { agent_id, agency_name, agency_code, agency_type, admin_id, country, agent_whatsapp, source_platform, creation_date, opening_date, period, agent_photo } = req.body;
       if (!agent_id || !admin_id) return res.status(400).json({ message: 'أيدي الوكيل والمشرف مطلوبان' });
       const status = opening_date ? 'opened' : 'activated';
       const periodNum = period ? parseInt(period) : null;
@@ -1532,6 +1532,7 @@ export async function registerRoutes(
         name: agency_name || '',
         agency_name: agency_name || null,
         agency_code: agency_code || null,
+        agency_type: agency_type || null,
         admin_id,
         country: country || null,
         agent_whatsapp: agent_whatsapp || null,
@@ -1554,7 +1555,7 @@ export async function registerRoutes(
   app.patch("/api/agencies/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const allowed = ['agent_id','agency_name','agency_code','country','agent_whatsapp','source_platform','creation_date','opening_date','status','agent_photo'];
+      const allowed = ['agent_id','agency_name','agency_code','agency_type','country','agent_whatsapp','source_platform','creation_date','opening_date','status','agent_photo'];
       const updates: Record<string, any> = { updated_at: new Date().toISOString() };
       for (const f of allowed) { if (req.body[f] !== undefined) updates[f] = req.body[f] || null; }
       // keep DB "name" column in sync with agency_name
@@ -1610,6 +1611,26 @@ export async function registerRoutes(
     try {
       const { supporter_id, source_platform, level, management, admin_id, notes, period, supporter_photo } = req.body;
       if (!supporter_id || !admin_id) return res.status(400).json({ message: 'أيدي الداعم والمشرف مطلوبان' });
+
+      // ── تحقق من التكرار ──────────────────────────────────
+      const { data: existing } = await storage.supabase
+        .from('supporters')
+        .select('id, supporter_id, admin_id, source_platform, level, management, created_at, period')
+        .eq('supporter_id', supporter_id.trim())
+        .maybeSingle();
+
+      if (existing) {
+        const { data: adminData } = await storage.supabase
+          .from('users')
+          .select('id, full_name, username, platform_id')
+          .eq('id', existing.admin_id)
+          .maybeSingle();
+        return res.status(409).json({
+          message: 'الداعم مسجل مسبقاً',
+          existing: { ...existing, admin: adminData },
+        });
+      }
+
       const periodNum = period ? parseInt(period) : null;
       const insertData: Record<string, any> = {
         supporter_id: supporter_id.trim(), admin_id,
