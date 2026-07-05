@@ -284,6 +284,10 @@ export default function WorkManagement() {
   const [expandedReports, setExpandedReports]     = useState<Set<string>>(new Set());
   const [copiedSingle, setCopiedSingle]           = useState<string|null>(null);
 
+  // List month/year filter (defaults to current month)
+  const [listYear, setListYear]   = useState(now.getFullYear());
+  const [listMonth, setListMonth] = useState(now.getMonth() + 1);
+
   const h = useCallback((url: string, opts?: RequestInit) =>
     fetch(url, { ...opts, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(opts?.headers||{}) } }),
   [token]);
@@ -592,8 +596,18 @@ export default function WorkManagement() {
     setCopiedSingle(id); setTimeout(()=>setCopiedSingle(null), 2000);
   }
 
-  const filteredAgencies  = filterAdmin==='all' ? agencies  : agencies.filter(a=>a.admin_id===filterAdmin);
-  const filteredSupporters = filterAdmin==='all' ? supporters : supporters.filter(s=>s.admin_id===filterAdmin);
+  const filteredAgencies = agencies
+    .filter(a => filterAdmin === 'all' || a.admin_id === filterAdmin)
+    .filter(a => {
+      const d = new Date(a.created_at);
+      return d.getUTCFullYear() === listYear && d.getUTCMonth() + 1 === listMonth;
+    });
+  const filteredSupporters = supporters
+    .filter(s => filterAdmin === 'all' || s.admin_id === filterAdmin)
+    .filter(s => {
+      const d = new Date(s.created_at);
+      return d.getUTCFullYear() === listYear && d.getUTCMonth() + 1 === listMonth;
+    });
   const years = Array.from({length:3},(_,i)=>now.getFullYear()-i);
 
   if (loading) return (
@@ -713,6 +727,25 @@ export default function WorkManagement() {
       </div>
 
       <Tabs defaultValue="agencies">
+        {/* Month/Year filter — applies to agencies and supporters lists */}
+        <div className="flex flex-wrap items-center gap-3 mb-3 p-3 rounded-lg bg-muted/40 border">
+          <span className="text-sm font-medium text-muted-foreground">عرض سجلات شهر:</span>
+          <Select value={String(listMonth)} onValueChange={v => setListMonth(Number(v))}>
+            <SelectTrigger className="w-36 h-8 text-sm"><SelectValue/></SelectTrigger>
+            <SelectContent>
+              {MONTHS.map((m, i) => <SelectItem key={i+1} value={String(i+1)}>{m}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={String(listYear)} onValueChange={v => setListYear(Number(v))}>
+            <SelectTrigger className="w-24 h-8 text-sm"><SelectValue/></SelectTrigger>
+            <SelectContent>
+              {years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <span className="text-xs text-muted-foreground">
+            ({filteredAgencies.length} وكالة · {filteredSupporters.length} داعم)
+          </span>
+        </div>
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="agencies"   className="gap-1"><Building2 className="h-4 w-4"/>الوكالات</TabsTrigger>
           <TabsTrigger value="supporters" className="gap-1"><Users     className="h-4 w-4"/>الداعمون</TabsTrigger>
@@ -734,7 +767,8 @@ export default function WorkManagement() {
           {filteredAgencies.length===0 ? (
             <Card><CardContent className="py-16 text-center text-muted-foreground">
               <Building2 className="h-12 w-12 mx-auto mb-3 opacity-30"/>
-              <p>لا توجد وكالات مسجلة</p>
+              <p>لا توجد وكالات في {MONTHS[listMonth-1]} {listYear}</p>
+              <p className="text-xs mt-1 opacity-60">غيّر الشهر من الفلتر أعلاه لعرض شهر آخر</p>
             </CardContent></Card>
           ) : (
             <div className="grid gap-3">
@@ -806,7 +840,8 @@ export default function WorkManagement() {
           {filteredSupporters.length===0 ? (
             <Card><CardContent className="py-16 text-center text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-3 opacity-30"/>
-              <p>لا يوجد داعمون مسجلون</p>
+              <p>لا يوجد داعمون في {MONTHS[listMonth-1]} {listYear}</p>
+              <p className="text-xs mt-1 opacity-60">غيّر الشهر من الفلتر أعلاه لعرض شهر آخر</p>
             </CardContent></Card>
           ) : (
             <div className="grid gap-3">

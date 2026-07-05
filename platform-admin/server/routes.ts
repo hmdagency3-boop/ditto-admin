@@ -1540,6 +1540,7 @@ export async function registerRoutes(
         opening_date: opening_date || null,
         status,
         period: periodNum,
+        created_at: new Date().toISOString(),
       };
       if (agent_photo) insertData.agent_photo = agent_photo;
       const { error } = await storage.supabase.from('agencies').insert(insertData);
@@ -1615,6 +1616,7 @@ export async function registerRoutes(
         source_platform: source_platform || null, level: level || null,
         management: management || null, notes: notes || null,
         period: periodNum,
+        created_at: new Date().toISOString(),
       };
       if (supporter_photo) insertData.supporter_photo = supporter_photo;
       const { error } = await storage.supabase.from('supporters').insert(insertData);
