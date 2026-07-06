@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Building2, Users, FileText, Plus, Trash2,
-  Copy, Check, Pencil, ClipboardPaste, Wand2, UserPlus, EyeOff, Eye, DownloadCloud, ChevronDown, ChevronUp
+  Copy, Check, Pencil, ClipboardPaste, Wand2, UserPlus, EyeOff, Eye, DownloadCloud, ChevronDown, ChevronUp, AlertTriangle, Calendar, User
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -1343,6 +1343,86 @@ export default function WorkManagement() {
               </div>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ══ DUPLICATE SUPPORTER DIALOG ══ */}
+      <Dialog open={duplicateSupporterDlg} onOpenChange={setDuplicateSupporterDlg}>
+        <DialogContent className="sm:max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              الداعم مسجّل مسبقاً
+            </DialogTitle>
+          </DialogHeader>
+          {duplicateSupporterInfo && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center shrink-0">
+                    <User className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">أيدي الداعم</p>
+                    <p className="font-bold text-lg font-mono">{duplicateSupporterInfo.supporter_id}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 pt-1 border-t border-amber-200 dark:border-amber-800">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-muted-foreground">تاريخ الإضافة:</span>
+                    <span className="font-semibold">
+                      {new Date(duplicateSupporterInfo.created_at).toLocaleDateString('ar-EG', {
+                        year: 'numeric', month: 'long', day: 'numeric'
+                      })}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-sm">
+                    <User className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-muted-foreground">تابع للمشرف:</span>
+                    <span className="font-semibold">
+                      {duplicateSupporterInfo.admin?.full_name || duplicateSupporterInfo.admin?.username || '—'}
+                    </span>
+                    {duplicateSupporterInfo.admin?.platform_id && (
+                      <span className="text-xs text-muted-foreground font-mono">
+                        ({duplicateSupporterInfo.admin.platform_id})
+                      </span>
+                    )}
+                  </div>
+
+                  {duplicateSupporterInfo.source_platform && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">المنصة:</span>
+                      <span className="font-medium">{duplicateSupporterInfo.source_platform}</span>
+                    </div>
+                  )}
+
+                  {duplicateSupporterInfo.level && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">الليفل:</span>
+                      <span className="font-medium">{duplicateSupporterInfo.level}</span>
+                    </div>
+                  )}
+
+                  {duplicateSupporterInfo.management && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">الإدارة:</span>
+                      <span className="font-medium">{duplicateSupporterInfo.management}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <Button
+                className="w-full"
+                onClick={() => setDuplicateSupporterDlg(false)}
+              >
+                حسناً، فهمت
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
