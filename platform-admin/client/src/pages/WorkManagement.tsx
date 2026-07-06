@@ -568,20 +568,38 @@ export default function WorkManagement() {
   }
 
   async function fetchSupporterLevels(ids: string[]) {
-    const unique = [...new Set(ids.filter(Boolean))];
+    const unique = [...new Set(ids.filter(id => id && /^\d+$/.test(id)))];
     if (unique.length === 0) return;
     setLoadingLevels(true);
     try {
-      const results = await Promise.allSettled(
+      // Step 1: erban → uid  (via /api/ditto/lookup/erban/:no)
+      const lookupResults = await Promise.allSettled(
         unique.map(id =>
-          h(`/api/platform-profile/${encodeURIComponent(id)}`).then(r => r.json())
+          h(`/api/ditto/lookup/erban/${encodeURIComponent(id)}`).then(r => r.json())
         )
       );
+
+      // Step 2: uid → profile (via /api/ditto/user/:uid/profile)
+      const profileTasks: Array<{ supporterId: string; uid: string }> = [];
+      lookupResults.forEach((res, i) => {
+        if (res.status === 'fulfilled' && res.value?.ok && res.value?.uid) {
+          profileTasks.push({ supporterId: unique[i], uid: String(res.value.uid) });
+        }
+      });
+
+      const profileResults = await Promise.allSettled(
+        profileTasks.map(({ uid }) =>
+          h(`/api/ditto/user/${uid}/profile`).then(r => r.json())
+        )
+      );
+
       const map: Record<string, boolean> = {};
-      results.forEach((res, i) => {
+      // default all to false first
+      unique.forEach(id => { map[id] = false; });
+      profileResults.forEach((res, i) => {
         if (res.status === 'fulfilled') {
-          const experLevel = res.value?.data?.experLevel;
-          map[unique[i]] = experLevel != null && Number(experLevel) >= 1;
+          const experLevel = res.value?.experLevel;
+          map[profileTasks[i].supporterId] = experLevel != null && Number(experLevel) >= 1;
         }
       });
       setSupporterLevelMap(prev => ({ ...prev, ...map }));
