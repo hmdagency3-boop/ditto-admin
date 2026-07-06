@@ -1546,6 +1546,7 @@ export async function registerRoutes(
       if (agent_photo) insertData.agent_photo = agent_photo;
       const { error } = await storage.supabase.from('agencies').insert(insertData);
       if (error) { console.error('[agencies] INSERT failed:', JSON.stringify(error)); return res.status(500).json({ message: error.message }); }
+      invalidateCache('agencies:');
       res.status(201).json({ message: 'تم إضافة الوكالة' });
     } catch (error: any) {
       res.status(500).json({ message: error?.message || 'حدث خطأ' });
