@@ -14,6 +14,7 @@ interface Agency {
   agent_id: string;
   agency_name?: string;
   agency_code?: string;
+  agency_type?: 'voice' | 'live' | null;
   agent_photo?: string;
   country?: string;
   agent_whatsapp?: string;
@@ -199,6 +200,7 @@ export default function AgenciesPage() {
                     <th className={headCls}>الوكيل</th>
                     <th className={headCls}>اسم الوكالة</th>
                     <th className={headCls}>كود الوكالة</th>
+                    <th className={headCls}>النوع</th>
                     <th className={headCls}>البلد</th>
                     <th className={headCls}>واتساب</th>
                     <th className={headCls}>المنصة</th>
@@ -236,6 +238,15 @@ export default function AgenciesPage() {
                         </td>
                         <td className={`${cellCls} font-medium`}>{ag.agency_name || '—'}</td>
                         <td className={`${cellCls} font-mono`}>{ag.agency_code || '—'}</td>
+                        <td className={`${cellCls} text-center`}>
+                          {ag.agency_type === 'voice' ? (
+                            <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 hover:bg-blue-100">🎙️ صوتي</Badge>
+                          ) : ag.agency_type === 'live' ? (
+                            <Badge className="bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 hover:bg-rose-100">📺 لايف</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
                         <td className={cellCls}>{ag.country || '—'}</td>
                         <td className={`${cellCls} font-mono`} dir="ltr">{ag.agent_whatsapp || '—'}</td>
                         <td className={cellCls}>{ag.source_platform || '—'}</td>
