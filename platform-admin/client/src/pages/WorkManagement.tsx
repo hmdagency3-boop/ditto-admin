@@ -80,6 +80,12 @@ function getPeriodLabel(p: number) {
   return 'الفترة الثالثة (21 – نهاية الشهر)';
 }
 function getCurrentPeriod() { const d = new Date().getDate(); return d <= 10 ? 1 : d <= 20 ? 2 : 3; }
+function agencyLabel(ag: Agency) {
+  const code = ag.agency_code
+    ? (ag.agency_type === 'live' ? `${ag.agency_code} (لايف)` : ag.agency_code)
+    : '';
+  return [code, ag.agency_name].filter(Boolean).join(' - ');
+}
 
 const EMPTY_AGENCY = { agent_id:'', agency_name:'', agency_code:'', agency_type:'', admin_id:'', country:'', agent_whatsapp:'', source_platform:'', creation_date:'', opening_date:'', notes:'', period: String(getCurrentPeriod()) };
 const EMPTY_SUPPORTER = { supporter_id:'', source_platform:'', level:'', management:'', admin_id:'', notes:'', period: String(getCurrentPeriod()) };
@@ -536,12 +542,12 @@ export default function WorkManagement() {
       `عدد الوكالات التي تم تفعيلها  ${rd.agencies_activated.length}`,
     ];
     rd.agencies_activated.forEach((ag,i) =>
-      lines.push(`${i+1}: ${[ag.agency_code, ag.agency_name].filter(Boolean).join(' - ')}`)
+      lines.push(`${i+1}: ${agencyLabel(ag)}`)
     );
     lines.push('');
     lines.push(`عدد الوكالات التي تم افتتاحها  ${rd.agencies_opened.length}`);
     rd.agencies_opened.forEach((ag,i) =>
-      lines.push(`${i+1}: ${[ag.agency_code, ag.agency_name].filter(Boolean).join(' - ')}`)
+      lines.push(`${i+1}: ${agencyLabel(ag)}`)
     );
     lines.push('');
     lines.push(`عدد الداعمين التي تم جلبهم  ${rd.supporters.length}`);
@@ -1322,12 +1328,12 @@ export default function WorkManagement() {
                           <div>
                             <p className="font-bold mb-1">📋 الوكالات المفعّلة ({rd.agencies_activated.length})</p>
                             {rd.agencies_activated.length===0 ? <p className="text-muted-foreground">لا يوجد</p>
-                              : rd.agencies_activated.map((ag,i)=><p key={ag.id||i}>{i+1}: {[ag.agency_code, ag.agency_name].filter(Boolean).join(' - ')}</p>)}
+                              : rd.agencies_activated.map((ag,i)=><p key={ag.id||i}>{i+1}: {agencyLabel(ag)}</p>)}
                           </div>
                           <div>
                             <p className="font-bold mb-1">🎉 الوكالات المفتوحة ({rd.agencies_opened.length})</p>
                             {rd.agencies_opened.length===0 ? <p className="text-muted-foreground">لا يوجد</p>
-                              : rd.agencies_opened.map((ag,i)=><p key={ag.id||i}>{i+1}: {[ag.agency_code, ag.agency_name].filter(Boolean).join(' - ')}</p>)}
+                              : rd.agencies_opened.map((ag,i)=><p key={ag.id||i}>{i+1}: {agencyLabel(ag)}</p>)}
                           </div>
                           <div>
                             <p className="font-bold mb-1">👥 الداعمون ({rd.supporters.length})</p>
@@ -1447,12 +1453,12 @@ export default function WorkManagement() {
                 <div>
                   <p className="font-bold mb-2">📋 عدد الوكالات التي تم تفعيلها  {reportData.agencies_activated.length}</p>
                   {reportData.agencies_activated.length===0 ? <p className="text-muted-foreground text-xs">لا يوجد</p>
-                    : reportData.agencies_activated.map((ag,i)=><p key={ag.id||i}>{i+1}: {[ag.agency_code, ag.agency_name].filter(Boolean).join(' - ')}</p>)}
+                    : reportData.agencies_activated.map((ag,i)=><p key={ag.id||i}>{i+1}: {agencyLabel(ag)}</p>)}
                 </div>
                 <div>
                   <p className="font-bold mb-2">🎉 عدد الوكالات التي تم افتتاحها  {reportData.agencies_opened.length}</p>
                   {reportData.agencies_opened.length===0 ? <p className="text-muted-foreground text-xs">لا يوجد</p>
-                    : reportData.agencies_opened.map((ag,i)=><p key={ag.id||i}>{i+1}: {[ag.agency_code, ag.agency_name].filter(Boolean).join(' - ')}</p>)}
+                    : reportData.agencies_opened.map((ag,i)=><p key={ag.id||i}>{i+1}: {agencyLabel(ag)}</p>)}
                 </div>
                 <div>
                   <p className="font-bold mb-2">👥 عدد الداعمين التي تم جلبهم  {reportData.supporters.length}</p>
