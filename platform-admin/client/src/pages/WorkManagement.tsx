@@ -302,6 +302,10 @@ export default function WorkManagement() {
   const [loadingAllReports, setLoadingAllReports] = useState(false);
   const [allReportsDlg, setAllReportsDlg]         = useState(false);
   const [copiedAll, setCopiedAll]                 = useState(false);
+
+  // Supporter experience-level map: supporter_id → true if experLevel >= 1
+  const [supporterLevelMap, setSupporterLevelMap] = useState<Record<string, boolean>>({});
+  const [loadingLevels, setLoadingLevels]         = useState(false);
   const [expandedReports, setExpandedReports]     = useState<Set<string>>(new Set());
   const [copiedSingle, setCopiedSingle]           = useState<string|null>(null);
 
@@ -529,9 +533,14 @@ export default function WorkManagement() {
       const d = await r.json();
       if (!r.ok) throw new Error(d.message);
       setReportData(d); setReportDlg(true);
+      fetchSupporterLevels((d.supporters || []).map((s: Supporter) => s.supporter_id));
     } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }); }
     finally { setLoadingReport(false); }
   }
+  function supporterCharged(s: Supporter): boolean {
+    return !!(supporterLevelMap[s.supporter_id] || (s.level && s.level.includes('تم الشحن')));
+  }
+
   function buildReportText(rd: ReportData) {
     const a = rd.admin;
     const lines: string[] = [
@@ -553,9 +562,31 @@ export default function WorkManagement() {
     lines.push(`عدد الداعمين التي تم جلبهم  ${rd.supporters.length}`);
     rd.supporters.forEach((s,i) => {
       lines.push('');
-      lines.push(`${i+1} : ${s.supporter_id}${s.level && s.level.includes('تم الشحن') ? ' تم الشحن' : ''}`);
+      lines.push(`${i+1} : ${s.supporter_id}${supporterCharged(s) ? ' تم الشحن' : ''}`);
     });
     return lines.join('\n');
+  }
+
+  async function fetchSupporterLevels(ids: string[]) {
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (unique.length === 0) return;
+    setLoadingLevels(true);
+    try {
+      const results = await Promise.allSettled(
+        unique.map(id =>
+          h(`/api/platform-profile/${encodeURIComponent(id)}`).then(r => r.json())
+        )
+      );
+      const map: Record<string, boolean> = {};
+      results.forEach((res, i) => {
+        if (res.status === 'fulfilled') {
+          const experLevel = res.value?.data?.experLevel;
+          map[unique[i]] = experLevel != null && Number(experLevel) >= 1;
+        }
+      });
+      setSupporterLevelMap(prev => ({ ...prev, ...map }));
+    } catch { /* silent */ }
+    finally { setLoadingLevels(false); }
   }
   async function copyReport() {
     if (!reportData) return;
@@ -604,6 +635,8 @@ export default function WorkManagement() {
       setAllReportsData(withWork);
       setExpandedReports(new Set());
       setAllReportsDlg(true);
+      const allIds = withWork.flatMap((r: ReportData) => r.supporters.map((s: Supporter) => s.supporter_id));
+      fetchSupporterLevels(allIds);
     } catch (e: any) { toast({ title: 'خطأ', description: e.message, variant: 'destructive' }); }
     finally { setLoadingAllReports(false); }
   }
@@ -1338,7 +1371,14 @@ export default function WorkManagement() {
                           <div>
                             <p className="font-bold mb-1">👥 الداعمون ({rd.supporters.length})</p>
                             {rd.supporters.length===0 ? <p className="text-muted-foreground">لا يوجد</p>
-                              : rd.supporters.map((s,i)=><p key={s.id||i}>{i+1}: {s.supporter_id}{s.level && s.level.includes('تم الشحن') ? ' تم الشحن' : ''}</p>)}
+                              : rd.supporters.map((s,i)=>(
+                                <p key={s.id||i}>
+                                  {i+1}: {s.supporter_id}
+                                  {supporterCharged(s)
+                                    ? <span className="text-green-600 font-semibold"> تم الشحن</span>
+                                    : loadingLevels ? <span className="text-muted-foreground text-xs"> ...</span> : null}
+                                </p>
+                              ))}
                           </div>
                           {total===0 && <p className="text-center text-muted-foreground py-1">لا توجد بيانات لهذه الفترة</p>}
                         </div>
@@ -1463,7 +1503,14 @@ export default function WorkManagement() {
                 <div>
                   <p className="font-bold mb-2">👥 عدد الداعمين التي تم جلبهم  {reportData.supporters.length}</p>
                   {reportData.supporters.length===0 ? <p className="text-muted-foreground text-xs">لا يوجد</p>
-                    : reportData.supporters.map((s,i)=><p key={s.id||i}>{i+1}: {s.supporter_id}{s.level && s.level.includes('تم الشحن') ? ' تم الشحن' : ''}</p>)}
+                    : reportData.supporters.map((s,i)=>(
+                      <p key={s.id||i}>
+                        {i+1}: {s.supporter_id}
+                        {supporterCharged(s)
+                          ? <span className="text-green-600 font-semibold"> تم الشحن</span>
+                          : loadingLevels ? <span className="text-muted-foreground text-xs"> ...</span> : null}
+                      </p>
+                    ))}
                 </div>
               </div>
               <Button onClick={copyReport} variant="outline" className="w-full gap-2">
