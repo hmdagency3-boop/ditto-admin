@@ -5,6 +5,7 @@ import {
   Star, AlertTriangle, History, StickyNote, Calendar, CheckCircle2,
   XCircle, AlertCircle, User, Hash, ImageIcon, Tag, Crown, Zap,
   TrendingUp, Users, Globe, Pencil, Trash2, Plus, X, Check, Loader2,
+  Radio, ExternalLink,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -77,6 +78,19 @@ interface Note {
   updated_at?: string;
 }
 
+interface DittoRoom {
+  roomId: number | string | null;
+  roomName: string | null;
+  cover: string | null;
+  onlineNum: number | null;
+  uid: number | string | null;
+  nick: string | null;
+  erbanNo: number | null;
+  countryCode: string | null;
+  countryName: string | null;
+  roomDesc: string | null;
+}
+
 const CHANGE_TYPE_LABELS: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
   name_change:        { label: 'تغيير الاسم',           icon: <User className="h-3.5 w-3.5" />,        color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' },
   platform_id_change: { label: 'تغيير رقم المنصة',      icon: <Hash className="h-3.5 w-3.5" />,        color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
@@ -130,9 +144,38 @@ export default function AdminProfile() {
   const [editNoteContent, setEditNoteContent] = useState('');
   const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
 
+  const [adminRoom, setAdminRoom] = useState<DittoRoom | null | undefined>(undefined);
+  const [roomLoading, setRoomLoading] = useState(false);
+
   useEffect(() => {
     if (id && token) loadAll();
   }, [id, token]);
+
+  useEffect(() => {
+    if (admin && admin.platform_id && /^\d+$/.test(admin.platform_id)) {
+      fetchAdminRoom(admin.platform_id);
+    } else if (admin) {
+      setAdminRoom(null);
+    }
+  }, [admin?.id]);
+
+  async function fetchAdminRoom(platformId: string) {
+    setRoomLoading(true);
+    try {
+      const headers = { Authorization: `Bearer ${token}` };
+      const lookupRes = await fetch(`/api/ditto/lookup/erban/${encodeURIComponent(platformId)}`, { headers });
+      const lookup = await lookupRes.json();
+      if (!lookup.ok || !lookup.uid) { setAdminRoom(null); return; }
+      const searchRes = await fetch(`/api/ditto/rooms/search?q=${encodeURIComponent(String(lookup.uid))}`, { headers });
+      const searchData = await searchRes.json();
+      if (searchData.ok && searchData.rooms?.length > 0) {
+        setAdminRoom(searchData.rooms[0]);
+      } else {
+        setAdminRoom(null);
+      }
+    } catch { setAdminRoom(null); }
+    finally { setRoomLoading(false); }
+  }
 
   async function loadAll() {
     setLoading(true);
@@ -358,6 +401,102 @@ export default function AdminProfile() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Ditto Room Card ── */}
+      {admin.platform_id && (
+        <Card className="mb-4">
+          <CardContent className="py-4 px-5">
+            <div className="flex items-center gap-2 mb-3">
+              <Radio className="h-4 w-4 text-red-500" />
+              <span className="text-sm font-semibold">غرفة ديتو</span>
+              {roomLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+              {!roomLoading && adminRoom !== undefined && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs px-2 mr-auto gap-1"
+                  onClick={() => fetchAdminRoom(admin.platform_id!)}
+                >
+                  تحديث
+                </Button>
+              )}
+            </div>
+
+            {roomLoading && adminRoom === undefined && (
+              <div className="flex items-center gap-3">
+                <div className="h-14 w-14 rounded-lg bg-muted animate-pulse shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-muted animate-pulse rounded w-2/3" />
+                  <div className="h-3 bg-muted animate-pulse rounded w-1/3" />
+                </div>
+              </div>
+            )}
+
+            {!roomLoading && adminRoom === null && (
+              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                <XCircle className="h-4 w-4" />
+                لا توجد غرفة نشطة حالياً
+              </p>
+            )}
+
+            {!roomLoading && adminRoom && (
+              <div className="flex items-start gap-3">
+                {/* Cover */}
+                <div className="h-16 w-16 rounded-lg overflow-hidden bg-muted shrink-0 border">
+                  {adminRoom.cover
+                    ? <img src={adminRoom.cover} alt="" className="h-full w-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display='none'; }} />
+                    : <div className="h-full w-full flex items-center justify-center"><Radio className="h-6 w-6 text-muted-foreground/40" /></div>
+                  }
+                </div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm leading-tight truncate">
+                        {adminRoom.roomName || '—'}
+                      </p>
+                      {adminRoom.roomDesc && (
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{adminRoom.roomDesc}</p>
+                      )}
+                    </div>
+                    <Badge className="shrink-0 bg-red-500/10 text-red-600 border-red-500/30 text-xs gap-1">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                      مباشر
+                    </Badge>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-muted-foreground">
+                    {adminRoom.onlineNum != null && (
+                      <span className="flex items-center gap-1">
+                        <Users className="h-3 w-3" />
+                        {adminRoom.onlineNum.toLocaleString()} مستمع
+                      </span>
+                    )}
+                    {adminRoom.roomId && (
+                      <span className="font-mono">ID: {String(adminRoom.roomId)}</span>
+                    )}
+                    {adminRoom.countryName && (
+                      <span>{adminRoom.countryName}</span>
+                    )}
+                  </div>
+
+                  <div className="mt-2">
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs gap-1.5"
+                      onClick={() => navigate('/ditto-rooms')}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      فتح صفحة الغرف
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
