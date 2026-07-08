@@ -5,8 +5,10 @@ import {
   Star, AlertTriangle, History, StickyNote, Calendar, CheckCircle2,
   XCircle, AlertCircle, User, Hash, ImageIcon, Tag, Crown, Zap,
   TrendingUp, Users, Globe, Pencil, Trash2, Plus, X, Check, Loader2,
-  Radio, ExternalLink,
+  Radio, Headphones, StopCircle,
 } from 'lucide-react';
+import AgoraRTC, { IRemoteAudioTrack, IRemoteVideoTrack } from 'agora-rtc-sdk-ng';
+import { useDittoSession, AGORA_APP_ID, SESSION_UID } from '@/contexts/DittoSessionContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -129,6 +131,10 @@ export default function AdminProfile() {
   const [, navigate] = useLocation();
   const { token, isSuperAdmin } = useAuth();
   const { toast } = useToast();
+  const {
+    activeSession, setActiveSession, stopSession,
+    setAgoraPublisherUids,
+  } = useDittoSession();
 
   const [admin, setAdmin] = useState<AdminInfo | null>(null);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
@@ -146,6 +152,7 @@ export default function AdminProfile() {
 
   const [adminRoom, setAdminRoom] = useState<DittoRoom | null | undefined>(undefined);
   const [roomLoading, setRoomLoading] = useState(false);
+  const [listenState, setListenState] = useState<'idle'|'fetching'|'connecting'|'listening'|'error'>('idle');
 
   useEffect(() => {
     if (id && token) loadAll();
@@ -219,6 +226,75 @@ export default function AdminProfile() {
       if (isSuperAdmin) await fetchNotes();
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleListen() {
+    if (!adminRoom?.roomId) return;
+    const roomIdStr = String(adminRoom.roomId);
+    const isActiveRoom = activeSession?.roomId === roomIdStr;
+
+    // If already listening to this room → stop
+    if (isActiveRoom) { await stopSession(); setListenState('idle'); return; }
+
+    setListenState('fetching');
+    try {
+      const res = await fetch('/api/ditto/trtc-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId: roomIdStr, type: '1', channel: '1' }),
+      });
+      const data = await res.json() as { ok: boolean; token?: string; error?: unknown };
+      if (!data?.ok || !data.token) throw new Error(String(data?.error ?? 'Token fetch failed'));
+
+      setListenState('connecting');
+      await stopSession();
+
+      const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
+      await client.setClientRole('audience');
+      const audioTracks: IRemoteAudioTrack[] = [];
+      const videoTracks: IRemoteVideoTrack[] = [];
+
+      client.on('user-published', async (user, mediaType) => {
+        setAgoraPublisherUids(prev => [...new Set([...prev, user.uid as number])]);
+        if (mediaType === 'audio') {
+          const track = await client.subscribe(user, mediaType);
+          audioTracks.push(track); track.play();
+          setActiveSession(prev => prev ? { ...prev, audioTracks: [...prev.audioTracks, track] } : prev);
+        } else if (mediaType === 'video') {
+          const track = await client.subscribe(user, 'video') as IRemoteVideoTrack;
+          videoTracks.push(track);
+          setActiveSession(prev => prev ? { ...prev, videoTracks: [...prev.videoTracks, track] } : prev);
+        }
+      });
+      client.on('user-unpublished', (user, mediaType) => {
+        if (mediaType === 'audio') setAgoraPublisherUids(prev => prev.filter(uid => uid !== (user.uid as number)));
+        if (mediaType === 'video') setActiveSession(prev => prev ? { ...prev, videoTracks: [] } : prev);
+      });
+      client.on('user-left', user => {
+        setAgoraPublisherUids(prev => prev.filter(uid => uid !== (user.uid as number)));
+      });
+
+      await client.join(AGORA_APP_ID, roomIdStr, data.token, SESSION_UID);
+
+      for (const u of client.remoteUsers) {
+        setAgoraPublisherUids(prev => [...new Set([...prev, u.uid as number])]);
+        if (u.hasAudio) { try { const t = await client.subscribe(u, 'audio'); audioTracks.push(t); t.play(); } catch {} }
+        if (u.hasVideo) { try { const t = await client.subscribe(u, 'video') as IRemoteVideoTrack; videoTracks.push(t); } catch {} }
+      }
+
+      setActiveSession({
+        roomId: roomIdStr,
+        roomName: adminRoom.roomName ?? '',
+        cover: adminRoom.cover ?? null,
+        client, audioTracks, videoTracks,
+        muted: false, localTrack: null, isTalking: false, micMuted: false,
+      });
+      setListenState('listening');
+    } catch (err) {
+      setListenState('error');
+      toast({ title: 'فشل الاتصال', description: err instanceof Error ? err.message : 'تعذّر الاتصال بالغرفة', variant: 'destructive' });
+      setTimeout(() => setListenState('idle'), 4000);
     }
   }
 
@@ -481,15 +557,42 @@ export default function AdminProfile() {
                     )}
                   </div>
 
-                  <div className="mt-2">
-                    <Button
-                      size="sm"
-                      className="h-7 text-xs gap-1.5"
-                      onClick={() => navigate('/ditto-rooms')}
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                      فتح صفحة الغرف
-                    </Button>
+                  <div className="mt-2 flex items-center gap-2">
+                    {(() => {
+                      const roomIdStr = String(adminRoom.roomId);
+                      const isActive = activeSession?.roomId === roomIdStr;
+                      const busy = listenState === 'fetching' || listenState === 'connecting';
+                      if (isActive) {
+                        return (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="h-7 text-xs gap-1.5"
+                            onClick={handleListen}
+                          >
+                            <StopCircle className="h-3.5 w-3.5" />
+                            إيقاف الاستماع
+                          </Button>
+                        );
+                      }
+                      return (
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs gap-1.5 bg-red-600 hover:bg-red-700 text-white"
+                          onClick={handleListen}
+                          disabled={busy}
+                        >
+                          {busy
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <Headphones className="h-3.5 w-3.5" />
+                          }
+                          {listenState === 'fetching' ? 'جاري الاتصال...' : listenState === 'connecting' ? 'يتصل...' : 'استمع مباشر'}
+                        </Button>
+                      );
+                    })()}
+                    {listenState === 'error' && (
+                      <span className="text-xs text-destructive">فشل الاتصال</span>
+                    )}
                   </div>
                 </div>
               </div>
