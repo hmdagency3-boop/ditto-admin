@@ -269,6 +269,20 @@ interface RoomCardProps {
   onStop:      () => Promise<void>;
 }
 
+function extractDittoError(err: unknown): string {
+  if (!err) return "فشل جلب التوكن";
+  if (typeof err === "string") return err;
+  if (typeof err === "object") {
+    const obj = err as Record<string, unknown>;
+    const msg = obj.message ?? obj.msg ?? obj.error;
+    if (typeof msg === "string" && msg.trim()) {
+      return obj.code !== undefined ? `${msg} (${obj.code})` : msg;
+    }
+    try { return JSON.stringify(err); } catch { /* fall through */ }
+  }
+  return String(err);
+}
+
 function RoomCard({ room, isActiveRoom, isTalking, onListen, onTalk, onStop }: RoomCardProps) {
   const [showToken,    setShowToken]    = useState(false);
   const [copied,       setCopied]       = useState(false);
@@ -310,7 +324,7 @@ function RoomCard({ room, isActiveRoom, isTalking, onListen, onTalk, onStop }: R
     setListenState("fetching"); setListenError(null);
     try {
       const data = await fetchToken("1");
-      if (!data?.ok || !data.token) throw new Error(String(data?.error ?? "Token fetch failed"));
+      if (!data?.ok || !data.token) throw new Error(extractDittoError(data?.error));
       setListenState("connecting");
       await onListen(data.token);
       setListenState("listening");
@@ -328,7 +342,7 @@ function RoomCard({ room, isActiveRoom, isTalking, onListen, onTalk, onStop }: R
     setTalkState("fetching"); setTalkError(null);
     try {
       const data = await fetchToken("0");
-      if (!data?.ok || !data.token) throw new Error(String(data?.error ?? "Token fetch failed"));
+      if (!data?.ok || !data.token) throw new Error(extractDittoError(data?.error));
       setTalkState("connecting");
       await onTalk(data.token);
       setTalkState("talking");

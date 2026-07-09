@@ -107,6 +107,20 @@ const CHANGE_TYPE_LABELS: Record<string, { label: string; icon: React.ReactNode;
   country_change:     { label: 'تغيير الدولة',          icon: <Globe className="h-3.5 w-3.5" />,       color: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200' },
 };
 
+function extractDittoError(err: unknown): string {
+  if (!err) return 'فشل جلب التوكن';
+  if (typeof err === 'string') return err;
+  if (typeof err === 'object') {
+    const obj = err as Record<string, unknown>;
+    const msg = obj.message ?? obj.msg ?? obj.error;
+    if (typeof msg === 'string' && msg.trim()) {
+      return obj.code !== undefined ? `${msg} (${obj.code})` : msg;
+    }
+    try { return JSON.stringify(err); } catch { /* fall through */ }
+  }
+  return String(err);
+}
+
 function isImageUrl(val: string | null): boolean {
   if (!val) return false;
   return val.startsWith('http') && (val.includes('avatar') || val.includes('.jpg') || val.includes('.jpeg') || val.includes('.png') || val.includes('res.sayyouditto') || val.includes('imageslim'));
@@ -245,7 +259,7 @@ export default function AdminProfile() {
         body: JSON.stringify({ roomId: roomIdStr, type: '1', channel: '1' }),
       });
       const data = await res.json() as { ok: boolean; token?: string; error?: unknown };
-      if (!data?.ok || !data.token) throw new Error(String(data?.error ?? 'Token fetch failed'));
+      if (!data?.ok || !data.token) throw new Error(extractDittoError(data?.error));
 
       setListenState('connecting');
       await stopSession();
