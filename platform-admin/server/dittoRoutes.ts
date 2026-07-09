@@ -615,6 +615,38 @@ router.delete("/saved-rooms/:roomId", async (req, res) => {
   }
 });
 
+// ── Listen history (log of every room the admin has listened to) ──────────────
+router.get("/listen-history", async (_req, res) => {
+  try {
+    const history = await storage.getListenHistory();
+    res.json({ ok: true, history });
+  } catch (e) {
+    res.status(500).json({ ok: false, history: [], error: String(e) });
+  }
+});
+
+router.post("/listen-history", async (req, res) => {
+  const { roomId, roomName, cover, hostUid, hostNick, erbanNo, countryCode, action } = req.body ?? {};
+  if (!roomId || !/^\d+$/.test(String(roomId))) {
+    res.status(400).json({ ok: false, error: "roomId (numeric) required" }); return;
+  }
+  try {
+    const entry = await storage.addListenHistory({
+      room_id: String(roomId),
+      room_name: roomName ?? null,
+      cover: cover ?? null,
+      host_uid: hostUid != null ? String(hostUid) : null,
+      host_nick: hostNick ?? null,
+      erban_no: erbanNo != null ? String(erbanNo) : null,
+      country_code: countryCode ?? null,
+      action: action === "talk" ? "talk" : "listen",
+    });
+    res.json({ ok: true, entry });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
 // ── GET /api/ditto/user/:uid ──────────────────────────────────────────────────
 router.get("/user/:uid", async (req, res) => {
   const { uid } = req.params;

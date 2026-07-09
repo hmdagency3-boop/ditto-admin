@@ -18,6 +18,8 @@ export interface IStorage {
   getSavedRooms(): Promise<SavedRoom[]>;
   saveRoom(room: InsertSavedRoom): Promise<SavedRoom>;
   deleteSavedRoom(roomId: string): Promise<boolean>;
+  getListenHistory(limit?: number): Promise<ListenHistory[]>;
+  addListenHistory(entry: InsertListenHistory): Promise<ListenHistory>;
 }
 
 export interface SavedRoom {
@@ -46,6 +48,32 @@ export interface InsertSavedRoom {
   channel?: string | null;
   note?: string | null;
   saved_by?: string | null;
+}
+
+export interface ListenHistory {
+  id: string;
+  room_id: string;
+  room_name: string | null;
+  cover: string | null;
+  host_uid: string | null;
+  host_nick: string | null;
+  erban_no: string | null;
+  country_code: string | null;
+  action: string;
+  listened_by: string | null;
+  created_at: string | null;
+}
+
+export interface InsertListenHistory {
+  room_id: string;
+  room_name?: string | null;
+  cover?: string | null;
+  host_uid?: string | null;
+  host_nick?: string | null;
+  erban_no?: string | null;
+  country_code?: string | null;
+  action?: string;
+  listened_by?: string | null;
 }
 
 export class SupabaseStorage implements IStorage {
@@ -290,6 +318,28 @@ export class SupabaseStorage implements IStorage {
       return false;
     }
     return true;
+  }
+
+  async getListenHistory(limit = 200): Promise<ListenHistory[]> {
+    const { data, error } = await this.supabase
+      .from("listen_history")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (error) throw new Error(error.message);
+    return data as ListenHistory[];
+  }
+
+  async addListenHistory(entry: InsertListenHistory): Promise<ListenHistory> {
+    const { data, error } = await this.supabase
+      .from("listen_history")
+      .insert({ action: "listen", ...entry })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data as ListenHistory;
   }
 }
 

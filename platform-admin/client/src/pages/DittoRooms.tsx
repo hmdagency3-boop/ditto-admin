@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   LayoutGrid, Users, Radio, User, Zap, Copy, Check, Loader2, X,
-  Headphones, Mic, Search, XCircle, Bookmark, BookmarkCheck,
+  Headphones, Mic, Search, XCircle, Bookmark, BookmarkCheck, History as HistoryIcon,
 } from "lucide-react";
 import AgoraRTC, {
   IRemoteAudioTrack, IRemoteVideoTrack,
@@ -53,6 +53,21 @@ interface SavedRoom {
 
 interface SavedRoomsData { ok: boolean; rooms: SavedRoom[]; }
 
+interface HistoryEntry {
+  id:           string;
+  room_id:      string;
+  room_name:    string | null;
+  cover:        string | null;
+  host_uid:     string | null;
+  host_nick:    string | null;
+  erban_no:     string | null;
+  country_code: string | null;
+  action:       string;
+  created_at:   string | null;
+}
+
+interface HistoryData { ok: boolean; history: HistoryEntry[]; }
+
 function savedRoomToRoom(s: SavedRoom): Room {
   return {
     roomId: s.room_id, roomName: s.room_name, cover: s.cover, onlineNum: null,
@@ -63,7 +78,7 @@ function savedRoomToRoom(s: SavedRoom): Room {
 }
 
 export default function DittoRooms() {
-  const [viewMode,      setViewMode]      = useState<"live" | "saved">("live");
+  const [viewMode,      setViewMode]      = useState<"live" | "saved" | "history">("live");
   const [activeTab,     setActiveTab]     = useState(TABS[0]);
   const [searchQuery,   setSearchQuery]   = useState("");
   const [searchInput,   setSearchInput]   = useState("");
@@ -92,8 +107,28 @@ export default function DittoRooms() {
     refetchInterval: 30000,
   });
 
+  const { data: historyData, isLoading: historyLoading } = useQuery<HistoryData>({
+    queryKey: ["/api/ditto/listen-history"],
+    queryFn:  () => fetch("/api/ditto/listen-history").then(r => r.json()),
+    enabled: viewMode === "history",
+    refetchInterval: viewMode === "history" ? 15000 : false,
+  });
+
+  const history = historyData?.history ?? [];
+
   const savedRooms = savedRoomsData?.rooms ?? [];
   const savedRoomIds = new Set(savedRooms.map(r => r.room_id));
+
+  function logHistory(room: Room, action: "listen" | "talk") {
+    fetch("/api/ditto/listen-history", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        roomId: room.roomId, roomName: room.roomName, cover: room.cover,
+        hostUid: room.uid, hostNick: room.nick, erbanNo: room.erbanNo,
+        countryCode: room.countryCode, action,
+      }),
+    }).then(() => queryClient.invalidateQueries({ queryKey: ["/api/ditto/listen-history"] })).catch(() => {});
+  }
 
   async function toggleSaveRoom(room: Room) {
     const roomId = String(room.roomId);
@@ -176,6 +211,7 @@ export default function DittoRooms() {
         cover: room.cover ?? null,
         client, audioTracks, videoTracks, muted: false, localTrack: null, isTalking: false, micMuted: false,
       });
+      logHistory(room, "listen");
     };
 
     const onTalk = async (token: string) => {
@@ -216,6 +252,7 @@ export default function DittoRooms() {
         client, audioTracks, videoTracks, muted: false, localTrack, isTalking: true, micMuted: false,
       });
       setIsMicMuted(false);
+      logHistory(room, "talk");
     };
 
     return { onListen, onTalk };
@@ -232,14 +269,17 @@ export default function DittoRooms() {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2 text-primary">
-              <LayoutGrid className="w-6 h-6" /> {viewMode === "saved" ? "الغرف المحفوظة" : "الغرف الحية"}
+              <LayoutGrid className="w-6 h-6" />
+              {viewMode === "saved" ? "الغرف المحفوظة" : viewMode === "history" ? "سجل الاستماع" : "الغرف الحية"}
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
               {viewMode === "saved"
                 ? `${savedRooms.length} غرفة محفوظة`
-                : isSearchMode
-                  ? searchLoading ? "جاري البحث..." : `${searchResults?.length ?? 0} نتيجة لـ "${searchQuery}"`
-                  : roomList?.total != null ? `${roomList.total} بث نشط` : "تصفح البث المباشر"}
+                : viewMode === "history"
+                  ? `${history.length} عملية استماع/تحدث مسجلة`
+                  : isSearchMode
+                    ? searchLoading ? "جاري البحث..." : `${searchResults?.length ?? 0} نتيجة لـ "${searchQuery}"`
+                    : roomList?.total != null ? `${roomList.total} بث نشط` : "تصفح البث المباشر"}
             </p>
           </div>
           <div className="flex gap-0 border border-border w-fit">
@@ -250,6 +290,10 @@ export default function DittoRooms() {
             <button onClick={() => setViewMode("saved")}
               className={`px-4 py-2 text-xs font-bold tracking-widest uppercase transition-colors flex items-center gap-1.5 ${viewMode === "saved" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}>
               <Bookmark className="w-3 h-3" /> محفوظة ({savedRooms.length})
+            </button>
+            <button onClick={() => setViewMode("history")}
+              className={`px-4 py-2 text-xs font-bold tracking-widest uppercase transition-colors flex items-center gap-1.5 ${viewMode === "history" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}>
+              <HistoryIcon className="w-3 h-3" /> سجل ({history.length})
             </button>
           </div>
         </div>
@@ -296,7 +340,46 @@ export default function DittoRooms() {
       {isSearchMode && searchError && (
         <div className="border border-destructive/40 bg-destructive/5 p-4 text-destructive text-xs font-bold">⚠ {searchError}</div>
       )}
-      {(viewMode === "live" && ((isLoading && !isSearchMode) || (isSearchMode && searchLoading)))
+      {viewMode === "history" ? (
+        historyLoading ? (
+          <div className="space-y-2">
+            {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-none" />)}
+          </div>
+        ) : history.length === 0 ? (
+          <div className="flex items-center justify-center border border-dashed border-border p-16 text-center text-muted-foreground mt-8">
+            <div>
+              <HistoryIcon className="w-12 h-12 mx-auto mb-4 opacity-20" />
+              <p className="font-bold tracking-widest uppercase">NO_HISTORY</p>
+              <p className="text-sm mt-2 opacity-60">لسه ماستمعتش لأي غرفة — كل غرفة تستمع/تتحدث فيها هتتسجل هنا تلقائيًا</p>
+            </div>
+          </div>
+        ) : (
+          <div className="border border-border divide-y divide-border">
+            {history.map(entry => (
+              <div key={entry.id} className="flex items-center gap-3 p-3 hover:bg-muted/30 transition-colors">
+                <div className="w-10 h-10 bg-muted shrink-0 overflow-hidden flex items-center justify-center">
+                  {entry.cover ? <img src={entry.cover} alt="" className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-muted-foreground/40" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold truncate">{entry.room_name ?? entry.room_id}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {entry.host_nick ?? "—"} · غرفة {entry.room_id}
+                    {entry.erban_no ? ` · #${entry.erban_no}` : ""}
+                    {entry.country_code ? ` · ${entry.country_code}` : ""}
+                  </p>
+                </div>
+                <Badge className={`rounded-none text-[10px] font-bold gap-1 shrink-0 ${entry.action === "talk" ? "bg-green-500/20 border border-green-500/50 text-green-400" : "bg-primary/20 border border-primary/50 text-primary"}`}>
+                  {entry.action === "talk" ? <Mic className="w-2.5 h-2.5" /> : <Headphones className="w-2.5 h-2.5" />}
+                  {entry.action === "talk" ? "تحدث" : "استماع"}
+                </Badge>
+                <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">
+                  {entry.created_at ? new Date(entry.created_at).toLocaleString("ar-EG", { dateStyle: "short", timeStyle: "short" }) : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        )
+      ) : (viewMode === "live" && ((isLoading && !isSearchMode) || (isSearchMode && searchLoading)))
       || (viewMode === "saved" && savedLoading) ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
           {Array.from({ length: 12 }).map((_, i) => <Skeleton key={i} className="h-72 w-full rounded-none" />)}
