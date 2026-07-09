@@ -15,6 +15,37 @@ export interface IStorage {
   rejectUser(id: string): Promise<User | undefined>;
   updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
   deleteUser(id: string): Promise<boolean>;
+  getSavedRooms(): Promise<SavedRoom[]>;
+  saveRoom(room: InsertSavedRoom): Promise<SavedRoom>;
+  deleteSavedRoom(roomId: string): Promise<boolean>;
+}
+
+export interface SavedRoom {
+  id: string;
+  room_id: string;
+  room_name: string | null;
+  cover: string | null;
+  host_uid: string | null;
+  host_nick: string | null;
+  erban_no: string | null;
+  country_code: string | null;
+  channel: string | null;
+  note: string | null;
+  saved_by: string | null;
+  created_at: string | null;
+}
+
+export interface InsertSavedRoom {
+  room_id: string;
+  room_name?: string | null;
+  cover?: string | null;
+  host_uid?: string | null;
+  host_nick?: string | null;
+  erban_no?: string | null;
+  country_code?: string | null;
+  channel?: string | null;
+  note?: string | null;
+  saved_by?: string | null;
 }
 
 export class SupabaseStorage implements IStorage {
@@ -219,6 +250,43 @@ export class SupabaseStorage implements IStorage {
 
     if (error) {
       console.error("Error deleting user:", error.message);
+      return false;
+    }
+    return true;
+  }
+
+  async getSavedRooms(): Promise<SavedRoom[]> {
+    const { data, error } = await this.supabase
+      .from("saved_rooms")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching saved rooms:", error.message);
+      return [];
+    }
+    return data as SavedRoom[];
+  }
+
+  async saveRoom(room: InsertSavedRoom): Promise<SavedRoom> {
+    const { data, error } = await this.supabase
+      .from("saved_rooms")
+      .upsert(room, { onConflict: "room_id" })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data as SavedRoom;
+  }
+
+  async deleteSavedRoom(roomId: string): Promise<boolean> {
+    const { error } = await this.supabase
+      .from("saved_rooms")
+      .delete()
+      .eq("room_id", roomId);
+
+    if (error) {
+      console.error("Error deleting saved room:", error.message);
       return false;
     }
     return true;

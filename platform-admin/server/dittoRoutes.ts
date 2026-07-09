@@ -8,6 +8,7 @@ import { request as httpsRequest } from "https";
 import { gunzipSync } from "zlib";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve } from "path";
+import { storage } from "./storage";
 
 const router = Router();
 
@@ -566,6 +567,49 @@ router.post("/trtc-token", async (req, res) => {
     } else {
       res.json({ ok: false, error: result });
     }
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// ── Saved rooms (persist rooms so they don't disappear when empty/closed) ─────
+router.get("/saved-rooms", async (_req, res) => {
+  try {
+    const rooms = await storage.getSavedRooms();
+    res.json({ ok: true, rooms });
+  } catch (e) {
+    res.status(500).json({ ok: false, rooms: [], error: String(e) });
+  }
+});
+
+router.post("/saved-rooms", async (req, res) => {
+  const { roomId, roomName, cover, hostUid, hostNick, erbanNo, countryCode, channel, note } = req.body ?? {};
+  if (!roomId || !/^\d+$/.test(String(roomId))) {
+    res.status(400).json({ ok: false, error: "roomId (numeric) required" }); return;
+  }
+  try {
+    const saved = await storage.saveRoom({
+      room_id: String(roomId),
+      room_name: roomName ?? null,
+      cover: cover ?? null,
+      host_uid: hostUid != null ? String(hostUid) : null,
+      host_nick: hostNick ?? null,
+      erban_no: erbanNo != null ? String(erbanNo) : null,
+      country_code: countryCode ?? null,
+      channel: channel != null ? String(channel) : "1",
+      note: note ?? null,
+    });
+    res.json({ ok: true, room: saved });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+router.delete("/saved-rooms/:roomId", async (req, res) => {
+  const { roomId } = req.params;
+  try {
+    const success = await storage.deleteSavedRoom(roomId);
+    res.json({ ok: success });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
   }

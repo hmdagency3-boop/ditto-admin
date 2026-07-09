@@ -1,11 +1,11 @@
 import { useState, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   LayoutGrid, Users, Radio, User, Zap, Copy, Check, Loader2, X,
-  Headphones, Mic, Search, XCircle,
+  Headphones, Mic, Search, XCircle, Bookmark, BookmarkCheck,
 } from "lucide-react";
 import AgoraRTC, {
   IRemoteAudioTrack, IRemoteVideoTrack,
@@ -37,7 +37,33 @@ interface Room {
 
 interface RoomsData { ok: boolean; rooms: Room[]; total: number | null; }
 
+interface SavedRoom {
+  id:           string;
+  room_id:      string;
+  room_name:    string | null;
+  cover:        string | null;
+  host_uid:     string | null;
+  host_nick:    string | null;
+  erban_no:     string | null;
+  country_code: string | null;
+  channel:      string | null;
+  note:         string | null;
+  created_at:   string | null;
+}
+
+interface SavedRoomsData { ok: boolean; rooms: SavedRoom[]; }
+
+function savedRoomToRoom(s: SavedRoom): Room {
+  return {
+    roomId: s.room_id, roomName: s.room_name, cover: s.cover, onlineNum: null,
+    uid: s.host_uid, nick: s.host_nick, erbanNo: s.erban_no ? Number(s.erban_no) : null,
+    countryCode: s.country_code, countryName: null, countryIcon: null,
+    vipLevel: null, vipName: null, gender: null, roomDesc: s.note, hotScore: null,
+  };
+}
+
 export default function DittoRooms() {
+  const [viewMode,      setViewMode]      = useState<"live" | "saved">("live");
   const [activeTab,     setActiveTab]     = useState(TABS[0]);
   const [searchQuery,   setSearchQuery]   = useState("");
   const [searchInput,   setSearchInput]   = useState("");
@@ -45,7 +71,8 @@ export default function DittoRooms() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError,   setSearchError]   = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const isSearchMode = searchQuery.length > 0;
+  const isSearchMode = searchQuery.length > 0 && viewMode === "live";
+  const queryClient = useQueryClient();
 
   const {
     activeSession, setActiveSession,
@@ -56,8 +83,34 @@ export default function DittoRooms() {
     queryKey: ["/api/ditto/rooms", activeTab],
     queryFn:  () => fetch(`/api/ditto/rooms?tab=${activeTab}&pageNum=1&pageSize=30`).then(r => r.json()),
     refetchInterval: 30000,
-    enabled: !isSearchMode,
+    enabled: !isSearchMode && viewMode === "live",
   });
+
+  const { data: savedRoomsData, isLoading: savedLoading } = useQuery<SavedRoomsData>({
+    queryKey: ["/api/ditto/saved-rooms"],
+    queryFn:  () => fetch("/api/ditto/saved-rooms").then(r => r.json()),
+    refetchInterval: 30000,
+  });
+
+  const savedRooms = savedRoomsData?.rooms ?? [];
+  const savedRoomIds = new Set(savedRooms.map(r => r.room_id));
+
+  async function toggleSaveRoom(room: Room) {
+    const roomId = String(room.roomId);
+    if (savedRoomIds.has(roomId)) {
+      await fetch(`/api/ditto/saved-rooms/${roomId}`, { method: "DELETE" });
+    } else {
+      await fetch("/api/ditto/saved-rooms", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomId, roomName: room.roomName, cover: room.cover,
+          hostUid: room.uid, hostNick: room.nick, erbanNo: room.erbanNo,
+          countryCode: room.countryCode, channel: "1",
+        }),
+      });
+    }
+    queryClient.invalidateQueries({ queryKey: ["/api/ditto/saved-rooms"] });
+  }
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -168,7 +221,9 @@ export default function DittoRooms() {
     return { onListen, onTalk };
   }
 
-  const displayRooms = isSearchMode ? (searchResults ?? []) : (roomList?.rooms ?? []);
+  const displayRooms = viewMode === "saved"
+    ? savedRooms.map(savedRoomToRoom)
+    : isSearchMode ? (searchResults ?? []) : (roomList?.rooms ?? []);
 
   return (
     <div className="p-6 space-y-4 font-mono">
@@ -177,25 +232,39 @@ export default function DittoRooms() {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2 text-primary">
-              <LayoutGrid className="w-6 h-6" /> الغرف الحية
+              <LayoutGrid className="w-6 h-6" /> {viewMode === "saved" ? "الغرف المحفوظة" : "الغرف الحية"}
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
-              {isSearchMode
-                ? searchLoading ? "جاري البحث..." : `${searchResults?.length ?? 0} نتيجة لـ "${searchQuery}"`
-                : roomList?.total != null ? `${roomList.total} بث نشط` : "تصفح البث المباشر"}
+              {viewMode === "saved"
+                ? `${savedRooms.length} غرفة محفوظة`
+                : isSearchMode
+                  ? searchLoading ? "جاري البحث..." : `${searchResults?.length ?? 0} نتيجة لـ "${searchQuery}"`
+                  : roomList?.total != null ? `${roomList.total} بث نشط` : "تصفح البث المباشر"}
             </p>
           </div>
-          {!isSearchMode && (
-            <div className="flex gap-0 border border-border w-fit">
-              {TABS.map(tab => (
-                <button key={tab} onClick={() => setActiveTab(tab)}
-                  className={`px-5 py-2 text-xs font-bold tracking-widest uppercase transition-colors ${activeTab === tab ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}>
-                  {tab}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="flex gap-0 border border-border w-fit">
+            <button onClick={() => setViewMode("live")}
+              className={`px-4 py-2 text-xs font-bold tracking-widest uppercase transition-colors flex items-center gap-1.5 ${viewMode === "live" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}>
+              <Radio className="w-3 h-3" /> مباشر
+            </button>
+            <button onClick={() => setViewMode("saved")}
+              className={`px-4 py-2 text-xs font-bold tracking-widest uppercase transition-colors flex items-center gap-1.5 ${viewMode === "saved" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}>
+              <Bookmark className="w-3 h-3" /> محفوظة ({savedRooms.length})
+            </button>
+          </div>
         </div>
+        {viewMode === "live" && (
+        <>
+          {!isSearchMode && (
+          <div className="flex gap-0 border border-border w-fit">
+            {TABS.map(tab => (
+              <button key={tab} onClick={() => setActiveTab(tab)}
+                className={`px-5 py-2 text-xs font-bold tracking-widest uppercase transition-colors ${activeTab === tab ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}>
+                {tab}
+              </button>
+            ))}
+          </div>
+          )}
         <form onSubmit={handleSearch} className="flex gap-0">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
@@ -219,13 +288,16 @@ export default function DittoRooms() {
             </button>
           )}
         </form>
+        </>
+        )}
       </header>
 
       {/* Room grid */}
       {isSearchMode && searchError && (
         <div className="border border-destructive/40 bg-destructive/5 p-4 text-destructive text-xs font-bold">⚠ {searchError}</div>
       )}
-      {(isLoading && !isSearchMode) || (isSearchMode && searchLoading) ? (
+      {(viewMode === "live" && ((isLoading && !isSearchMode) || (isSearchMode && searchLoading)))
+      || (viewMode === "saved" && savedLoading) ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
           {Array.from({ length: 12 }).map((_, i) => <Skeleton key={i} className="h-72 w-full rounded-none" />)}
         </div>
@@ -233,8 +305,13 @@ export default function DittoRooms() {
         <div className="flex items-center justify-center border border-dashed border-border p-16 text-center text-muted-foreground mt-8">
           <div>
             <LayoutGrid className="w-12 h-12 mx-auto mb-4 opacity-20" />
-            <p className="font-bold tracking-widest uppercase">{isSearchMode ? "NO_RESULTS" : "NO_NODES_FOUND"}</p>
-            <p className="text-sm mt-2 opacity-60">{isSearchMode ? "لا توجد غرف بهذا البحث" : "لا توجد غرف نشطة"}</p>
+            <p className="font-bold tracking-widest uppercase">
+              {viewMode === "saved" ? "NO_SAVED_ROOMS" : isSearchMode ? "NO_RESULTS" : "NO_NODES_FOUND"}
+            </p>
+            <p className="text-sm mt-2 opacity-60">
+              {viewMode === "saved" ? "لسه معملتش حفظ لأي غرفة — اضغط علامة الحفظ 🔖 على أي غرفة في تاب مباشر"
+                : isSearchMode ? "لا توجد غرف بهذا البحث" : "لا توجد غرف نشطة"}
+            </p>
           </div>
         </div>
       ) : (
@@ -250,6 +327,8 @@ export default function DittoRooms() {
                 onListen={onListen}
                 onTalk={onTalk}
                 onStop={stopSession}
+                isSaved={savedRoomIds.has(String(room.roomId))}
+                onToggleSave={() => toggleSaveRoom(room)}
               />
             );
           })}
@@ -267,6 +346,8 @@ interface RoomCardProps {
   onListen:    (token: string) => Promise<void>;
   onTalk:      (token: string) => Promise<void>;
   onStop:      () => Promise<void>;
+  isSaved:     boolean;
+  onToggleSave: () => void;
 }
 
 function extractDittoError(err: unknown): string {
@@ -283,7 +364,7 @@ function extractDittoError(err: unknown): string {
   return String(err);
 }
 
-function RoomCard({ room, isActiveRoom, isTalking, onListen, onTalk, onStop }: RoomCardProps) {
+function RoomCard({ room, isActiveRoom, isTalking, onListen, onTalk, onStop, isSaved, onToggleSave }: RoomCardProps) {
   const [showToken,    setShowToken]    = useState(false);
   const [copied,       setCopied]       = useState(false);
   const [tokenData,    setTokenData]    = useState<{ ok: boolean; token?: string } | null>(null);
@@ -372,10 +453,15 @@ function RoomCard({ room, isActiveRoom, isTalking, onListen, onTalk, onStop }: R
     <Card className={`rounded-none overflow-hidden group transition-colors relative flex flex-col ${isActiveRoom ? (isTalking ? "border-green-500" : "border-primary") : "border-border hover:border-primary/50"}`}>
       {/* Cover */}
       <div className="relative w-full aspect-[4/3] bg-muted flex items-center justify-center overflow-hidden shrink-0">
-        <div className="absolute top-2 right-2 z-10">
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
           <Badge className="bg-black/80 border border-primary/50 rounded-none font-bold gap-1 text-[10px] text-primary">
             <Radio className="w-2.5 h-2.5 animate-pulse" /> LIVE
           </Badge>
+          <button onClick={e => { e.stopPropagation(); onToggleSave(); }}
+            title={isSaved ? "إلغاء الحفظ" : "حفظ الغرفة"}
+            className={`flex items-center justify-center w-6 h-6 border transition-colors ${isSaved ? "bg-yellow-400 border-yellow-400 text-black" : "bg-black/80 border-border/50 text-muted-foreground hover:text-yellow-400 hover:border-yellow-400"}`}>
+            {isSaved ? <BookmarkCheck className="w-3 h-3" /> : <Bookmark className="w-3 h-3" />}
+          </button>
         </div>
         <div className="absolute top-2 left-2 z-10 flex flex-col gap-1 items-start">
           {room.countryIcon && <img src={room.countryIcon} alt={room.countryCode ?? ""} className="w-5 h-4 object-cover border border-white/20" />}
