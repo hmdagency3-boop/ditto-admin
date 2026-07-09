@@ -477,6 +477,8 @@ export async function registerRoutes(
         await storage.updateUser(user.id, { platform_id });
       }
 
+      invalidateCache('users:');
+
       res.status(201).json({
         id: approved?.id ?? user.id,
         username,
