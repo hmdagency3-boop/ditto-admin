@@ -1,6 +1,8 @@
 export interface UserProfileData {
   name: string;
   image: string;
+  vipId: number | null;
+  vipDate: number | string | null;
 }
 
 export async function fetchUserProfile(identifier: string | null | undefined): Promise<UserProfileData | null> {
@@ -24,7 +26,9 @@ export async function fetchUserProfile(identifier: string | null | undefined): P
     if (result.code === 200 && result.data) {
       return {
         name: result.data.nick || result.data.name || result.data.full_name || '',
-        image: result.data.avatar || result.data.image || result.data.picture || ''
+        image: result.data.avatar || result.data.image || result.data.picture || '',
+        vipId: result.data.vipId != null && Number.isFinite(Number(result.data.vipId)) ? Number(result.data.vipId) : null,
+        vipDate: result.data.vipDate ?? null,
       };
     }
 

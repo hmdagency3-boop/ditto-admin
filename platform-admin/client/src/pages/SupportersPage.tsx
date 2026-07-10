@@ -21,6 +21,8 @@ interface Supporter {
   created_at: string;
   platformName?: string;
   platformImage?: string;
+  vipId?: number | null;
+  vipDate?: number | string | null;
 }
 
 interface AdminUser {
@@ -64,7 +66,7 @@ export default function SupportersPage() {
           if (profile) {
             setSupporters(prev => prev.map(s =>
               s.id === sp.id
-                ? { ...s, platformName: profile.name, platformImage: profile.image }
+                ? { ...s, platformName: profile.name, platformImage: profile.image, vipId: profile.vipId, vipDate: profile.vipDate }
                 : s
             ));
           }
@@ -105,6 +107,22 @@ export default function SupportersPage() {
 
   const getInitials = (name: string) =>
     name ? name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase() : '?';
+
+  const formatVipDate = (value?: number | string | null) => {
+    if (value == null || value === '') return null;
+    let ms: number;
+    if (typeof value === 'number' || /^\d+$/.test(value)) {
+      const num = Number(value);
+      ms = num < 1e12 ? num * 1000 : num; // seconds vs milliseconds heuristic
+    } else {
+      ms = Date.parse(value);
+    }
+    if (!Number.isFinite(ms) || Number.isNaN(ms)) return null;
+    const date = new Date(ms);
+    const now = Date.now();
+    const label = date.toLocaleDateString('ar-EG');
+    return { label, expired: date.getTime() < now };
+  };
 
   const cellCls = 'border border-border px-3 py-2.5 text-sm';
   const headCls = 'border border-border px-3 py-2.5 text-sm font-semibold bg-muted text-right';
@@ -191,6 +209,8 @@ export default function SupportersPage() {
                     <th className={headCls}>الداعم</th>
                     <th className={headCls}>المستوى</th>
                     <th className={headCls}>الإدارة</th>
+                    <th className={headCls}>VIP</th>
+                    <th className={headCls}>مدة VIP</th>
                     <th className={headCls}>المنصة</th>
                     <th className={headCls}>ملاحظات</th>
                     <th className={headCls}>تاريخ الإضافة</th>
@@ -231,6 +251,23 @@ export default function SupportersPage() {
                           }
                         </td>
                         <td className={cellCls}>{sp.management || '—'}</td>
+                        <td className={cellCls}>
+                          {sp.vipId
+                            ? <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 hover:bg-yellow-100">{`VIP ${sp.vipId}`}</Badge>
+                            : <span className="text-muted-foreground">—</span>
+                          }
+                        </td>
+                        <td className={`${cellCls} whitespace-nowrap`}>
+                          {(() => {
+                            const vipDate = formatVipDate(sp.vipDate);
+                            if (!vipDate) return <span className="text-muted-foreground">—</span>;
+                            return (
+                              <span className={vipDate.expired ? 'text-red-500' : 'text-muted-foreground'}>
+                                {vipDate.label}{vipDate.expired ? ' (منتهي)' : ''}
+                              </span>
+                            );
+                          })()}
+                        </td>
                         <td className={cellCls}>{sp.source_platform || '—'}</td>
                         <td className={`${cellCls} max-w-[160px]`}>
                           <p className="truncate text-muted-foreground">{sp.notes || '—'}</p>
