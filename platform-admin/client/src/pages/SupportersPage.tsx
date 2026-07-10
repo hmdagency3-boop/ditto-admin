@@ -1,13 +1,26 @@
-import { useState, useEffect } from 'react';
-import { Users, Search } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Users, Search, ArrowUpDown, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchUserProfile } from '@/lib/userProfileService';
+
+type SortKey = 'created_desc' | 'created_asc' | 'name_asc' | 'name_desc' | 'vip_days_asc' | 'vip_days_desc';
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: 'created_desc',  label: 'الأحدث إضافة' },
+  { value: 'created_asc',   label: 'الأقدم إضافة' },
+  { value: 'name_asc',      label: 'الاسم (أ-ي)' },
+  { value: 'name_desc',     label: 'الاسم (ي-أ)' },
+  { value: 'vip_days_asc',  label: 'مدة VIP (الأقرب للانتهاء)' },
+  { value: 'vip_days_desc', label: 'مدة VIP (الأطول تبقياً)' },
+];
 
 interface Supporter {
   id: string;
@@ -49,6 +62,10 @@ export default function SupportersPage() {
   const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [levelFilter, setLevelFilter] = useState<string>('all');
+  const [platformFilter, setPlatformFilter] = useState<string>('all');
+  const [adminFilter, setAdminFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<SortKey>('created_desc');
 
   useEffect(() => {
     async function load() {
@@ -100,18 +117,61 @@ export default function SupportersPage() {
     load();
   }, [token]);
 
-  const adminMap = Object.fromEntries(admins.map(a => [a.id, a]));
+  const adminMap = useMemo(() => Object.fromEntries(admins.map(a => [a.id, a])), [admins]);
 
-  const filtered = supporters.filter(sp => {
+  const levels = [...new Set(supporters.map(s => s.level).filter(Boolean))] as string[];
+  const platforms = [...new Set(supporters.map(s => s.source_platform).filter(Boolean))] as string[];
+
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return !q ||
-      sp.supporter_id?.toLowerCase().includes(q) ||
-      sp.platformName?.toLowerCase().includes(q) ||
-      sp.level?.toLowerCase().includes(q) ||
-      sp.management?.toLowerCase().includes(q) ||
-      sp.source_platform?.toLowerCase().includes(q) ||
-      adminMap[sp.admin_id]?.full_name?.toLowerCase().includes(q);
-  });
+    let list = supporters.filter(sp => {
+      const matchesSearch = !q ||
+        sp.supporter_id?.toLowerCase().includes(q) ||
+        sp.platformName?.toLowerCase().includes(q) ||
+        sp.level?.toLowerCase().includes(q) ||
+        sp.management?.toLowerCase().includes(q) ||
+        sp.source_platform?.toLowerCase().includes(q) ||
+        adminMap[sp.admin_id]?.full_name?.toLowerCase().includes(q);
+      const matchesLevel = levelFilter === 'all' || sp.level === levelFilter;
+      const matchesPlatform = platformFilter === 'all' || sp.source_platform === platformFilter;
+      const matchesAdmin = adminFilter === 'all' || sp.admin_id === adminFilter;
+      return matchesSearch && matchesLevel && matchesPlatform && matchesAdmin;
+    });
+
+    list = [...list].sort((a, b) => {
+      switch (sortBy) {
+        case 'created_asc':
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case 'name_asc':
+          return (a.platformName || a.supporter_id).localeCompare(b.platformName || b.supporter_id, 'ar');
+        case 'name_desc':
+          return (b.platformName || b.supporter_id).localeCompare(a.platformName || a.supporter_id, 'ar');
+        case 'vip_days_asc': {
+          const av = a.vipDaysLeft ?? Number.POSITIVE_INFINITY;
+          const bv = b.vipDaysLeft ?? Number.POSITIVE_INFINITY;
+          return av - bv;
+        }
+        case 'vip_days_desc': {
+          const av = a.vipDaysLeft ?? Number.NEGATIVE_INFINITY;
+          const bv = b.vipDaysLeft ?? Number.NEGATIVE_INFINITY;
+          return bv - av;
+        }
+        case 'created_desc':
+        default:
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+    });
+
+    return list;
+  }, [supporters, search, levelFilter, platformFilter, adminFilter, sortBy, adminMap]);
+
+  const hasActiveFilters = levelFilter !== 'all' || platformFilter !== 'all' || adminFilter !== 'all' || sortBy !== 'created_desc';
+  const resetFilters = () => {
+    setLevelFilter('all');
+    setPlatformFilter('all');
+    setAdminFilter('all');
+    setSortBy('created_desc');
+  };
 
   const getInitials = (name: string) =>
     name ? name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase() : '?';
@@ -126,8 +186,6 @@ export default function SupportersPage() {
 
   const cellCls = 'border border-border px-3 py-2.5 text-sm';
   const headCls = 'border border-border px-3 py-2.5 text-sm font-semibold bg-muted text-right';
-
-  const levels = [...new Set(supporters.map(s => s.level).filter(Boolean))];
 
   return (
     <div className="p-4 md:p-6 space-y-6">
@@ -172,7 +230,7 @@ export default function SupportersPage() {
 
       {/* Table Card */}
       <Card>
-        <CardHeader>
+        <CardHeader className="space-y-3">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 flex-wrap">
             <div>
               <CardTitle>قائمة الداعمين</CardTitle>
@@ -187,6 +245,64 @@ export default function SupportersPage() {
                 className="pr-10 w-full sm:w-52"
               />
             </div>
+          </div>
+
+          {/* Filters & sorting */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={levelFilter} onValueChange={setLevelFilter}>
+              <SelectTrigger className="w-full sm:w-40" data-testid="select-filter-level">
+                <SelectValue placeholder="المستوى" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل المستويات</SelectItem>
+                {levels.map(level => (
+                  <SelectItem key={level} value={level}>{level}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={platformFilter} onValueChange={setPlatformFilter}>
+              <SelectTrigger className="w-full sm:w-40" data-testid="select-filter-platform">
+                <SelectValue placeholder="المنصة" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل المنصات</SelectItem>
+                {platforms.map(p => (
+                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={adminFilter} onValueChange={setAdminFilter}>
+              <SelectTrigger className="w-full sm:w-44" data-testid="select-filter-admin">
+                <SelectValue placeholder="المشرف" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل المشرفين</SelectItem>
+                {admins.map(a => (
+                  <SelectItem key={a.id} value={a.id}>{a.full_name || a.username}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={sortBy} onValueChange={v => setSortBy(v as SortKey)}>
+              <SelectTrigger className="w-full sm:w-52" data-testid="select-sort">
+                <ArrowUpDown className="h-3.5 w-3.5 ml-1 text-muted-foreground" />
+                <SelectValue placeholder="ترتيب حسب" />
+              </SelectTrigger>
+              <SelectContent>
+                {SORT_OPTIONS.map(opt => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={resetFilters} className="text-muted-foreground">
+                <X className="h-3.5 w-3.5 ml-1" />
+                إعادة تعيين
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
