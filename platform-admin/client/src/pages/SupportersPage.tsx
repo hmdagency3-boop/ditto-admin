@@ -22,7 +22,8 @@ interface Supporter {
   platformName?: string;
   platformImage?: string;
   vipId?: number | null;
-  vipDate?: number | string | null;
+  vipName?: string | null;
+  vipDaysLeft?: number | null;
 }
 
 interface AdminUser {
@@ -60,17 +61,24 @@ export default function SupportersPage() {
         setAdmins(adData);
         setLoading(false);
 
-        // Fetch supporter profiles in background
-        spData.forEach(async (sp) => {
+        // Fetch supporter profiles in background, capped to avoid a request storm on large lists
+        const CONCURRENCY = 5;
+        let cursor = 0;
+        const runNext = async (): Promise<void> => {
+          const idx = cursor++;
+          if (idx >= spData.length) return;
+          const sp = spData[idx];
           const profile = await fetchUserProfile(sp.supporter_id);
           if (profile) {
             setSupporters(prev => prev.map(s =>
               s.id === sp.id
-                ? { ...s, platformName: profile.name, platformImage: profile.image, vipId: profile.vipId, vipDate: profile.vipDate }
+                ? { ...s, platformName: profile.name, platformImage: profile.image, vipId: profile.vipId, vipName: profile.vipName, vipDaysLeft: profile.vipDaysLeft }
                 : s
             ));
           }
-        });
+          return runNext();
+        };
+        Array.from({ length: Math.min(CONCURRENCY, spData.length) }, runNext);
 
         // Fetch admin profiles in background
         adData.forEach(async (admin) => {
@@ -108,20 +116,12 @@ export default function SupportersPage() {
   const getInitials = (name: string) =>
     name ? name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase() : '?';
 
-  const formatVipDate = (value?: number | string | null) => {
-    if (value == null || value === '') return null;
-    let ms: number;
-    if (typeof value === 'number' || /^\d+$/.test(value)) {
-      const num = Number(value);
-      ms = num < 1e12 ? num * 1000 : num; // seconds vs milliseconds heuristic
-    } else {
-      ms = Date.parse(value);
-    }
-    if (!Number.isFinite(ms) || Number.isNaN(ms)) return null;
-    const date = new Date(ms);
-    const now = Date.now();
-    const label = date.toLocaleDateString('ar-EG');
-    return { label, expired: date.getTime() < now };
+  // Mirrors fmtVipDays() on the Ditto profile search page (vipInfoDto.vipDate = days remaining) exactly.
+  const formatVipDays = (days?: number | null): { label: string; expired: boolean } | null => {
+    if (days == null || !Number.isFinite(days)) return null;
+    if (days <= 0) return { label: 'منتهية ⚠', expired: true };
+    if (days === 1) return { label: 'يوم واحد متبقي', expired: false };
+    return { label: `${days} يوم متبقي`, expired: days <= 7 };
   };
 
   const cellCls = 'border border-border px-3 py-2.5 text-sm';
@@ -253,17 +253,17 @@ export default function SupportersPage() {
                         <td className={cellCls}>{sp.management || '—'}</td>
                         <td className={cellCls}>
                           {sp.vipId
-                            ? <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 hover:bg-yellow-100">{`VIP ${sp.vipId}`}</Badge>
+                            ? <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 hover:bg-yellow-100">{sp.vipName || `VIP ${sp.vipId}`}</Badge>
                             : <span className="text-muted-foreground">—</span>
                           }
                         </td>
                         <td className={`${cellCls} whitespace-nowrap`}>
                           {(() => {
-                            const vipDate = formatVipDate(sp.vipDate);
-                            if (!vipDate) return <span className="text-muted-foreground">—</span>;
+                            const vipDays = formatVipDays(sp.vipDaysLeft);
+                            if (!vipDays) return <span className="text-muted-foreground">—</span>;
                             return (
-                              <span className={vipDate.expired ? 'text-red-500' : 'text-muted-foreground'}>
-                                {vipDate.label}{vipDate.expired ? ' (منتهي)' : ''}
+                              <span className={vipDays.expired ? 'text-red-500' : 'text-muted-foreground'}>
+                                {vipDays.label}
                               </span>
                             );
                           })()}
