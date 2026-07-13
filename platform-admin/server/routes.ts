@@ -1809,6 +1809,167 @@ export async function registerRoutes(
     }
   });
 
+  // ── Absences & Tardiness ─────────────────────────────────────────────────────
+
+  // GET /api/absences — super admin sees all, admin sees own
+  app.get("/api/absences", authenticateToken, async (req, res) => {
+    try {
+      const { role, userId } = req.user!;
+      let query = storage.supabase
+        .from('absences')
+        .select(`*, user:users!absences_user_id_fkey(id,username,full_name,platform_id), coverage:users!absences_coverage_admin_id_fkey(id,username,full_name), recorder:users!absences_recorded_by_fkey(id,username,full_name)`)
+        .order('created_at', { ascending: false });
+
+      if (role !== 'super_admin') {
+        query = query.eq('user_id', userId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      res.json(data || []);
+    } catch (error) {
+      console.error("Get absences error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // POST /api/absences — super admin only
+  app.post("/api/absences", authenticateToken, async (req, res) => {
+    try {
+      const { role, userId } = req.user!;
+      if (role !== 'super_admin') return res.status(403).json({ message: "غير مصرح" });
+
+      const { user_id, date, shift_number, type, tardiness_minutes, excuse, has_proof, coverage_admin_id, notes, penalty_scheduled_date } = req.body;
+
+      if (!user_id || !date || !type) {
+        return res.status(400).json({ message: "البيانات ناقصة" });
+      }
+
+      // Auto-calculate penalty
+      let penalty = 'none';
+      let penalty_extra_minutes = 0;
+
+      if (type === 'tardiness') {
+        const mins = parseInt(tardiness_minutes) || 0;
+        if (mins < 15) {
+          penalty = 'verbal_warning';
+        } else {
+          // Check if this is the 2nd tardiness in the same week
+          const now = new Date(date);
+          const dayOfWeek = now.getDay(); // 0=Sun
+          const weekStart = new Date(now);
+          weekStart.setDate(now.getDate() - dayOfWeek);
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekStart.getDate() + 6);
+          const weekStartStr = weekStart.toISOString().split('T')[0];
+          const weekEndStr = weekEnd.toISOString().split('T')[0];
+
+          const { data: weekAbsences } = await storage.supabase
+            .from('absences')
+            .select('id')
+            .eq('user_id', user_id)
+            .eq('type', 'tardiness')
+            .gte('date', weekStartStr)
+            .lte('date', weekEndStr);
+
+          const weekCount = (weekAbsences || []).length;
+          if (weekCount >= 1) {
+            penalty = 'compensatory_plus_30';
+            penalty_extra_minutes = mins + 30;
+          } else {
+            penalty = 'compensatory';
+            penalty_extra_minutes = mins;
+          }
+        }
+      } else if (type === 'absence') {
+        penalty = 'double_shift';
+      } else if (type === 'emergency') {
+        penalty = has_proof ? 'return_shift' : 'return_shift';
+      }
+
+      // Count monthly violations
+      const monthStart = date.substring(0, 7) + '-01';
+      const monthEndDate = new Date(date.substring(0, 7) + '-01');
+      monthEndDate.setMonth(monthEndDate.getMonth() + 1);
+      monthEndDate.setDate(monthEndDate.getDate() - 1);
+      const monthEnd = monthEndDate.toISOString().split('T')[0];
+
+      const { data: monthViolations } = await storage.supabase
+        .from('absences')
+        .select('id')
+        .eq('user_id', user_id)
+        .gte('date', monthStart)
+        .lte('date', monthEnd);
+      const monthly_violation_count = (monthViolations || []).length + 1;
+
+      const { data, error } = await storage.supabase
+        .from('absences')
+        .insert({
+          user_id, date, shift_number: shift_number || null,
+          type, tardiness_minutes: tardiness_minutes || null,
+          excuse: excuse || null, has_proof: has_proof || false,
+          coverage_admin_id: coverage_admin_id || null,
+          penalty, penalty_extra_minutes, penalty_applied: false,
+          penalty_scheduled_date: penalty_scheduled_date || null,
+          monthly_violation_count, notes: notes || null,
+          recorded_by: userId,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      res.status(201).json({ message: "تم تسجيل المخالفة", data });
+    } catch (error) {
+      console.error("Create absence error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // PATCH /api/absences/:id — super admin only (update penalty_applied, notes, penalty_scheduled_date)
+  app.patch("/api/absences/:id", authenticateToken, async (req, res) => {
+    try {
+      const { role } = req.user!;
+      if (role !== 'super_admin') return res.status(403).json({ message: "غير مصرح" });
+
+      const { id } = req.params;
+      const { penalty_applied, notes, penalty_scheduled_date, penalty } = req.body;
+      const updates: any = { updated_at: new Date().toISOString() };
+      if (typeof penalty_applied === 'boolean') updates.penalty_applied = penalty_applied;
+      if (notes !== undefined) updates.notes = notes;
+      if (penalty_scheduled_date !== undefined) updates.penalty_scheduled_date = penalty_scheduled_date;
+      if (penalty !== undefined) updates.penalty = penalty;
+
+      const { data, error } = await storage.supabase
+        .from('absences')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      res.json({ message: "تم التحديث", data });
+    } catch (error) {
+      console.error("Update absence error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
+  // DELETE /api/absences/:id — super admin only
+  app.delete("/api/absences/:id", authenticateToken, async (req, res) => {
+    try {
+      const { role } = req.user!;
+      if (role !== 'super_admin') return res.status(403).json({ message: "غير مصرح" });
+
+      const { id } = req.params;
+      const { error } = await storage.supabase.from('absences').delete().eq('id', id);
+      if (error) throw error;
+      res.json({ message: "تم الحذف" });
+    } catch (error) {
+      console.error("Delete absence error:", error);
+      res.status(500).json({ message: "حدث خطأ" });
+    }
+  });
+
   if (options.enableScheduler !== false) {
     // Auto-check on startup after 10 seconds
     setTimeout(async () => {

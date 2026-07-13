@@ -40,6 +40,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'nav.dittoRooms': 'غرف Ditto',
     'nav.dittoSearch': 'بحث Ditto',
     'nav.recordings': 'تسجيل الرومات',
+    'nav.absences': 'الغيابات والتأخير',
     // Auth
     'auth.login': 'تسجيل الدخول',
     'auth.signup': 'حساب جديد',
