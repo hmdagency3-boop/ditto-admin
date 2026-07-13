@@ -1817,7 +1817,7 @@ export async function registerRoutes(
       const { role, userId } = req.user!;
       let query = storage.supabase
         .from('absences')
-        .select(`*, user:users!absences_user_id_fkey(id,username,full_name,platform_id), coverage:users!absences_coverage_admin_id_fkey(id,username,full_name), recorder:users!absences_recorded_by_fkey(id,username,full_name)`)
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (role !== 'super_admin') {
