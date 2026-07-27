@@ -3,12 +3,12 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 
 const isReplit = process.env.REPL_ID !== undefined;
-const isDev = process.env.NODE_ENV !== "production";
+const isDev = process.env.NODE_ENV === "development";
 
 export default defineConfig({
   plugins: [
     react(),
-    ...(isReplit
+    ...(isReplit && isDev
       ? [
           await import("@replit/vite-plugin-runtime-error-modal").then((m) =>
             m.default()

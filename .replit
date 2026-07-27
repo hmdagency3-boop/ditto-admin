@@ -38,11 +38,14 @@ externalPort = 3000
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 5050
+externalPort = 3001
+
 [deployment]
 deploymentTarget = "autoscale"
-build = ["npm", "run", "build"]
-publicDir = "admin-panel/dist"
-run = ["node", "./dist/index.cjs"]
+build = ["bash", "-c", "npm install --prefix platform-admin && npm run build --prefix platform-admin"]
+run = ["node", "platform-admin/dist/index.cjs"]
 
 [userenv]
 
