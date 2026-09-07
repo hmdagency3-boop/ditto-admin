@@ -39,6 +39,7 @@ import DittoRooms from "@/pages/DittoRooms";
 import DittoProfileSearch from "@/pages/DittoProfileSearch";
 import Recordings from "@/pages/Recordings";
 import Absences from "@/pages/Absences";
+import SalaryComplaints from "@/pages/SalaryComplaints";
 
 function ProtectedRoute({ component: Component, superAdminOnly = false }: { component: React.ComponentType; superAdminOnly?: boolean }) {
   const { user, loading, isSuperAdmin } = useAuth();
@@ -179,6 +180,9 @@ function Router() {
       </Route>
       <Route path="/absences">
         <ProtectedRoute component={Absences} superAdminOnly />
+      </Route>
+      <Route path="/salary-complaints">
+        <ProtectedRoute component={SalaryComplaints} superAdminOnly />
       </Route>
       <Route component={NotFound} />
     </Switch>

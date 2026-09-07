@@ -23,6 +23,7 @@ import {
   UserSearch,
   Video,
   CalendarX,
+  FileWarning,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -71,6 +72,7 @@ export function AppSidebar() {
     { key: 'nav.dittoSearch', url: '/ditto-search', icon: UserSearch },
     { key: 'nav.recordings', url: '/recordings', icon: Video },
     { key: 'nav.absences', url: '/absences', icon: CalendarX },
+    { key: 'nav.salaryComplaints', url: '/salary-complaints', icon: FileWarning },
   ];
 
   const adminItems = [

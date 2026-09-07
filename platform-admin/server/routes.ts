@@ -1680,6 +1680,98 @@ export async function registerRoutes(
     }
   });
 
+  // ── Salary complaints ────────────────────────────────────────────────────────
+  // The monthly submission window is based on Cairo time, not the server timezone.
+  function cairoDayOfMonth(date = new Date()): number {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Cairo',
+      day: '2-digit',
+    }).formatToParts(date);
+    return Number(parts.find(part => part.type === 'day')?.value || 0);
+  }
+
+  app.get("/api/salary-complaints", authenticateToken, requireSuperAdmin, async (_req, res) => {
+    try {
+      const { data, error } = await storage.supabase
+        .from('salary_complaints')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      res.json(data || []);
+    } catch (error: any) {
+      console.error('Get salary complaints error:', error);
+      res.status(500).json({ message: error?.message || 'تعذر تحميل شكاوى الرواتب' });
+    }
+  });
+
+  app.post("/api/salary-complaints", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const day = cairoDayOfMonth();
+      if (day < 15 || day > 17) {
+        return res.status(403).json({ message: 'إضافة شكاوى الرواتب متاحة من يوم 15 إلى يوم 17 فقط من كل شهر' });
+      }
+
+      const {
+        agency_code, agent_id, host_id, cash_number, host_phone,
+        country, complaint_month, amount, complaint_type,
+      } = req.body;
+
+      const required = [
+        agency_code, agent_id, host_id, cash_number, host_phone,
+        country, complaint_month, amount, complaint_type,
+      ];
+      if (required.some(value => value === undefined || value === null || String(value).trim() === '')) {
+        return res.status(400).json({ message: 'جميع حقول شكوى الراتب مطلوبة' });
+      }
+
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(complaint_month))) {
+        return res.status(400).json({ message: 'صيغة الشهر غير صحيحة' });
+      }
+
+      const numericAmount = Number(amount);
+      if (!Number.isFinite(numericAmount) || numericAmount < 0) {
+        return res.status(400).json({ message: 'المبلغ غير صحيح' });
+      }
+
+      const { data, error } = await storage.supabase
+        .from('salary_complaints')
+        .insert({
+          agency_code: String(agency_code).trim(),
+          agent_id: String(agent_id).trim(),
+          host_id: String(host_id).trim(),
+          cash_number: String(cash_number).trim(),
+          host_phone: String(host_phone).trim(),
+          country: String(country).trim(),
+          complaint_month: String(complaint_month),
+          amount: numericAmount,
+          complaint_type: String(complaint_type).trim(),
+          created_by: req.user!.userId,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      res.status(201).json({ message: 'تمت إضافة شكوى الراتب', data });
+    } catch (error: any) {
+      console.error('Create salary complaint error:', error);
+      res.status(500).json({ message: error?.message || 'تعذر حفظ شكوى الراتب' });
+    }
+  });
+
+  app.delete("/api/salary-complaints/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { error } = await storage.supabase
+        .from('salary_complaints')
+        .delete()
+        .eq('id', req.params.id);
+      if (error) throw error;
+      res.json({ message: 'تم حذف الشكوى' });
+    } catch (error: any) {
+      console.error('Delete salary complaint error:', error);
+      res.status(500).json({ message: error?.message || 'تعذر حذف الشكوى' });
+    }
+  });
+
   // حساب نطاق تواريخ الفترة
   function getPeriodDateRange(y: number, m: number, p: number) {
     const mm = String(m).padStart(2, '0');

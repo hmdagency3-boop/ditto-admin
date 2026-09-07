@@ -41,6 +41,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'nav.dittoSearch': 'بحث Ditto',
     'nav.recordings': 'تسجيل الرومات',
     'nav.absences': 'الغيابات والتأخير',
+    'nav.salaryComplaints': 'شكاوى الرواتب',
     // Auth
     'auth.login': 'تسجيل الدخول',
     'auth.signup': 'حساب جديد',
@@ -153,6 +154,8 @@ const translations: Record<Lang, Record<string, string>> = {
     'nav.dittoRooms': 'Ditto Rooms',
     'nav.dittoSearch': 'Ditto Search',
     'nav.recordings': 'Room Recordings',
+    'nav.absences': 'Absences & Tardiness',
+    'nav.salaryComplaints': 'Salary Complaints',
     // Auth
     'auth.login': 'Login',
     'auth.signup': 'New Account',
