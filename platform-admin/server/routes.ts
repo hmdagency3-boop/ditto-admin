@@ -1682,6 +1682,8 @@ export async function registerRoutes(
 
   // ── Salary complaints ────────────────────────────────────────────────────────
   // The monthly submission window is based on Cairo time, not the server timezone.
+  // A super admin may still submit an explicitly marked urgent exception outside
+  // the regular window; the reason is stored for auditability.
   function cairoDayOfMonth(date = new Date()): number {
     const parts = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Africa/Cairo',
@@ -1707,14 +1709,23 @@ export async function registerRoutes(
   app.post("/api/salary-complaints", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const day = cairoDayOfMonth();
-      if (day < 15 || day > 17) {
-        return res.status(403).json({ message: 'إضافة شكاوى الرواتب متاحة من يوم 15 إلى يوم 17 فقط من كل شهر' });
-      }
-
       const {
         agency_code, agent_id, host_id, cash_number, host_phone,
         country, complaint_month, amount, complaint_type,
+        is_exceptional, exceptional_reason,
       } = req.body;
+
+      const exceptional = is_exceptional === true || is_exceptional === 'true';
+      const exceptionalReason = String(exceptional_reason || '').trim();
+      if (!exceptional && (day < 15 || day > 17)) {
+        return res.status(403).json({ message: 'إضافة الشكاوى العادية متاحة من يوم 15 إلى يوم 17 فقط. استخدم خيار الشكوى الاستثنائية للحالات الضرورية.' });
+      }
+      if (exceptional && exceptionalReason.length < 5) {
+        return res.status(400).json({ message: 'سبب الاستثناء مطلوب ويجب أن يكون واضحًا للحالات الضرورية' });
+      }
+      if (exceptionalReason.length > 1000) {
+        return res.status(400).json({ message: 'سبب الاستثناء طويل جدًا' });
+      }
 
       const required = [
         agency_code, agent_id, host_id, cash_number, host_phone,
@@ -1745,6 +1756,8 @@ export async function registerRoutes(
           complaint_month: String(complaint_month),
           amount: numericAmount,
           complaint_type: String(complaint_type).trim(),
+          is_exceptional: exceptional,
+          exceptional_reason: exceptional ? exceptionalReason : null,
           created_by: req.user!.userId,
         })
         .select()

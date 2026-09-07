@@ -17,7 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
@@ -34,6 +34,8 @@ interface SalaryComplaint {
   complaint_month: string;
   amount: number;
   complaint_type: string;
+  is_exceptional: boolean;
+  exceptional_reason: string | null;
   created_at: string;
 }
 
@@ -49,6 +51,8 @@ const EMPTY_FORM: ComplaintForm = {
   complaint_month: '',
   amount: '',
   complaint_type: '',
+  is_exceptional: false,
+  exceptional_reason: '',
 };
 
 function cairoDateParts() {
@@ -122,8 +126,11 @@ export default function SalaryComplaints() {
   }
 
   function openAddDialog() {
-    if (!submissionOpen) return;
-    setForm({ ...EMPTY_FORM, complaint_month: defaultComplaintMonth() });
+    setForm({
+      ...EMPTY_FORM,
+      complaint_month: defaultComplaintMonth(),
+      is_exceptional: !submissionOpen,
+    });
     setDialogOpen(true);
   }
 
@@ -142,6 +149,10 @@ export default function SalaryComplaints() {
     const missing = requiredFields.find(([field]) => !String(form[field]).trim());
     if (missing) {
       toast({ title: 'بيانات ناقصة', description: `أدخل ${missing[1]}`, variant: 'destructive' });
+      return;
+    }
+    if (form.is_exceptional && (form.exceptional_reason || '').trim().length < 5) {
+      toast({ title: 'سبب الاستثناء مطلوب', description: 'اكتب سببًا واضحًا للحالة الضرورية', variant: 'destructive' });
       return;
     }
 
@@ -230,9 +241,9 @@ export default function SalaryComplaints() {
             <p className="mt-1 text-sm text-muted-foreground">إدارة شكاوى رواتب المضيفين — إدارة الوكالات 10005</p>
           </div>
         </div>
-        <Button onClick={openAddDialog} disabled={!submissionOpen} className="gap-2">
+        <Button onClick={openAddDialog} className="gap-2">
           <Plus className="h-4 w-4" />
-          {submissionOpen ? 'إضافة شكوى' : 'الإضافة مغلقة حاليًا'}
+          {submissionOpen ? 'إضافة شكوى' : 'إضافة شكوى استثنائية'}
         </Button>
       </div>
 
@@ -242,7 +253,7 @@ export default function SalaryComplaints() {
           <div className="space-y-1 text-sm">
             <p className="font-semibold">{submissionOpen ? 'فترة إضافة الشكاوى مفتوحة' : 'فترة إضافة الشكاوى مغلقة'}</p>
             <p className="text-muted-foreground">
-              الإضافة متاحة من يوم 15 إلى يوم 17 من كل شهر فقط. اليوم الحالي في توقيت القاهرة: <strong>{cairoDay}</strong>.
+              الإضافة العادية متاحة من يوم 15 إلى يوم 17 من كل شهر. للحالات الضرورية يمكن تسجيل شكوى استثنائية في أي وقت. اليوم الحالي في توقيت القاهرة: <strong>{cairoDay}</strong>.
             </p>
             <p className="font-medium text-amber-700 dark:text-amber-400">
               في حال رفع شكوى كيدية أو تعدد حسابات سيتم البند، فكن حذرًا.
@@ -293,7 +304,7 @@ export default function SalaryComplaints() {
               <table className="w-full min-w-[1050px] text-right text-sm">
                 <thead className="bg-muted/70">
                   <tr>
-                    {['كود الوكالة', 'أيدي الوكيل', 'أيدي المضيف', 'رقم الكاش', 'هاتف المضيف', 'البلد', 'الشهر', 'المبلغ', 'نوع الشكوى', 'الإجراء'].map(label => (
+                    {['كود الوكالة', 'أيدي الوكيل', 'أيدي المضيف', 'رقم الكاش', 'هاتف المضيف', 'البلد', 'الشهر', 'المبلغ', 'نوع الشكوى', 'الحالة', 'الإجراء'].map(label => (
                       <th key={label} className="whitespace-nowrap px-3 py-3 font-semibold">{label}</th>
                     ))}
                   </tr>
@@ -310,6 +321,13 @@ export default function SalaryComplaints() {
                       <td className="px-3 py-3">{formatMonth(item.complaint_month)}</td>
                       <td className="whitespace-nowrap px-3 py-3 font-semibold">{formatAmount(Number(item.amount))}</td>
                       <td className="max-w-52 px-3 py-3">{item.complaint_type}</td>
+                      <td className="whitespace-nowrap px-3 py-3">
+                        {item.is_exceptional ? (
+                          <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300" title={item.exceptional_reason || undefined}>استثنائية</span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">عادية</span>
+                        )}
+                      </td>
                       <td className="px-3 py-3">
                         <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => deleteComplaint(item.id)} disabled={deletingId === item.id} title="حذف الشكوى">
                           {deletingId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -327,10 +345,13 @@ export default function SalaryComplaints() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto" dir="rtl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><FileWarning className="h-5 w-5 text-amber-600" />إضافة شكوى راتب</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><FileWarning className="h-5 w-5 text-amber-600" />{form.is_exceptional ? 'إضافة شكوى راتب استثنائية' : 'إضافة شكوى راتب'}</DialogTitle>
+            <DialogDescription className="sr-only">نموذج إضافة بيانات شكوى الراتب</DialogDescription>
           </DialogHeader>
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
-            في حال رفع شكوى كيدية أو تعدد حسابات سيتم البند فكن حذرًا.
+          <div className={`rounded-lg border p-3 text-sm ${form.is_exceptional ? 'border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300' : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300'}`}>
+            {form.is_exceptional
+              ? 'هذه شكوى استثنائية خارج الموعد الرسمي. اكتب سبب الضرورة بوضوح، وسيتم حفظها مميزة للمراجعة.'
+              : 'في حال رفع شكوى كيدية أو تعدد حسابات سيتم البند فكن حذرًا.'}
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5"><Label>كود وكالة *</Label><Input value={form.agency_code} onChange={event => setField('agency_code', event.target.value)} /></div>
@@ -342,6 +363,12 @@ export default function SalaryComplaints() {
             <div className="space-y-1.5"><Label>الشهر *</Label><Input type="month" value={form.complaint_month} onChange={event => setField('complaint_month', event.target.value)} /></div>
             <div className="space-y-1.5"><Label>المبلغ *</Label><div className="relative"><Banknote className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input type="number" min="0" step="0.01" className="pr-9" value={form.amount} onChange={event => setField('amount', event.target.value)} /></div></div>
             <div className="space-y-1.5 sm:col-span-2"><Label>نوع الشكوى *</Label><Textarea value={form.complaint_type} onChange={event => setField('complaint_type', event.target.value)} placeholder="اكتب نوع الشكوى بالتفصيل..." rows={3} /></div>
+            {form.is_exceptional && (
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>سبب الاستثناء الضروري *</Label>
+                <Textarea value={form.exceptional_reason || ''} onChange={event => setField('exceptional_reason', event.target.value)} placeholder="لماذا لا يمكن انتظار الفترة الرسمية؟" rows={3} />
+              </div>
+            )}
           </div>
           <div className="flex gap-3 pt-2">
             <Button onClick={saveComplaint} disabled={saving} className="flex-1 gap-2">{saving && <Loader2 className="h-4 w-4 animate-spin" />}{saving ? 'جاري الحفظ...' : 'حفظ الشكوى'}</Button>

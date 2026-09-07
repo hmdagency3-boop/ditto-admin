@@ -1,4 +1,5 @@
--- Salary complaints submitted during the monthly 15th–17th window
+-- Salary complaints submitted during the monthly 15th–17th window,
+-- with audited urgent exceptions allowed outside the window.
 CREATE TABLE IF NOT EXISTS public.salary_complaints (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   agency_code TEXT NOT NULL,
@@ -10,11 +11,20 @@ CREATE TABLE IF NOT EXISTS public.salary_complaints (
   complaint_month TEXT NOT NULL,
   amount NUMERIC(12, 2) NOT NULL,
   complaint_type TEXT NOT NULL,
+  is_exceptional BOOLEAN NOT NULL DEFAULT FALSE,
+  exceptional_reason TEXT,
   created_by VARCHAR NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 ALTER TABLE public.salary_complaints ENABLE ROW LEVEL SECURITY;
+
+-- Keep this migration safe if the original table was already created.
+ALTER TABLE public.salary_complaints
+  ADD COLUMN IF NOT EXISTS is_exceptional BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE public.salary_complaints
+  ADD COLUMN IF NOT EXISTS exceptional_reason TEXT;
 
 CREATE POLICY "salary_complaints_all"
   ON public.salary_complaints
