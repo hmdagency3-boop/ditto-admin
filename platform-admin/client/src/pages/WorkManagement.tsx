@@ -129,6 +129,17 @@ function extractField(rawText: string, ...keys: string[]): string {
   return '';
 }
 
+// ── سطر موجود في استمارة الداعم الجديدة لكنه ليس حقلًا في النظام
+function removeIgnoredSupporterLines(text: string): string {
+  return cleanLines(text)
+    .split('\n')
+    .filter(line => {
+      const normalized = line.replace(/[\s\u200b]/g, '');
+      return !/^(?:البلد|الدولة)(?:\+|و)(?:علم|علامة)الحساب[:：\-\/|]?/.test(normalized);
+    })
+    .join('\n');
+}
+
 // ── تحليل التاريخ: يدعم صيغ متعددة
 function parseDate(raw: string): string {
   if (!raw) return '';
@@ -221,26 +232,29 @@ function parseAgencyText(text: string, admins: Admin[]): typeof EMPTY_AGENCY & {
 }
 
 function parseSupporterText(text: string, admins: Admin[]): typeof EMPTY_SUPPORTER & { _warn?: string; _adminPid?: string; _adminName?: string } {
-  const adminPid  = extractField(text,
+  // استمارة الداعم الجديدة تحتوي على سطر "البلد+علم الحساب"؛ تجاهله
+  // قبل استخراج الحقول حتى لا يُعامل كبيانات داعم.
+  const supporterText = removeIgnoredSupporterLines(text);
+  const adminPid  = extractField(supporterText,
     'ايدي الادمن', 'ايدي الادمين', 'ID الادمن', 'id الادمن',
     'رقم الادمن', 'ايدي المشرف',
   );
-  const adminName = extractField(text,
+  const adminName = extractField(supporterText,
     'اسم الادمن', 'اسم الادمين', 'اسم المشرف', 'المشرف',
   );
   const admin_id  = findAdmin(admins, adminPid, adminName);
 
   // الإدارة: سطر يبدأ بـ "إدارة" أو يحتوي عليها
-  const cleanedLines = cleanLines(text).split('\n');
-  const mgmtLine = cleanedLines.find(l => /^إدار[ةه]/u.test(l));
-  const management = mgmtLine?.trim() || extractField(text, 'الإدارة', 'إدارة', 'الادارة');
+  const cleanedLines = cleanLines(supporterText).split('\n');
+  const mgmtLine = cleanedLines.find(l => /^(?:إدار[ةه]|ادار[ةه])/.test(l));
+  const management = mgmtLine?.trim() || extractField(supporterText, 'الإدارة', 'إدارة', 'الادارة', 'ادارة', 'اداره');
 
   return {
-    supporter_id:    extractField(text, 'ايدي الداعم', 'id الداعم', 'ID الداعم', 'رقم الداعم'),
-    source_platform: extractField(text,
-      'البرنامج القادم منه', 'البرنامج القادم', 'البرنامج', 'المنصة', 'قادم من',
+    supporter_id:    extractField(supporterText, 'ايدي الداعم', 'id الداعم', 'ID الداعم', 'رقم الداعم'),
+    source_platform: extractField(supporterText,
+      'اسم البرنامج القادم منه', 'البرنامج القادم منه', 'البرنامج القادم', 'البرنامج', 'المنصة', 'قادم من',
     ),
-    level:           extractField(text, 'ليفل', 'المستوى', 'level', 'اللفل'),
+    level:           extractField(supporterText, 'الفل', 'ليفل', 'المستوى', 'level', 'اللفل'),
     management,
     admin_id,
     notes: '',
