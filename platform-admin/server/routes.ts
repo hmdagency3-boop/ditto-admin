@@ -1897,6 +1897,66 @@ export async function registerRoutes(
     }
   });
 
+  // ── System-down complaints ───────────────────────────────────────────────────
+  app.get("/api/system-down-complaints", authenticateToken, requireSuperAdmin, async (_req, res) => {
+    try {
+      const { data, error } = await storage.supabase
+        .from('system_down_complaints')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      res.json(data || []);
+    } catch (error: any) {
+      console.error('Get system-down complaints error:', error);
+      res.status(500).json({ message: error?.message || 'تعذر تحميل شكاوى النزول' });
+    }
+  });
+
+  app.post("/api/system-down-complaints", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const {
+        agency_code, agent_id, host_id, host_phone, complaint_type, down_reason,
+      } = req.body;
+      const required = [agency_code, agent_id, host_id, host_phone, complaint_type, down_reason];
+      if (required.some(value => value === undefined || value === null || String(value).trim() === '')) {
+        return res.status(400).json({ message: 'جميع حقول شكوى النزول مطلوبة' });
+      }
+
+      const { data, error } = await storage.supabase
+        .from('system_down_complaints')
+        .insert({
+          agency_code: String(agency_code).trim(),
+          agent_id: String(agent_id).trim(),
+          host_id: String(host_id).trim(),
+          host_phone: String(host_phone).trim(),
+          complaint_type: String(complaint_type).trim(),
+          down_reason: String(down_reason).trim(),
+          created_by: req.user!.userId,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      res.status(201).json({ message: 'تمت إضافة شكوى النزول', data });
+    } catch (error: any) {
+      console.error('Create system-down complaint error:', error);
+      res.status(500).json({ message: error?.message || 'تعذر حفظ شكوى النزول' });
+    }
+  });
+
+  app.delete("/api/system-down-complaints/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { error } = await storage.supabase
+        .from('system_down_complaints')
+        .delete()
+        .eq('id', req.params.id);
+      if (error) throw error;
+      res.json({ message: 'تم حذف الشكوى' });
+    } catch (error: any) {
+      console.error('Delete system-down complaint error:', error);
+      res.status(500).json({ message: error?.message || 'تعذر حذف الشكوى' });
+    }
+  });
+
   // حساب نطاق تواريخ الفترة
   function getPeriodDateRange(y: number, m: number, p: number) {
     const mm = String(m).padStart(2, '0');
