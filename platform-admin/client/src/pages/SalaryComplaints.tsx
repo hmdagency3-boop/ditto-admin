@@ -226,6 +226,7 @@ export default function SalaryComplaints() {
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPreview, setProofPreview] = useState('');
   const [resolving, setResolving] = useState(false);
+  const [proofTarget, setProofTarget] = useState<SalaryComplaint | null>(null);
   const [search, setSearch] = useState('');
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
@@ -557,9 +558,9 @@ export default function SalaryComplaints() {
                       <td className="px-3 py-3">
                          <div className="flex items-center gap-1">
                            {item.status === 'resolved' && item.payment_proof_url ? (
-                             <a href={item.payment_proof_url} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1 rounded-md px-2 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/40" title="عرض إثبات إرسال الراتب">
+                             <Button variant="ghost" size="sm" className="h-9 gap-1 px-2 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/40" onClick={() => setProofTarget(item)} title="عرض إثبات إرسال الراتب">
                                <ImageIcon className="h-4 w-4" />الإثبات
-                             </a>
+                             </Button>
                            ) : item.status !== 'resolved' ? (
                              <Button variant="outline" size="sm" className="gap-1 text-emerald-700 hover:text-emerald-800 dark:text-emerald-300" onClick={() => openResolveDialog(item)}>
                                <CheckCircle2 className="h-4 w-4" />تسليم الراتب
@@ -667,6 +668,28 @@ export default function SalaryComplaints() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(proofTarget)} onOpenChange={open => { if (!open) setProofTarget(null); }}>
+        <DialogContent className="max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ImageIcon className="h-5 w-5 text-blue-600" />
+              إثبات إرسال الراتب
+            </DialogTitle>
+            <DialogDescription>
+              {proofTarget ? `أيدي المضيف: ${proofTarget.host_id} — ${formatAmount(Number(proofTarget.amount))}` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          {proofTarget?.payment_proof_url && (
+            <img
+              src={proofTarget.payment_proof_url}
+              alt="صورة إثبات إرسال الراتب"
+              className="max-h-[65vh] w-full rounded-lg border bg-muted/20 object-contain"
+            />
+          )}
+          <Button variant="outline" onClick={() => setProofTarget(null)}>إغلاق</Button>
         </DialogContent>
       </Dialog>
     </div>
