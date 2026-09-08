@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Banknote,
   CalendarDays,
+  ClipboardPaste,
   FileWarning,
   Globe2,
   Loader2,
@@ -84,6 +85,102 @@ function formatAmount(value: number) {
   return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value);
 }
 
+function cleanPastedLines(text: string) {
+  return text.split('\n')
+    .map(line => line.replace(/^[\s\u200b\-\*•◦◆▪▸➤→＊]+/, '').trim())
+    .join('\n');
+}
+
+const SALARY_PASTE_LABELS = [
+  'كود الوكالة', 'كود وكالة', 'كود الوكيل',
+  'ايدي الوكيل', 'اي دي الوكيل', 'أي دي الوكيل', 'ID الوكيل',
+  'ايدي المضيف', 'اي دي المضيف', 'أي دي المضيف', 'ID المضيف',
+  'رقم الكاش', 'الكاش', 'cash',
+  'هاتف المضيف', 'رقم هاتف المضيف', 'واتساب المضيف', 'رقم المضيف',
+  'بلد المضيف', 'البلد', 'الدولة',
+  'شهر الشكوى', 'شهر الراتب', 'المستحق عن شهر', 'الشهر',
+  'مبلغ الشكوى', 'قيمة الراتب', 'المبلغ', 'الراتب', 'المستحق',
+  'نوع الشكوى', 'نوع الشكوي', 'سبب الشكوى', 'تفاصيل الشكوى', 'الشكوى',
+  'سبب الاستثناء', 'سبب الضرورة', 'سبب الحالة الضرورية',
+  'ايدي الداعم', 'ID الداعم', 'ايدي الوكالة', 'رقم الوكيل',
+];
+
+function cleanExtractedPastedValue(value: string) {
+  let cleaned = value.trim().replace(/^[:\-\/|]\s*/, '').trim();
+  let nextLabelIndex = -1;
+  for (const label of SALARY_PASTE_LABELS) {
+    const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = cleaned.match(new RegExp(`(?:^|\\s)${escapedLabel}\\s*[:\\-：/|]`, 'i'));
+    if (match?.index !== undefined && (nextLabelIndex === -1 || match.index < nextLabelIndex)) {
+      nextLabelIndex = match.index;
+    }
+  }
+  if (nextLabelIndex === 0) return '';
+  if (nextLabelIndex > 0) cleaned = cleaned.slice(0, nextLabelIndex).trim();
+
+  return cleaned
+    .replace(/\s*(?:في|فی)\s+حال\s+رفع\s+شكو[ية]\s+كيد[ية].*$/i, '')
+    .replace(/\s+إدارة\s+الوكالات\b.*$/i, '')
+    .trim();
+}
+
+function extractPastedField(rawText: string, ...keys: string[]) {
+  const text = cleanPastedLines(rawText);
+  const lines = text.split('\n');
+
+  for (const key of keys) {
+    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const lineRegex = new RegExp(`^${escapedKey}\\s*[:\\-：/|]\\s*(.*)$`, 'i');
+    for (const line of lines) {
+      const match = line.match(lineRegex);
+      if (match?.[1]) return cleanExtractedPastedValue(match[1]);
+    }
+    const fullRegex = new RegExp(`${escapedKey}\\s*[:\\-：/|]\\s*([^\\n]+)`, 'i');
+    const match = text.match(fullRegex);
+    if (match?.[1]) return cleanExtractedPastedValue(match[1]);
+  }
+  return '';
+}
+
+function removeIgnoredPastedLines(text: string) {
+  return cleanPastedLines(text)
+    .split('\n')
+    .filter(line => {
+      const normalized = line.replace(/[\s\u200b]/g, '');
+      return !/^(?:البلد|الدولة)(?:\+|و)(?:علم|علامة)الحساب[:：\-\/|]?/.test(normalized);
+    })
+    .join('\n');
+}
+
+function normalizeComplaintMonth(value: string) {
+  const clean = value.trim().replace(/[^\d/-]/g, '');
+  const yearMonth = clean.match(/^(\d{4})[-/](\d{1,2})$/);
+  if (yearMonth) return `${yearMonth[1]}-${yearMonth[2].padStart(2, '0')}`;
+  const monthYear = clean.match(/^(\d{1,2})[-/](\d{4})$/);
+  if (monthYear) return `${monthYear[2]}-${monthYear[1].padStart(2, '0')}`;
+  return '';
+}
+
+function parseSalaryComplaintText(text: string): Partial<ComplaintForm> {
+  const complaintText = removeIgnoredPastedLines(text);
+  const month = extractPastedField(
+    complaintText,
+    'شهر الشكوى', 'شهر الراتب', 'المستحق عن شهر', 'الشهر',
+  );
+  return {
+    agency_code: extractPastedField(complaintText, 'كود الوكالة', 'كود وكالة', 'كود الوكيل'),
+    agent_id: extractPastedField(complaintText, 'ايدي الوكيل', 'اي دي الوكيل', 'أي دي الوكيل', 'ID الوكيل', 'id الوكيل', 'رقم الوكيل', 'ايدي الوكالة'),
+    host_id: extractPastedField(complaintText, 'ايدي المضيف', 'اي دي المضيف', 'أي دي المضيف', 'ID المضيف', 'id المضيف', 'رقم المضيف', 'ايدي الداعم', 'ID الداعم'),
+    cash_number: extractPastedField(complaintText, 'رقم الكاش', 'الكاش', 'cash'),
+    host_phone: extractPastedField(complaintText, 'هاتف المضيف', 'رقم هاتف المضيف', 'واتساب المضيف', 'رقم المضيف'),
+    country: extractPastedField(complaintText, 'بلد المضيف', 'البلد', 'الدولة'),
+    complaint_month: normalizeComplaintMonth(month),
+    amount: extractPastedField(complaintText, 'مبلغ الشكوى', 'قيمة الراتب', 'المبلغ', 'الراتب', 'المستحق'),
+    complaint_type: extractPastedField(complaintText, 'نوع الشكوى', 'نوع الشكوي', 'سبب الشكوى', 'تفاصيل الشكوى', 'الشكوى'),
+    exceptional_reason: extractPastedField(complaintText, 'سبب الاستثناء', 'سبب الضرورة', 'سبب الحالة الضرورية'),
+  };
+}
+
 export default function SalaryComplaints() {
   const { token } = useAuth();
   const { toast } = useToast();
@@ -93,6 +190,8 @@ export default function SalaryComplaints() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
   const [form, setForm] = useState<ComplaintForm>({
     ...EMPTY_FORM,
     complaint_month: defaultComplaintMonth(),
@@ -132,6 +231,26 @@ export default function SalaryComplaints() {
       is_exceptional: !submissionOpen,
     });
     setDialogOpen(true);
+  }
+
+  function applyPastedComplaint() {
+    const parsed = parseSalaryComplaintText(pasteText);
+    const filledFields = Object.entries(parsed).filter(([, value]) => String(value || '').trim());
+    if (filledFields.length === 0) {
+      toast({ title: 'لم يتم العثور على حقول', description: 'تأكد أن النص يحتوي على أسماء الحقول مثل أيدي المضيف أو المبلغ', variant: 'destructive' });
+      return;
+    }
+    setForm(previous => ({
+      ...previous,
+      ...Object.fromEntries(filledFields),
+      is_exceptional: previous.is_exceptional,
+      exceptional_reason: previous.is_exceptional
+        ? String(parsed.exceptional_reason || previous.exceptional_reason || '')
+        : previous.exceptional_reason,
+    }));
+    setPasteOpen(false);
+    setPasteText('');
+    toast({ title: 'تم تحليل الاستمارة', description: `تم ملء ${filledFields.length} حقول. راجع البيانات قبل الحفظ.` });
   }
 
   async function saveComplaint() {
@@ -348,6 +467,32 @@ export default function SalaryComplaints() {
             <DialogTitle className="flex items-center gap-2"><FileWarning className="h-5 w-5 text-amber-600" />{form.is_exceptional ? 'إضافة شكوى راتب استثنائية' : 'إضافة شكوى راتب'}</DialogTitle>
             <DialogDescription className="sr-only">نموذج إضافة بيانات شكوى الراتب</DialogDescription>
           </DialogHeader>
+          <Button
+            type="button"
+            variant={pasteOpen ? 'default' : 'outline'}
+            size="sm"
+            className="w-fit gap-2"
+            onClick={() => { setPasteOpen(previous => !previous); setPasteText(''); }}
+          >
+            <ClipboardPaste className="h-4 w-4" />
+            {pasteOpen ? 'إخفاء اللصق' : 'لصق الاستمارة تلقائيًا'}
+          </Button>
+          {pasteOpen && (
+            <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+              <Label>الصق بيانات الاستمارة هنا</Label>
+              <Textarea
+                value={pasteText}
+                onChange={event => setPasteText(event.target.value)}
+                placeholder={'مثال:\nأيدي الوكيل: 12345\nأيدي المضيف: 67890\nرقم الكاش: 111222\nالمبلغ: 500'}
+                rows={6}
+                dir="rtl"
+              />
+              <div className="flex gap-2">
+                <Button type="button" size="sm" onClick={applyPastedComplaint}>تعبئة الحقول</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => { setPasteOpen(false); setPasteText(''); }}>إلغاء</Button>
+              </div>
+            </div>
+          )}
           <div className={`rounded-lg border p-3 text-sm ${form.is_exceptional ? 'border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300' : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300'}`}>
             {form.is_exceptional
               ? 'هذه شكوى استثنائية خارج الموعد الرسمي. اكتب سبب الضرورة بوضوح، وسيتم حفظها مميزة للمراجعة.'
