@@ -1733,11 +1733,15 @@ export async function registerRoutes(
         .order('created_at', { ascending: false });
       if (error) throw error;
       const complaints = await Promise.all((data || []).map(async (complaint: any) => {
-        if (!complaint.payment_proof_path) return complaint;
+        const normalizedComplaint = {
+          ...complaint,
+          status: complaint.status === 'resolved' ? 'resolved' : 'pending',
+        };
+        if (!complaint.payment_proof_path) return normalizedComplaint;
         const { data: signed } = await storage.supabase.storage
           .from('salary-payment-proofs')
           .createSignedUrl(complaint.payment_proof_path, 3600);
-        return { ...complaint, payment_proof_url: signed?.signedUrl || null };
+        return { ...normalizedComplaint, payment_proof_url: signed?.signedUrl || null };
       }));
       res.json(complaints);
     } catch (error: any) {
@@ -1850,7 +1854,7 @@ export async function registerRoutes(
           resolved_at: new Date().toISOString(),
         })
         .eq('id', complaintId)
-        .eq('status', 'pending')
+        .in('status', ['pending', 'new'])
         .select()
         .single();
       if (error) throw error;

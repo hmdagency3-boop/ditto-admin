@@ -38,6 +38,15 @@ ALTER TABLE public.salary_complaints
 ALTER TABLE public.salary_complaints
   ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;
 
+-- Older versions used "new"; keep those complaints open while standardizing
+-- the values used by the current UI and resolution endpoint.
+UPDATE public.salary_complaints
+SET status = 'pending'
+WHERE status IS NULL OR status NOT IN ('pending', 'resolved');
+
+ALTER TABLE public.salary_complaints
+  ALTER COLUMN status SET DEFAULT 'pending';
+
 -- Re-running this migration should not fail if the policy already exists.
 DROP POLICY IF EXISTS "salary_complaints_all"
   ON public.salary_complaints;
