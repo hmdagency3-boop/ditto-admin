@@ -113,7 +113,7 @@ async function searchUser(erbanNo: string): Promise<MergedUser | null> {
     avatar:     ditto?.avatar || sayyo.avatar,
     country:    ditto?.country || sayyo.country,
     gender:     ditto?.gender ?? sayyo.gender,
-    ditto,
+    ditto: ditto ?? undefined,
     nobleName:  ditto?.nobleName,
     chatGift:   ditto?.chatGift,
     chatRange:  ditto?.chatRange,

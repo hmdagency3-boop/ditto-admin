@@ -7,7 +7,10 @@ import ws from "ws";
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser & { full_name: string }): Promise<User>;
+  createUser(user: InsertUser & {
+    full_name: string;
+    name?: string | null;
+  }): Promise<User>;
   getAllUsers(): Promise<User[]>;
   getPendingUsers(): Promise<User[]>;
   getRejectedUsers(): Promise<User[]>;
@@ -88,7 +91,7 @@ export class SupabaseStorage implements IStorage {
     }
 
     this.supabase = createClient(supabaseUrl, supabaseKey, {
-      realtime: { transport: ws }
+      realtime: { transport: ws as any }
     });
     this.initializeSuperAdmin();
   }
@@ -151,6 +154,7 @@ export class SupabaseStorage implements IStorage {
 
   async createUser(insertUser: InsertUser & {
     full_name: string;
+    name?: string | null;
     device_fingerprint?: string | null;
     ip_address?: string | null;
   }): Promise<User> {
