@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Banknote,
   CalendarDays,
+  CheckCircle2,
   ClipboardPaste,
   FileWarning,
   Globe2,
+  ImageIcon,
   Loader2,
   Phone,
   Plus,
@@ -37,10 +39,15 @@ interface SalaryComplaint {
   complaint_type: string;
   is_exceptional: boolean;
   exceptional_reason: string | null;
+  status: 'pending' | 'resolved';
+  payment_proof_path?: string | null;
+  payment_proof_url?: string | null;
+  resolved_at?: string | null;
+  resolved_by?: string | null;
   created_at: string;
 }
 
-type ComplaintForm = Omit<SalaryComplaint, 'id' | 'created_at' | 'amount'> & { amount: string };
+type ComplaintForm = Omit<SalaryComplaint, 'id' | 'created_at' | 'amount' | 'status' | 'payment_proof_path' | 'payment_proof_url' | 'resolved_at' | 'resolved_by'> & { amount: string };
 
 const EMPTY_FORM: ComplaintForm = {
   agency_code: '',
@@ -215,6 +222,10 @@ export default function SalaryComplaints() {
   const [saving, setSaving] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [resolveTarget, setResolveTarget] = useState<SalaryComplaint | null>(null);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofPreview, setProofPreview] = useState('');
+  const [resolving, setResolving] = useState(false);
   const [search, setSearch] = useState('');
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
@@ -357,6 +368,61 @@ export default function SalaryComplaints() {
     }
   }
 
+  function openResolveDialog(item: SalaryComplaint) {
+    setResolveTarget(item);
+    setProofFile(null);
+    setProofPreview('');
+  }
+
+  function closeResolveDialog() {
+    if (proofPreview) URL.revokeObjectURL(proofPreview);
+    setResolveTarget(null);
+    setProofFile(null);
+    setProofPreview('');
+  }
+
+  function selectProofFile(file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'نوع ملف غير صحيح', description: 'يجب إرفاق صورة فقط', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: 'الصورة كبيرة جدًا', description: 'الحد الأقصى لصورة الإثبات هو 5 ميجابايت', variant: 'destructive' });
+      return;
+    }
+    if (proofPreview) URL.revokeObjectURL(proofPreview);
+    setProofFile(file);
+    setProofPreview(URL.createObjectURL(file));
+  }
+
+  async function resolveComplaint() {
+    if (!resolveTarget) return;
+    if (!proofFile) {
+      toast({ title: 'إثبات الإرسال مطلوب', description: 'أرفق صورة دليل إرسال الراتب قبل تسجيل الحالة كمحلولة', variant: 'destructive' });
+      return;
+    }
+    setResolving(true);
+    try {
+      const formData = new FormData();
+      formData.append('proof', proofFile);
+      const response = await fetch(`/api/salary-complaints/${resolveTarget.id}/resolve`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message || 'تعذر تسجيل تسليم الراتب');
+      toast({ title: 'تم حل الشكوى', description: 'تم تسجيل تسليم الراتب وحفظ صورة الإثبات' });
+      closeResolveDialog();
+      await loadComplaints();
+    } catch (error: any) {
+      toast({ title: 'خطأ', description: error.message || 'تعذر تسجيل تسليم الراتب', variant: 'destructive' });
+    } finally {
+      setResolving(false);
+    }
+  }
+
   const filteredComplaints = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return complaints;
@@ -479,16 +545,30 @@ export default function SalaryComplaints() {
                       <td className="whitespace-nowrap px-3 py-3 font-semibold">{formatAmount(Number(item.amount))}</td>
                       <td className="max-w-52 px-3 py-3">{item.complaint_type}</td>
                       <td className="whitespace-nowrap px-3 py-3">
-                        {item.is_exceptional ? (
-                          <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300" title={item.exceptional_reason || undefined}>استثنائية</span>
+                         {item.status === 'resolved' ? (
+                           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+                             <CheckCircle2 className="h-3.5 w-3.5" />محلولة
+                           </span>
                         ) : (
-                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">عادية</span>
+                           <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">قيد المراجعة</span>
                         )}
+                         {item.is_exceptional && <span className="mt-1 block text-[11px] text-muted-foreground" title={item.exceptional_reason || undefined}>استثنائية</span>}
                       </td>
                       <td className="px-3 py-3">
-                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => deleteComplaint(item.id)} disabled={deletingId === item.id} title="حذف الشكوى">
-                          {deletingId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                        </Button>
+                         <div className="flex items-center gap-1">
+                           {item.status === 'resolved' && item.payment_proof_url ? (
+                             <a href={item.payment_proof_url} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1 rounded-md px-2 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/40" title="عرض إثبات إرسال الراتب">
+                               <ImageIcon className="h-4 w-4" />الإثبات
+                             </a>
+                           ) : item.status !== 'resolved' ? (
+                             <Button variant="outline" size="sm" className="gap-1 text-emerald-700 hover:text-emerald-800 dark:text-emerald-300" onClick={() => openResolveDialog(item)}>
+                               <CheckCircle2 className="h-4 w-4" />تسليم الراتب
+                             </Button>
+                           ) : null}
+                           <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => deleteComplaint(item.id)} disabled={deletingId === item.id} title="حذف الشكوى">
+                             {deletingId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                           </Button>
+                         </div>
                       </td>
                     </tr>
                   ))}
@@ -557,6 +637,36 @@ export default function SalaryComplaints() {
             <Button onClick={saveComplaint} disabled={saving} className="flex-1 gap-2">{saving && <Loader2 className="h-4 w-4 animate-spin" />}{saving ? 'جاري الحفظ...' : 'حفظ الشكوى'}</Button>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>إلغاء</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(resolveTarget)} onOpenChange={open => { if (!open && !resolving) closeResolveDialog(); }}>
+        <DialogContent className="max-w-lg" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600" />تسليم الراتب وحل الشكوى</DialogTitle>
+            <DialogDescription>أرفق صورة واضحة تثبت إرسال الراتب. لن يتم تغيير الحالة إلى «محلولة» بدون الصورة.</DialogDescription>
+          </DialogHeader>
+          {resolveTarget && (
+            <div className="space-y-4">
+              <div className="rounded-lg bg-muted/50 p-3 text-sm">
+                <p><span className="text-muted-foreground">أيدي المضيف:</span> {resolveTarget.host_id}</p>
+                <p><span className="text-muted-foreground">المبلغ:</span> {formatAmount(Number(resolveTarget.amount))}</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="salary-proof">صورة دليل إرسال الراتب *</Label>
+                <Input id="salary-proof" type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={event => selectProofFile(event.target.files?.[0])} />
+                <p className="text-xs text-muted-foreground">الصور فقط، والحد الأقصى 5 ميجابايت.</p>
+              </div>
+              {proofPreview && <img src={proofPreview} alt="معاينة إثبات إرسال الراتب" className="max-h-64 w-full rounded-lg border object-contain" />}
+              <div className="flex gap-3">
+                <Button onClick={resolveComplaint} disabled={resolving} className="flex-1 gap-2">
+                  {resolving && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {resolving ? 'جاري الحفظ...' : 'تأكيد التسليم وحل الشكوى'}
+                </Button>
+                <Button variant="outline" onClick={closeResolveDialog} disabled={resolving}>إلغاء</Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

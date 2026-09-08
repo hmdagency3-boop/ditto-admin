@@ -1732,7 +1732,14 @@ export async function registerRoutes(
         .select('*')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      res.json(data || []);
+      const complaints = await Promise.all((data || []).map(async (complaint: any) => {
+        if (!complaint.payment_proof_path) return complaint;
+        const { data: signed } = await storage.supabase.storage
+          .from('salary-payment-proofs')
+          .createSignedUrl(complaint.payment_proof_path, 3600);
+        return { ...complaint, payment_proof_url: signed?.signedUrl || null };
+      }));
+      res.json(complaints);
     } catch (error: any) {
       console.error('Get salary complaints error:', error);
       res.status(500).json({ message: error?.message || 'تعذر تحميل شكاوى الرواتب' });
@@ -1806,13 +1813,79 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/salary-complaints/:id/resolve", authenticateToken, requireSuperAdmin, upload.single('proof'), async (req: any, res) => {
+    let proofPath = '';
+    try {
+      if (!req.file) return res.status(400).json({ message: 'إرفاق صورة إثبات إرسال الراتب مطلوب' });
+
+      const complaintId = String(req.params.id);
+      const { data: complaint, error: complaintError } = await storage.supabase
+        .from('salary_complaints')
+        .select('id, status')
+        .eq('id', complaintId)
+        .single();
+      if (complaintError || !complaint) {
+        return res.status(404).json({ message: 'شكوى الراتب غير موجودة' });
+      }
+      if (complaint.status === 'resolved') {
+        return res.status(400).json({ message: 'تم تسليم راتب هذه الشكوى مسبقًا' });
+      }
+
+      const extension = (req.file.mimetype.split('/')[1] || 'jpg').replace(/[^a-z0-9]/gi, '') || 'jpg';
+      proofPath = `${complaintId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
+      const { error: uploadError } = await storage.supabase.storage
+        .from('salary-payment-proofs')
+        .upload(proofPath, req.file.buffer, {
+          contentType: req.file.mimetype,
+          upsert: false,
+        });
+      if (uploadError) throw uploadError;
+
+      const { data, error } = await storage.supabase
+        .from('salary_complaints')
+        .update({
+          status: 'resolved',
+          payment_proof_path: proofPath,
+          resolved_by: req.user!.userId,
+          resolved_at: new Date().toISOString(),
+        })
+        .eq('id', complaintId)
+        .eq('status', 'pending')
+        .select()
+        .single();
+      if (error) throw error;
+
+      const { data: signed } = await storage.supabase.storage
+        .from('salary-payment-proofs')
+        .createSignedUrl(proofPath, 3600);
+      res.json({
+        message: 'تم تسجيل تسليم الراتب وإرفاق الإثبات',
+        data: { ...data, payment_proof_url: signed?.signedUrl || null },
+      });
+    } catch (error: any) {
+      if (proofPath) {
+        await storage.supabase.storage.from('salary-payment-proofs').remove([proofPath]).catch(() => {});
+      }
+      console.error('Resolve salary complaint error:', error);
+      res.status(500).json({ message: error?.message || 'تعذر تسجيل تسليم الراتب' });
+    }
+  });
+
   app.delete("/api/salary-complaints/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
+      const { data: complaint } = await storage.supabase
+        .from('salary_complaints')
+        .select('payment_proof_path')
+        .eq('id', req.params.id)
+        .maybeSingle();
       const { error } = await storage.supabase
         .from('salary_complaints')
         .delete()
         .eq('id', req.params.id);
       if (error) throw error;
+      if (complaint?.payment_proof_path) {
+        await storage.supabase.storage.from('salary-payment-proofs').remove([complaint.payment_proof_path]);
+      }
       res.json({ message: 'تم حذف الشكوى' });
     } catch (error: any) {
       console.error('Delete salary complaint error:', error);
