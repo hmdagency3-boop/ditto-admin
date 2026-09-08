@@ -26,6 +26,10 @@ ALTER TABLE public.salary_complaints
 ALTER TABLE public.salary_complaints
   ADD COLUMN IF NOT EXISTS exceptional_reason TEXT;
 
+-- Re-running this migration should not fail if the policy already exists.
+DROP POLICY IF EXISTS "salary_complaints_all"
+  ON public.salary_complaints;
+
 CREATE POLICY "salary_complaints_all"
   ON public.salary_complaints
   FOR ALL
