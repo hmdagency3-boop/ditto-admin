@@ -1692,6 +1692,39 @@ export async function registerRoutes(
     return Number(parts.find(part => part.type === 'day')?.value || 0);
   }
 
+  function normalizeSalaryComplaintMonth(value: unknown): string {
+    const raw = String(value ?? '').trim();
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(raw)) return raw;
+    const monthOnly = raw.match(/^(0?[1-9]|1[0-2])$/);
+    if (monthOnly) {
+      const matchingMonth = allowedSalaryComplaintMonths().find(value => value.endsWith(`-${monthOnly[1].padStart(2, '0')}`));
+      return matchingMonth || '';
+    }
+    return '';
+  }
+
+  function allowedSalaryComplaintMonths(date = new Date()): string[] {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Cairo',
+      year: 'numeric',
+      month: '2-digit',
+    }).formatToParts(date);
+    const year = Number(parts.find(part => part.type === 'year')?.value || 0);
+    const monthIndex = Number(parts.find(part => part.type === 'month')?.value || 1) - 1;
+    return [1, 2].map(offset => {
+      const monthDate = new Date(Date.UTC(year, monthIndex - offset, 1));
+      return `${monthDate.getUTCFullYear()}-${String(monthDate.getUTCMonth() + 1).padStart(2, '0')}`;
+    });
+  }
+
+  function normalizeSalaryComplaintAmount(value: unknown): number {
+    const clean = String(value ?? '')
+      .replace(/(?:USD|دولار|جنيه|جنيه مصري|\$)/gi, '')
+      .replace(/,/g, '')
+      .trim();
+    return Number(clean);
+  }
+
   app.get("/api/salary-complaints", authenticateToken, requireSuperAdmin, async (_req, res) => {
     try {
       const { data, error } = await storage.supabase
@@ -1735,13 +1768,15 @@ export async function registerRoutes(
         return res.status(400).json({ message: 'جميع حقول شكوى الراتب مطلوبة' });
       }
 
-      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(complaint_month))) {
-        return res.status(400).json({ message: 'صيغة الشهر غير صحيحة' });
+      const normalizedComplaintMonth = normalizeSalaryComplaintMonth(complaint_month);
+      const allowedMonths = allowedSalaryComplaintMonths();
+      if (!normalizedComplaintMonth || !allowedMonths.includes(normalizedComplaintMonth)) {
+        return res.status(400).json({ message: `يمكن استقبال شكاوى الشهرين السابقين فقط: ${allowedMonths.join(' و ')}` });
       }
 
-      const numericAmount = Number(amount);
+      const numericAmount = normalizeSalaryComplaintAmount(amount);
       if (!Number.isFinite(numericAmount) || numericAmount < 0) {
-        return res.status(400).json({ message: 'المبلغ غير صحيح' });
+        return res.status(400).json({ message: 'المبلغ بالدولار غير صحيح' });
       }
 
       const { data, error } = await storage.supabase
@@ -1753,7 +1788,7 @@ export async function registerRoutes(
           cash_number: String(cash_number).trim(),
           host_phone: String(host_phone).trim(),
           country: String(country).trim(),
-          complaint_month: String(complaint_month),
+          complaint_month: normalizedComplaintMonth,
           amount: numericAmount,
           complaint_type: String(complaint_type).trim(),
           is_exceptional: exceptional,

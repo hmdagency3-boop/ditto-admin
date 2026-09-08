@@ -70,9 +70,18 @@ function cairoDateParts() {
   };
 }
 
-function defaultComplaintMonth() {
+function allowedComplaintMonths() {
   const now = cairoDateParts();
-  return `${now.year}-${now.month}`;
+  const year = Number(now.year);
+  const monthIndex = Number(now.month) - 1;
+  return [1, 2].map(offset => {
+    const date = new Date(Date.UTC(year, monthIndex - offset, 1));
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+  });
+}
+
+function defaultComplaintMonth() {
+  return allowedComplaintMonths()[0];
 }
 
 function formatMonth(value: string) {
@@ -82,7 +91,7 @@ function formatMonth(value: string) {
 }
 
 function formatAmount(value: number) {
-  return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value);
+  return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value)} $`;
 }
 
 function cleanPastedLines(text: string) {
@@ -119,7 +128,7 @@ function cleanExtractedPastedValue(value: string) {
   if (nextLabelIndex > 0) cleaned = cleaned.slice(0, nextLabelIndex).trim();
 
   return cleaned
-    .replace(/\s*(?:في|فی)\s+حال\s+رفع\s+شكو[ية]\s+كيد[ية].*$/i, '')
+    .replace(/\s*(?:في|فی)\s+حال\s+رفع\b.*$/i, '')
     .replace(/\s+إدارة\s+الوكالات\b.*$/i, '')
     .trim();
 }
@@ -158,7 +167,21 @@ function normalizeComplaintMonth(value: string) {
   if (yearMonth) return `${yearMonth[1]}-${yearMonth[2].padStart(2, '0')}`;
   const monthYear = clean.match(/^(\d{1,2})[-/](\d{4})$/);
   if (monthYear) return `${monthYear[2]}-${monthYear[1].padStart(2, '0')}`;
+  const monthOnly = clean.match(/^(0?[1-9]|1[0-2])$/);
+  if (monthOnly) {
+    const matchingMonth = allowedComplaintMonths().find(value => value.endsWith(`-${monthOnly[1].padStart(2, '0')}`));
+    return matchingMonth || '';
+  }
   return '';
+}
+
+function normalizeComplaintAmount(value: string) {
+  const clean = value
+    .trim()
+    .replace(/(?:USD|دولار|جنيه|جنيه مصري|\$)/gi, '')
+    .replace(/,/g, '')
+    .trim();
+  return Number(clean);
 }
 
 function parseSalaryComplaintText(text: string): Partial<ComplaintForm> {
@@ -166,6 +189,9 @@ function parseSalaryComplaintText(text: string): Partial<ComplaintForm> {
   const month = extractPastedField(
     complaintText,
     'شهر الشكوى', 'شهر الراتب', 'المستحق عن شهر', 'الشهر',
+  );
+  const parsedAmount = normalizeComplaintAmount(
+    extractPastedField(complaintText, 'مبلغ الشكوى', 'قيمة الراتب', 'المبلغ', 'الراتب', 'المستحق'),
   );
   return {
     agency_code: extractPastedField(complaintText, 'كود الوكالة', 'كود وكالة', 'كود الوكيل'),
@@ -175,7 +201,7 @@ function parseSalaryComplaintText(text: string): Partial<ComplaintForm> {
     host_phone: extractPastedField(complaintText, 'هاتف المضيف', 'رقم هاتف المضيف', 'واتساب المضيف', 'رقم المضيف'),
     country: extractPastedField(complaintText, 'بلد المضيف', 'البلد', 'الدولة'),
     complaint_month: normalizeComplaintMonth(month),
-    amount: extractPastedField(complaintText, 'مبلغ الشكوى', 'قيمة الراتب', 'المبلغ', 'الراتب', 'المستحق'),
+    amount: Number.isFinite(parsedAmount) ? String(parsedAmount) : '',
     complaint_type: extractPastedField(complaintText, 'نوع الشكوى', 'نوع الشكوي', 'سبب الشكوى', 'تفاصيل الشكوى', 'الشكوى'),
     exceptional_reason: extractPastedField(complaintText, 'سبب الاستثناء', 'سبب الضرورة', 'سبب الحالة الضرورية'),
   };
@@ -199,6 +225,7 @@ export default function SalaryComplaints() {
 
   const cairoDay = cairoDateParts().day;
   const submissionOpen = cairoDay >= 15 && cairoDay <= 17;
+  const allowedMonths = allowedComplaintMonths();
 
   async function loadComplaints() {
     setLoading(true);
@@ -270,12 +297,20 @@ export default function SalaryComplaints() {
       toast({ title: 'بيانات ناقصة', description: `أدخل ${missing[1]}`, variant: 'destructive' });
       return;
     }
+    if (!allowedMonths.includes(form.complaint_month)) {
+      toast({
+        title: 'الشهر غير مسموح',
+        description: `يمكن استقبال شكاوى الشهرين السابقين فقط: ${allowedMonths.map(formatMonth).join(' و ')}`,
+        variant: 'destructive',
+      });
+      return;
+    }
     if (form.is_exceptional && (form.exceptional_reason || '').trim().length < 5) {
       toast({ title: 'سبب الاستثناء مطلوب', description: 'اكتب سببًا واضحًا للحالة الضرورية', variant: 'destructive' });
       return;
     }
 
-    const amount = Number(form.amount);
+    const amount = normalizeComplaintAmount(form.amount);
     if (!Number.isFinite(amount) || amount < 0) {
       toast({ title: 'المبلغ غير صحيح', description: 'أدخل مبلغًا رقميًا صحيحًا', variant: 'destructive' });
       return;
@@ -374,6 +409,9 @@ export default function SalaryComplaints() {
             <p className="text-muted-foreground">
               الإضافة العادية متاحة من يوم 15 إلى يوم 17 من كل شهر. للحالات الضرورية يمكن تسجيل شكوى استثنائية في أي وقت. اليوم الحالي في توقيت القاهرة: <strong>{cairoDay}</strong>.
             </p>
+            <p className="font-medium text-blue-700 dark:text-blue-300">
+              الشهور المسموح باستقبال شكاواها: <strong>{allowedMonths.map(formatMonth).join(' و ')}</strong> فقط.
+            </p>
             <p className="font-medium text-amber-700 dark:text-amber-400">
               في حال رفع شكوى كيدية أو تعدد حسابات سيتم البند، فكن حذرًا.
             </p>
@@ -397,7 +435,7 @@ export default function SalaryComplaints() {
         <Card>
           <CardContent className="flex items-center gap-3 p-4">
             <Banknote className="h-5 w-5 text-emerald-600" />
-            <div><p className="text-2xl font-bold">{formatAmount(complaints.reduce((sum, item) => sum + Number(item.amount || 0), 0))}</p><p className="text-xs text-muted-foreground">إجمالي المبالغ</p></div>
+            <div><p className="text-2xl font-bold">{formatAmount(complaints.reduce((sum, item) => sum + Number(item.amount || 0), 0))}</p><p className="text-xs text-muted-foreground">إجمالي المبالغ بالدولار</p></div>
           </CardContent>
         </Card>
       </div>
@@ -423,7 +461,7 @@ export default function SalaryComplaints() {
               <table className="w-full min-w-[1050px] text-right text-sm">
                 <thead className="bg-muted/70">
                   <tr>
-                    {['كود الوكالة', 'أيدي الوكيل', 'أيدي المضيف', 'رقم الكاش', 'هاتف المضيف', 'البلد', 'الشهر', 'المبلغ', 'نوع الشكوى', 'الحالة', 'الإجراء'].map(label => (
+                    {['كود الوكالة', 'أيدي الوكيل', 'أيدي المضيف', 'رقم الكاش', 'هاتف المضيف', 'البلد', 'الشهر', 'المبلغ بالدولار', 'نوع الشكوى', 'الحالة', 'الإجراء'].map(label => (
                       <th key={label} className="whitespace-nowrap px-3 py-3 font-semibold">{label}</th>
                     ))}
                   </tr>
@@ -483,7 +521,7 @@ export default function SalaryComplaints() {
               <Textarea
                 value={pasteText}
                 onChange={event => setPasteText(event.target.value)}
-                placeholder={'مثال:\nأيدي الوكيل: 12345\nأيدي المضيف: 67890\nرقم الكاش: 111222\nالمبلغ: 500'}
+                placeholder={'مثال:\nكود وكالة: 6033\nايدي الوكيل: 11143\nاي دي المضيف: 2169298\nالمبلغ: 50$'}
                 rows={6}
                 dir="rtl"
               />
@@ -505,8 +543,8 @@ export default function SalaryComplaints() {
             <div className="space-y-1.5"><Label>رقم الكاش *</Label><div className="relative"><WalletCards className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pr-9" value={form.cash_number} onChange={event => setField('cash_number', event.target.value)} /></div></div>
             <div className="space-y-1.5"><Label>هاتف المضيف *</Label><div className="relative"><Phone className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pr-9" value={form.host_phone} onChange={event => setField('host_phone', event.target.value)} /></div></div>
             <div className="space-y-1.5"><Label>البلد *</Label><div className="relative"><Globe2 className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input className="pr-9" value={form.country} onChange={event => setField('country', event.target.value)} /></div></div>
-            <div className="space-y-1.5"><Label>الشهر *</Label><Input type="month" value={form.complaint_month} onChange={event => setField('complaint_month', event.target.value)} /></div>
-            <div className="space-y-1.5"><Label>المبلغ *</Label><div className="relative"><Banknote className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input type="number" min="0" step="0.01" className="pr-9" value={form.amount} onChange={event => setField('amount', event.target.value)} /></div></div>
+            <div className="space-y-1.5"><Label>الشهر المستحق *</Label><Input type="month" min={allowedMonths[1]} max={allowedMonths[0]} value={form.complaint_month} onChange={event => setField('complaint_month', event.target.value)} /><p className="text-xs text-muted-foreground">المسموح: {allowedMonths.map(formatMonth).join(' و ')} فقط</p></div>
+            <div className="space-y-1.5"><Label>المبلغ بالدولار *</Label><div className="relative"><Banknote className="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input type="number" min="0" step="0.01" className="pr-9" value={form.amount} onChange={event => setField('amount', event.target.value)} placeholder="مثال: 50" /></div></div>
             <div className="space-y-1.5 sm:col-span-2"><Label>نوع الشكوى *</Label><Textarea value={form.complaint_type} onChange={event => setField('complaint_type', event.target.value)} placeholder="اكتب نوع الشكوى بالتفصيل..." rows={3} /></div>
             {form.is_exceptional && (
               <div className="space-y-1.5 sm:col-span-2">
