@@ -43,6 +43,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'nav.absences': 'الغيابات والتأخير',
     'nav.salaryComplaints': 'شكاوى الرواتب',
     'nav.systemDownComplaints': 'شكاوى النزول من السيستم',
+    'nav.whatsapp': 'ربط واتساب',
     // Auth
     'auth.login': 'تسجيل الدخول',
     'auth.signup': 'حساب جديد',
@@ -158,6 +159,7 @@ const translations: Record<Lang, Record<string, string>> = {
     'nav.absences': 'Absences & Tardiness',
     'nav.salaryComplaints': 'Salary Complaints',
     'nav.systemDownComplaints': 'System Down Complaints',
+    'nav.whatsapp': 'WhatsApp connection',
     // Auth
     'auth.login': 'Login',
     'auth.signup': 'New Account',

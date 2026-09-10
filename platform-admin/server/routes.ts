@@ -5,6 +5,11 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
 import dittoRouter from "./dittoRoutes";
+import {
+  disconnectWhatsApp,
+  getWhatsAppConnection,
+  startWhatsAppConnection,
+} from "./whatsappService";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -270,6 +275,29 @@ export async function registerRoutes(
 
   // ── Ditto platform routes ─────────────────────────────────────────────────
   app.use("/api/ditto", dittoRouter);
+
+  // ── WhatsApp Web connection (super admin only) ────────────────────────────
+  app.get("/api/whatsapp/status", authenticateToken, requireSuperAdmin, (_req, res) => {
+    res.json(getWhatsAppConnection());
+  });
+
+  app.post("/api/whatsapp/connect", authenticateToken, requireSuperAdmin, async (_req, res) => {
+    try {
+      res.json(await startWhatsAppConnection());
+    } catch (error) {
+      console.error("[whatsapp] connect error:", error);
+      res.status(500).json({ message: "تعذر بدء ربط واتساب" });
+    }
+  });
+
+  app.post("/api/whatsapp/disconnect", authenticateToken, requireSuperAdmin, async (_req, res) => {
+    try {
+      res.json(await disconnectWhatsApp());
+    } catch (error) {
+      console.error("[whatsapp] disconnect error:", error);
+      res.status(500).json({ message: "تعذر فصل واتساب" });
+    }
+  });
 
   app.post("/api/auth/register", async (req, res) => {
     try {

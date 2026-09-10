@@ -41,6 +41,7 @@ import Recordings from "@/pages/Recordings";
 import Absences from "@/pages/Absences";
 import SalaryComplaints from "@/pages/SalaryComplaints";
 import SystemDownComplaints from "@/pages/SystemDownComplaints";
+import WhatsApp from "@/pages/WhatsApp";
 
 function ProtectedRoute({ component: Component, superAdminOnly = false }: { component: React.ComponentType; superAdminOnly?: boolean }) {
   const { user, loading, isSuperAdmin } = useAuth();
@@ -187,6 +188,9 @@ function Router() {
       </Route>
       <Route path="/system-down-complaints">
         <ProtectedRoute component={SystemDownComplaints} superAdminOnly />
+      </Route>
+      <Route path="/whatsapp">
+        <ProtectedRoute component={WhatsApp} superAdminOnly />
       </Route>
       <Route component={NotFound} />
     </Switch>

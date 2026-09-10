@@ -25,6 +25,7 @@ import {
   CalendarX,
   FileWarning,
   ArrowDownCircle,
+  MessageCircle,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -75,6 +76,7 @@ export function AppSidebar() {
     { key: 'nav.absences', url: '/absences', icon: CalendarX },
     { key: 'nav.salaryComplaints', url: '/salary-complaints', icon: FileWarning },
     { key: 'nav.systemDownComplaints', url: '/system-down-complaints', icon: ArrowDownCircle },
+    { key: 'nav.whatsapp', url: '/whatsapp', icon: MessageCircle },
   ];
 
   const adminItems = [
