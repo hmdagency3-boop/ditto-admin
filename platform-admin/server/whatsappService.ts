@@ -158,94 +158,117 @@ export async function startWhatsAppConnection(): Promise<WhatsAppConnectionInfo>
 
       updateState({ status: "connecting", qr: null, lastError: null });
 
-      const nextSocket = makeWASocket({
-        auth: authState,
-        browser: Browsers.ubuntu("AdminDesk"),
-        markOnlineOnConnect: false,
-        syncFullHistory: false,
-      });
+      let reconnectScheduled = false;
+      let createSocket: () => void;
 
-      socket = nextSocket;
-      nextSocket.ev.on("creds.update", saveCreds);
-      nextSocket.ev.on("messaging-history.set", ({ chats: historyChats, messages: historyMessages }) => {
-        for (const chat of historyChats as any[]) {
-          if (!chat.id || chat.id === "status@broadcast" || chat.id.endsWith("@broadcast")) continue;
-          const last = getWhatsAppMessages(chat.id).at(-1);
-          chats.set(chat.id, {
-            jid: chat.id,
-            name: chat.name || chat.id.split("@")[0],
-            unreadCount: Number(chat.unreadCount || 0),
-            lastMessage: last?.text || "",
-            lastMessageAt: last?.timestamp || Number(chat.conversationTimestamp || 0) * 1000,
-          });
-        }
-        for (const message of historyMessages as any[]) {
-          upsertMessage(message);
-        }
-      });
-      nextSocket.ev.on("chats.upsert", (historyChats) => {
-        for (const chat of historyChats as any[]) {
-          if (!chat.id || chat.id.endsWith("@broadcast")) continue;
-          const current = chats.get(chat.id);
-          chats.set(chat.id, {
-            jid: chat.id,
-            name: chat.name || current?.name || chat.id.split("@")[0],
-            unreadCount: Number(chat.unreadCount ?? current?.unreadCount ?? 0),
-            lastMessage: current?.lastMessage || "",
-            lastMessageAt: current?.lastMessageAt || Number(chat.conversationTimestamp || 0) * 1000,
-          });
-        }
-      });
-      nextSocket.ev.on("messages.upsert", ({ messages: incomingMessages }) => {
-        for (const message of incomingMessages as any[]) upsertMessage(message);
-      });
-      nextSocket.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
-        if (qr) {
-          try {
-            const qrDataUrl = await QRCode.toDataURL(qr, {
-              margin: 2,
-              width: 280,
-              errorCorrectionLevel: "M",
+      createSocket = () => {
+        const nextSocket = makeWASocket({
+          auth: authState,
+          browser: Browsers.ubuntu("AdminDesk"),
+          markOnlineOnConnect: false,
+          syncFullHistory: false,
+        });
+
+        socket = nextSocket;
+        nextSocket.ev.on("creds.update", saveCreds);
+        nextSocket.ev.on("messaging-history.set", ({ chats: historyChats, messages: historyMessages }) => {
+          for (const chat of historyChats as any[]) {
+            if (!chat.id || chat.id === "status@broadcast" || chat.id.endsWith("@broadcast")) continue;
+            const last = getWhatsAppMessages(chat.id).at(-1);
+            chats.set(chat.id, {
+              jid: chat.id,
+              name: chat.name || chat.id.split("@")[0],
+              unreadCount: Number(chat.unreadCount || 0),
+              lastMessage: last?.text || "",
+              lastMessageAt: last?.timestamp || Number(chat.conversationTimestamp || 0) * 1000,
             });
-            updateState({ status: "qr", qr: qrDataUrl, lastError: null });
-          } catch (error) {
+          }
+          for (const message of historyMessages as any[]) {
+            upsertMessage(message);
+          }
+        });
+        nextSocket.ev.on("chats.upsert", (historyChats) => {
+          for (const chat of historyChats as any[]) {
+            if (!chat.id || chat.id.endsWith("@broadcast")) continue;
+            const current = chats.get(chat.id);
+            chats.set(chat.id, {
+              jid: chat.id,
+              name: chat.name || current?.name || chat.id.split("@")[0],
+              unreadCount: Number(chat.unreadCount ?? current?.unreadCount ?? 0),
+              lastMessage: current?.lastMessage || "",
+              lastMessageAt: current?.lastMessageAt || Number(chat.conversationTimestamp || 0) * 1000,
+            });
+          }
+        });
+        nextSocket.ev.on("messages.upsert", ({ messages: incomingMessages }) => {
+          for (const message of incomingMessages as any[]) upsertMessage(message);
+        });
+        nextSocket.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
+          if (qr) {
+            try {
+              const qrDataUrl = await QRCode.toDataURL(qr, {
+                margin: 2,
+                width: 280,
+                errorCorrectionLevel: "M",
+              });
+              updateState({ status: "qr", qr: qrDataUrl, lastError: null });
+            } catch (error) {
+              updateState({
+                status: "error",
+                lastError: error instanceof Error ? error.message : "تعذر إنشاء رمز QR",
+              });
+            }
+          }
+
+          if (connection === "open") {
             updateState({
-              status: "error",
-              lastError: error instanceof Error ? error.message : "تعذر إنشاء رمز QR",
+              status: "connected",
+              qr: null,
+              phoneNumber: nextSocket.user?.id?.split(":")[0] || null,
+              lastError: null,
             });
           }
-        }
 
-        if (connection === "open") {
-          updateState({
-            status: "connected",
-            qr: null,
-            phoneNumber: nextSocket.user?.id?.split(":")[0] || null,
-            lastError: null,
-          });
-        }
+          if (connection === "close") {
+            const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
+            const loggedOut = statusCode === DisconnectReason.loggedOut;
+            const restartRequired = statusCode === DisconnectReason.restartRequired;
 
-        if (connection === "close") {
-          const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
-          const loggedOut = statusCode === DisconnectReason.loggedOut;
+            if (restartRequired) {
+              // WhatsApp intentionally closes the pairing socket with 515 after
+              // the QR is accepted. The saved auth state must be reused.
+              socket = null;
+              updateState({ status: "connecting", qr: null, lastError: null });
+              if (!reconnectScheduled) {
+                reconnectScheduled = true;
+                setTimeout(() => {
+                  reconnectScheduled = false;
+                  if (state.status === "connecting") createSocket();
+                }, 500);
+              }
+              return;
+            }
 
-          socket = null;
-          chats.clear();
-          messages.clear();
-          updateState({
-            status: loggedOut ? "logged_out" : "disconnected",
-            qr: null,
-            phoneNumber: loggedOut ? null : state.phoneNumber,
-            lastError: loggedOut
-              ? "تم تسجيل خروج الحساب من واتساب"
-              : "انقطع الاتصال. اضغط «بدء الربط» للمحاولة مرة أخرى.",
-          });
+            socket = null;
+            chats.clear();
+            messages.clear();
+            updateState({
+              status: loggedOut ? "logged_out" : "disconnected",
+              qr: null,
+              phoneNumber: loggedOut ? null : state.phoneNumber,
+              lastError: loggedOut
+                ? "تم تسجيل خروج الحساب من واتساب"
+                : "انقطع الاتصال. اضغط «بدء الربط» للمحاولة مرة أخرى.",
+            });
 
-          if (loggedOut) {
-            await fs.rm(authDirectory, { recursive: true, force: true });
+            if (loggedOut) {
+              await fs.rm(authDirectory, { recursive: true, force: true });
+            }
           }
-        }
-      });
+        });
+      };
+
+      createSocket();
     } catch (error) {
       socket = null;
       updateState({
