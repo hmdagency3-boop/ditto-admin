@@ -8,6 +8,9 @@ import dittoRouter from "./dittoRoutes";
 import {
   disconnectWhatsApp,
   getWhatsAppConnection,
+  getWhatsAppChats,
+  getWhatsAppMessages,
+  sendWhatsAppMessage,
   startWhatsAppConnection,
 } from "./whatsappService";
 
@@ -296,6 +299,24 @@ export async function registerRoutes(
     } catch (error) {
       console.error("[whatsapp] disconnect error:", error);
       res.status(500).json({ message: "تعذر فصل واتساب" });
+    }
+  });
+
+  app.get("/api/whatsapp/chats", authenticateToken, requireSuperAdmin, (_req, res) => {
+    res.json(getWhatsAppChats());
+  });
+
+  app.get("/api/whatsapp/chats/:jid/messages", authenticateToken, requireSuperAdmin, (req, res) => {
+    res.json(getWhatsAppMessages(req.params.jid));
+  });
+
+  app.post("/api/whatsapp/messages", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { jid, text } = req.body || {};
+      if (!jid || !text) return res.status(400).json({ message: "المحادثة ونص الرسالة مطلوبان" });
+      res.json(await sendWhatsAppMessage(String(jid), String(text)));
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : "تعذر إرسال الرسالة" });
     }
   });
 
