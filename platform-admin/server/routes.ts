@@ -9,6 +9,7 @@ import {
   disconnectWhatsApp,
   getWhatsAppConnection,
   getWhatsAppChats,
+  getWhatsAppMedia,
   getWhatsAppMessages,
   resumeWhatsAppConnection,
   sendWhatsAppMessage,
@@ -321,15 +322,60 @@ export async function registerRoutes(
     res.json(getWhatsAppMessages(req.user!.userId, req.params.jid));
   });
 
-  app.post("/api/whatsapp/messages", authenticateToken, requireSuperAdmin, async (req, res) => {
+  const whatsappMediaUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 50 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (
+        file.mimetype.startsWith("image/") ||
+        file.mimetype.startsWith("video/") ||
+        file.mimetype.startsWith("audio/")
+      ) {
+        cb(null, true);
+      } else {
+        cb(new Error("يُسمح بالصور والفيديو والملفات الصوتية فقط"));
+      }
+    },
+  });
+
+  app.get("/api/whatsapp/media/:key", authenticateToken, requireSuperAdmin, async (req, res) => {
+    const media = await getWhatsAppMedia(req.user!.userId, req.params.key);
+    if (!media) return res.status(404).json({ message: "الملف غير موجود أو انتهت صلاحيته" });
+    res.setHeader("Content-Type", media.mimeType);
+    res.setHeader("Content-Disposition", media.fileName ? `inline; filename="${media.fileName}"` : "inline");
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.send(media.buffer);
+  });
+
+  app.post(
+    "/api/whatsapp/messages",
+    authenticateToken,
+    requireSuperAdmin,
+    whatsappMediaUpload.single("file"),
+    async (req: any, res) => {
     try {
-      const { jid, text } = req.body || {};
-      if (!jid || !text) return res.status(400).json({ message: "المحادثة ونص الرسالة مطلوبان" });
-      res.json(await sendWhatsAppMessage(req.user!.userId, String(jid), String(text)));
+      const { jid, text = "" } = req.body || {};
+      if (!jid) return res.status(400).json({ message: "المحادثة مطلوبة" });
+      if (!String(text).trim() && !req.file) {
+        return res.status(400).json({ message: "نص الرسالة أو الملف مطلوب" });
+      }
+      res.json(await sendWhatsAppMessage(
+        req.user!.userId,
+        String(jid),
+        String(text),
+        req.file
+          ? {
+              buffer: req.file.buffer,
+              mimeType: req.file.mimetype,
+              fileName: req.file.originalname || null,
+            }
+          : undefined,
+      ));
     } catch (error) {
       res.status(400).json({ message: error instanceof Error ? error.message : "تعذر إرسال الرسالة" });
     }
-  });
+    },
+  );
 
   app.get("/api/whatsapp/ai-settings", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {

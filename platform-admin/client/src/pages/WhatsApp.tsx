@@ -3,9 +3,12 @@ import {
   Bot,
   Check,
   CheckCheck,
+  FileAudio,
   Link2,
   Loader2,
   MessageCircle,
+  Mic,
+  Paperclip,
   Phone,
   Plus,
   Search,
@@ -13,7 +16,10 @@ import {
   Save,
   ShieldCheck,
   Smartphone,
+  Square,
   Unplug,
+  Video,
+  X,
 } from "lucide-react";
 import { useLang } from "@/contexts/LangContext";
 import { useToast } from "@/hooks/use-toast";
@@ -49,6 +55,11 @@ interface ChatMessage {
   fromMe: boolean;
   senderName: string;
   timestamp: number;
+  mediaType?: "text" | "image" | "video" | "audio" | "document" | "sticker";
+  mediaUrl?: string | null;
+  mimeType?: string | null;
+  fileName?: string | null;
+  duration?: number | null;
 }
 
 interface WhatsAppAISettings {
@@ -94,6 +105,67 @@ function initials(name: string) {
 
 function chatNumber(chat: Chat) {
   return chat.phoneNumber || chat.jid.split("@")[0];
+}
+
+function MediaPreview({ message, isArabic }: { message: ChatMessage; isArabic: boolean }) {
+  const [source, setSource] = useState<string | null>(null);
+  const mediaType = message.mediaType || "text";
+
+  useEffect(() => {
+    if (!message.mediaUrl) {
+      setSource(null);
+      return;
+    }
+    let active = true;
+    const controller = new AbortController();
+    void fetch(message.mediaUrl, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("auth_token") || ""}` },
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error("تعذر تحميل الملف");
+        return response.blob();
+      })
+      .then((blob) => {
+        if (active) setSource(URL.createObjectURL(blob));
+      })
+      .catch(() => {
+        if (active) setSource(null);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+      setSource((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return null;
+      });
+    };
+  }, [message.mediaUrl]);
+
+  if (mediaType === "text") return null;
+  if (!source) {
+    return (
+      <div className="flex min-h-16 items-center gap-2 rounded-lg bg-black/5 px-3 py-2 text-xs text-muted-foreground">
+        {mediaType === "audio" ? <FileAudio className="h-4 w-4" /> : <Video className="h-4 w-4" />}
+        {isArabic ? "جاري تحميل الوسائط..." : "Loading media..."}
+      </div>
+    );
+  }
+  if (mediaType === "image" || mediaType === "sticker") {
+    return <img src={source} alt={message.fileName || "WhatsApp media"} className="max-h-72 max-w-full rounded-lg object-contain" />;
+  }
+  if (mediaType === "video") {
+    return <video src={source} controls preload="metadata" className="max-h-72 max-w-full rounded-lg" />;
+  }
+  if (mediaType === "audio") {
+    return <audio src={source} controls className="max-w-full" />;
+  }
+  return (
+    <a href={source} download={message.fileName || "whatsapp-file"} className="flex items-center gap-2 text-sm underline">
+      <FileAudio className="h-4 w-4" />
+      {message.fileName || (isArabic ? "تحميل الملف" : "Download file")}
+    </a>
+  );
 }
 
 function AISettingsPanel({
@@ -206,19 +278,26 @@ export default function WhatsApp() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [recording, setRecording] = useState(false);
   const [aiSettings, setAISettings] = useState<WhatsAppAISettings>(initialAISettings);
   const [aiSaving, setAISaving] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
 
   const request = useCallback(async (url: string, method = "GET", body?: unknown) => {
     const token = localStorage.getItem("auth_token");
+    const isFormData = body instanceof FormData;
     const response = await fetch(url, {
       method,
       headers: {
         Authorization: `Bearer ${token}`,
-        ...(body ? { "Content-Type": "application/json" } : {}),
+        ...(body && !isFormData ? { "Content-Type": "application/json" } : {}),
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: body ? isFormData ? body : JSON.stringify(body) : undefined,
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.message || "حدث خطأ أثناء الاتصال");
@@ -345,14 +424,70 @@ export default function WhatsApp() {
     }
   };
 
+  const startRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      toast({
+        title: isArabic ? "التسجيل غير مدعوم في هذا المتصفح" : "Recording is not supported in this browser",
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
+          ? "audio/ogg;codecs=opus"
+          : "";
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      recordingStreamRef.current = stream;
+      recordingChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const type = recorder.mimeType || "audio/webm";
+        const extension = type.includes("ogg") ? "ogg" : "webm";
+        const blob = new Blob(recordingChunksRef.current, { type });
+        setSelectedFile(new File([blob], `voice-${Date.now()}.${extension}`, { type }));
+        recordingChunksRef.current = [];
+        recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+        recordingStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        setRecording(false);
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setRecording(true);
+    } catch (error) {
+      toast({
+        title: isArabic ? "تعذر بدء التسجيل" : "Unable to start recording",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
   const sendMessage = async () => {
     const text = draft.trim();
-    if (!text || !selectedJid || sending) return;
+    const file = selectedFile;
+    if ((!text && !file) || !selectedJid || sending) return;
     setSending(true);
     try {
-      const sent = await request("/api/whatsapp/messages", "POST", { jid: selectedJid, text }) as ChatMessage;
+      const body = new FormData();
+      body.append("jid", selectedJid);
+      body.append("text", text);
+      if (file) body.append("file", file);
+      const sent = await request("/api/whatsapp/messages", "POST", body) as ChatMessage;
       setMessages((current) => [...current.filter((message) => message.id !== sent.id), sent]);
       setDraft("");
+      setSelectedFile(null);
       void refreshMessages();
     } catch (error) {
       toast({
@@ -364,6 +499,11 @@ export default function WhatsApp() {
       setSending(false);
     }
   };
+
+  useEffect(() => () => {
+    mediaRecorderRef.current?.stop();
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
 
   const filteredChats = useMemo(
     () => chats.filter((chat) => chat.name.toLowerCase().includes(search.toLowerCase()) || chat.jid.includes(search)),
@@ -478,7 +618,10 @@ export default function WhatsApp() {
                     ) : messages.map((message) => (
                       <div key={message.id} className={`flex ${message.fromMe ? "justify-start" : "justify-end"}`}>
                         <div className={`max-w-[78%] rounded-xl px-3 py-2 shadow-sm ${message.fromMe ? "rounded-tr-sm bg-[#d9fdd3] text-slate-900 dark:bg-[#005c4b] dark:text-white" : "rounded-tl-sm bg-white text-slate-900 dark:bg-[#202c33] dark:text-white"}`}>
-                          <p className="whitespace-pre-wrap text-sm leading-6">{message.text}</p>
+                          <MediaPreview message={message} isArabic={isArabic} />
+                          {message.text && !(message.mediaType && message.text === "رسالة غير نصية") && (
+                            <p className="whitespace-pre-wrap text-sm leading-6">{message.text}</p>
+                          )}
                           <div className={`mt-1 flex items-center gap-1 text-[10px] ${message.fromMe ? "justify-start text-slate-500 dark:text-slate-300" : "justify-end text-muted-foreground"}`}>
                             {formatTime(message.timestamp, isArabic)}
                             {message.fromMe && <CheckCheck className="h-3 w-3 text-[#53bdeb]" />}
@@ -490,7 +633,50 @@ export default function WhatsApp() {
                   </div>
                 </ScrollArea>
                 <div className="border-t bg-card p-3">
+                  {selectedFile && (
+                    <div className="mx-auto mb-2 flex max-w-4xl items-center gap-2 rounded-lg bg-muted px-3 py-2 text-xs">
+                      {selectedFile.type.startsWith("audio/") ? <FileAudio className="h-4 w-4" /> : <Paperclip className="h-4 w-4" />}
+                      <span className="min-w-0 flex-1 truncate">{selectedFile.name}</span>
+                      <span className="text-muted-foreground">{Math.ceil(selectedFile.size / 1024)} KB</span>
+                      <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedFile(null)}>
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
                   <div className="mx-auto flex max-w-4xl items-end gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*,video/*,audio/*"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) setSelectedFile(file);
+                        event.target.value = "";
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-10 w-10 shrink-0 rounded-full"
+                      title={isArabic ? "إرفاق صورة أو فيديو أو تسجيل" : "Attach image, video, or audio"}
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={sending || recording}
+                    >
+                      <Paperclip />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={recording ? "destructive" : "ghost"}
+                      size="icon"
+                      className="h-10 w-10 shrink-0 rounded-full"
+                      title={recording ? (isArabic ? "إيقاف التسجيل" : "Stop recording") : (isArabic ? "تسجيل صوتي" : "Voice recording")}
+                      onClick={() => (recording ? stopRecording() : void startRecording())}
+                      disabled={sending}
+                    >
+                      {recording ? <Square className="h-4 w-4 fill-current" /> : <Mic />}
+                    </Button>
                     <Textarea
                       value={draft}
                       onChange={(event) => setDraft(event.target.value)}
@@ -504,7 +690,7 @@ export default function WhatsApp() {
                       className="min-h-10 max-h-28 resize-none"
                       rows={1}
                     />
-                    <Button size="icon" onClick={() => void sendMessage()} disabled={!draft.trim() || sending} className="h-10 w-10 shrink-0 rounded-full bg-[#128C7E] hover:bg-[#075E54]">
+                    <Button size="icon" onClick={() => void sendMessage()} disabled={(!draft.trim() && !selectedFile) || sending || recording} className="h-10 w-10 shrink-0 rounded-full bg-[#128C7E] hover:bg-[#075E54]">
                       {sending ? <Loader2 className="animate-spin" /> : <Send />}
                     </Button>
                   </div>

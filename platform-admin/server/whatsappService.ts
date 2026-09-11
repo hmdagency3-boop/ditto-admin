@@ -5,7 +5,9 @@ import makeWASocket, {
   Browsers,
   BufferJSON,
   DisconnectReason,
+  downloadMediaMessage,
   initAuthCreds,
+  normalizeMessageContent,
   proto,
   type AuthenticationState,
   type WASocket,
@@ -52,6 +54,17 @@ export interface WhatsAppMessage {
   fromMe: boolean;
   senderName: string;
   timestamp: number;
+  mediaType: "text" | "image" | "video" | "audio" | "document" | "sticker";
+  mediaUrl: string | null;
+  mimeType: string | null;
+  fileName: string | null;
+  duration: number | null;
+}
+
+interface WhatsAppMediaFile {
+  filePath: string;
+  mimeType: string;
+  fileName: string | null;
 }
 
 type SerializedAuthFiles = Record<string, string>;
@@ -68,6 +81,7 @@ interface WhatsAppRuntime {
   autoReplyInFlight: Set<string>;
   replyPoller: ReturnType<typeof setInterval> | null;
   replyPollInFlight: boolean;
+  mediaFiles: Map<string, WhatsAppMediaFile>;
 }
 
 const authDirectory = path.resolve(
@@ -97,6 +111,7 @@ function getRuntime(ownerId: string): WhatsAppRuntime {
     autoReplyInFlight: new Set(),
     replyPoller: null,
     replyPollInFlight: false,
+    mediaFiles: new Map(),
   };
   runtimes.set(ownerId, runtime);
   return runtime;
@@ -275,8 +290,74 @@ function messageTimestamp(message: any): number {
   return Date.now();
 }
 
+type WhatsAppMediaType = Exclude<WhatsAppMessage["mediaType"], "text">;
+
+interface WhatsAppMediaDescriptor {
+  mediaType: WhatsAppMediaType;
+  mimeType: string;
+  fileName: string | null;
+  duration: number | null;
+  caption: string;
+}
+
+function normalizedMessageContent(message: any) {
+  return normalizeMessageContent(message?.message) || message?.message || null;
+}
+
+function messageMedia(message: any): WhatsAppMediaDescriptor | null {
+  const content = normalizedMessageContent(message);
+  if (!content) return null;
+
+  if (content.imageMessage) {
+    return {
+      mediaType: "image",
+      mimeType: String(content.imageMessage.mimetype || "image/jpeg"),
+      fileName: null,
+      duration: null,
+      caption: String(content.imageMessage.caption || ""),
+    };
+  }
+  if (content.videoMessage) {
+    return {
+      mediaType: "video",
+      mimeType: String(content.videoMessage.mimetype || "video/mp4"),
+      fileName: null,
+      duration: Number(content.videoMessage.seconds || 0) || null,
+      caption: String(content.videoMessage.caption || ""),
+    };
+  }
+  if (content.audioMessage) {
+    return {
+      mediaType: "audio",
+      mimeType: String(content.audioMessage.mimetype || "audio/ogg"),
+      fileName: null,
+      duration: Number(content.audioMessage.seconds || 0) || null,
+      caption: "",
+    };
+  }
+  if (content.documentMessage) {
+    return {
+      mediaType: "document",
+      mimeType: String(content.documentMessage.mimetype || "application/octet-stream"),
+      fileName: content.documentMessage.fileName ? String(content.documentMessage.fileName) : null,
+      duration: null,
+      caption: String(content.documentMessage.caption || ""),
+    };
+  }
+  if (content.stickerMessage) {
+    return {
+      mediaType: "sticker",
+      mimeType: String(content.stickerMessage.mimetype || "image/webp"),
+      fileName: null,
+      duration: null,
+      caption: "",
+    };
+  }
+  return null;
+}
+
 function messageText(message: any): string {
-  const content = message?.message;
+  const content = normalizedMessageContent(message);
   if (!content) return "";
   return (
     content.conversation ||
@@ -294,6 +375,21 @@ function phoneNumberFromJid(jid: string): string | null {
   const [value, server] = jid.split("@");
   if (!value || server === "g.us" || server === "broadcast" || server === "lid") return null;
   return server === "s.whatsapp.net" || server === "c.us" ? value : null;
+}
+
+function mediaKey(runtime: WhatsAppRuntime, messageId: string) {
+  return createHash("sha256").update(`${runtime.ownerId}:${messageId}`).digest("hex");
+}
+
+function extensionForMimeType(mimeType: string, fileName?: string | null) {
+  const originalExtension = fileName?.split(".").pop()?.toLowerCase();
+  if (originalExtension && /^[a-z0-9]{1,8}$/.test(originalExtension)) return originalExtension;
+  const mimeExtension = mimeType.split("/")[1]?.split(";")[0]?.toLowerCase();
+  return mimeExtension === "jpeg" ? "jpg" : mimeExtension || "bin";
+}
+
+function mediaUrl(runtime: WhatsAppRuntime, messageId: string) {
+  return `/api/whatsapp/media/${mediaKey(runtime, messageId)}`;
 }
 
 function rememberContact(runtime: WhatsAppRuntime, contact: any) {
@@ -336,12 +432,18 @@ function refreshChatIdentity(runtime: WhatsAppRuntime, jid: string) {
   });
 }
 
-function upsertMessage(runtime: WhatsAppRuntime, message: any, fallbackName?: string) {
+function upsertMessage(
+  runtime: WhatsAppRuntime,
+  message: any,
+  fallbackName?: string,
+  mediaOverride?: Partial<WhatsAppMessage>,
+) {
   const jid = message?.key?.remoteJid;
   if (!jid || jid === "status@broadcast" || jid.endsWith("@broadcast")) return;
   const text = messageText(message);
   if (!text && !message?.message) return;
   const timestamp = messageTimestamp(message);
+  const descriptor = messageMedia(message);
   const item: WhatsAppMessage = {
     id: message.key.id || `${jid}-${timestamp}-${Math.random()}`,
     jid,
@@ -349,6 +451,12 @@ function upsertMessage(runtime: WhatsAppRuntime, message: any, fallbackName?: st
     fromMe: Boolean(message.key.fromMe),
     senderName: message.pushName || fallbackName || jid.split("@")[0],
     timestamp,
+    mediaType: descriptor?.mediaType || "text",
+    mediaUrl: null,
+    mimeType: descriptor?.mimeType || null,
+    fileName: descriptor?.fileName || null,
+    duration: descriptor?.duration || null,
+    ...mediaOverride,
   };
   const chatMessages = runtime.messages.get(jid) || [];
   if (!chatMessages.some((existing) => existing.id === item.id)) {
@@ -364,6 +472,80 @@ function upsertMessage(runtime: WhatsAppRuntime, message: any, fallbackName?: st
     lastMessage: item.text,
     lastMessageAt: item.timestamp,
   });
+}
+
+async function saveMediaBuffer(
+  runtime: WhatsAppRuntime,
+  messageId: string,
+  buffer: Buffer,
+  mimeType: string,
+  fileName: string | null,
+) {
+  const key = mediaKey(runtime, messageId);
+  const mediaDirectory = path.resolve(process.cwd(), ".data", "whatsapp-media");
+  const extension = extensionForMimeType(mimeType, fileName);
+  const filePath = path.join(mediaDirectory, `${key}.${extension}`);
+  await fs.mkdir(mediaDirectory, { recursive: true });
+  await fs.writeFile(filePath, buffer);
+  runtime.mediaFiles.set(key, { filePath, mimeType, fileName });
+  return mediaUrl(runtime, messageId);
+}
+
+function updateMessageMedia(
+  runtime: WhatsAppRuntime,
+  jid: string,
+  messageId: string,
+  mediaUrlValue: string,
+) {
+  const chatMessages = runtime.messages.get(jid) || [];
+  const index = chatMessages.findIndex((item) => item.id === messageId);
+  if (index === -1) return;
+  chatMessages[index] = { ...chatMessages[index], mediaUrl: mediaUrlValue };
+  runtime.messages.set(jid, chatMessages);
+}
+
+async function downloadIncomingMedia(runtime: WhatsAppRuntime, message: any) {
+  const messageId = message?.key?.id;
+  const jid = message?.key?.remoteJid;
+  const descriptor = messageMedia(message);
+  const socket = runtime.socket;
+  if (!messageId || !jid || !descriptor || !socket) return;
+
+  try {
+    const buffer = await downloadMediaMessage(
+      message,
+      "buffer",
+      {},
+      {
+        logger: console as any,
+        reuploadRequest: (mediaMessage) => socket.updateMediaMessage(mediaMessage),
+      },
+    );
+    const savedUrl = await saveMediaBuffer(
+      runtime,
+      messageId,
+      buffer,
+      descriptor.mimeType,
+      descriptor.fileName,
+    );
+    updateMessageMedia(runtime, jid, messageId, savedUrl);
+  } catch (error) {
+    console.error(`[whatsapp] could not download media message ${messageId}:`, error);
+  }
+}
+
+export async function getWhatsAppMedia(ownerId: string, key: string) {
+  const file = getRuntime(ownerId).mediaFiles.get(key);
+  if (!file) return null;
+  try {
+    return {
+      buffer: await fs.readFile(file.filePath),
+      mimeType: file.mimeType,
+      fileName: file.fileName,
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function enqueueAIRequest(runtime: WhatsAppRuntime, message: any) {
@@ -488,23 +670,66 @@ export function getWhatsAppMessages(ownerId: string, jid: string): WhatsAppMessa
   return [...(getRuntime(ownerId).messages.get(jid) || [])].sort((a, b) => a.timestamp - b.timestamp);
 }
 
-export async function sendWhatsAppMessage(ownerId: string, jid: string, text: string): Promise<WhatsAppMessage> {
+export interface WhatsAppOutgoingMedia {
+  buffer: Buffer;
+  mimeType: string;
+  fileName: string | null;
+}
+
+export async function sendWhatsAppMessage(
+  ownerId: string,
+  jid: string,
+  text: string,
+  media?: WhatsAppOutgoingMedia,
+): Promise<WhatsAppMessage> {
   const runtime = getRuntime(ownerId);
   if (!runtime.socket || runtime.state.status !== "connected") {
     throw new Error("واتساب غير متصل");
   }
   const cleanText = text.trim();
-  if (!cleanText) throw new Error("نص الرسالة مطلوب");
-  const sent = await runtime.socket.sendMessage(jid, { text: cleanText });
+  if (!cleanText && !media) throw new Error("نص الرسالة أو الملف مطلوب");
+
+  const mediaType = media?.mimeType.startsWith("image/")
+    ? "image"
+    : media?.mimeType.startsWith("video/")
+      ? "video"
+      : media?.mimeType.startsWith("audio/")
+        ? "audio"
+        : null;
+  if (media && !mediaType) {
+    throw new Error("نوع الملف غير مدعوم. استخدم صورة أو فيديو أو ملفًا صوتيًا.");
+  }
+
+  const messageContent = mediaType === "image"
+    ? { image: media!.buffer, ...(cleanText ? { caption: cleanText } : {}) }
+    : mediaType === "video"
+      ? { video: media!.buffer, ...(cleanText ? { caption: cleanText } : {}) }
+      : mediaType === "audio"
+        ? { audio: media!.buffer, mimetype: media!.mimeType, ptt: true }
+        : { text: cleanText };
+  const sent = await runtime.socket.sendMessage(jid, messageContent as any);
+  const messageId = sent?.key?.id || `outgoing-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   upsertMessage(
     runtime,
     {
-      key: { ...sent?.key, remoteJid: jid, fromMe: true },
-      message: { conversation: cleanText },
+      key: { ...sent?.key, id: messageId, remoteJid: jid, fromMe: true },
+      message: mediaType
+        ? {
+            [`${mediaType}Message`]: {
+              mimetype: media!.mimeType,
+              caption: cleanText || undefined,
+              fileName: media!.fileName || undefined,
+            },
+          }
+        : { conversation: cleanText },
       messageTimestamp: Math.floor(Date.now() / 1000),
     },
     runtime.chats.get(jid)?.name,
   );
+  if (media && mediaType) {
+    const savedUrl = await saveMediaBuffer(runtime, messageId, media.buffer, media.mimeType, media.fileName);
+    updateMessageMedia(runtime, jid, messageId, savedUrl);
+  }
   return getWhatsAppMessages(ownerId, jid).at(-1)!;
 }
 
@@ -582,7 +807,10 @@ export async function startWhatsAppConnection(ownerId: string): Promise<WhatsApp
               lastMessageAt: last?.timestamp || Number(chat.conversationTimestamp || 0) * 1000,
             });
           }
-          for (const message of historyMessages as any[]) upsertMessage(runtime, message);
+          for (const message of historyMessages as any[]) {
+            upsertMessage(runtime, message);
+            if (messageMedia(message)) void downloadIncomingMedia(runtime, message);
+          }
         });
         nextSocket.ev.on("contacts.upsert", (nextContacts) => {
           for (const contact of nextContacts as any[]) {
@@ -631,6 +859,7 @@ export async function startWhatsAppConnection(ownerId: string): Promise<WhatsApp
         nextSocket.ev.on("messages.upsert", ({ messages: incomingMessages, type }) => {
           for (const message of incomingMessages as any[]) {
             upsertMessage(runtime, message);
+            if (messageMedia(message)) void downloadIncomingMedia(runtime, message);
             if (type === "notify") void enqueueAIRequest(runtime, message);
           }
         });
