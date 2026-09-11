@@ -2,7 +2,7 @@
 -- auth_blob is encrypted by the application before it is written.
 CREATE TABLE IF NOT EXISTS public.whatsapp_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id text NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  owner_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   session_name text NOT NULL DEFAULT 'default',
   phone_number text,
   status text NOT NULL DEFAULT 'disconnected',
