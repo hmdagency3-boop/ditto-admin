@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Bot,
   Check,
   CheckCheck,
   Link2,
@@ -9,6 +10,7 @@ import {
   Plus,
   Search,
   Send,
+  Save,
   ShieldCheck,
   Smartphone,
   Unplug,
@@ -49,6 +51,22 @@ interface ChatMessage {
   timestamp: number;
 }
 
+interface WhatsAppAISettings {
+  enabled: boolean;
+  personality: string;
+  responseStyle: string;
+  caption: string;
+  customInstructions: string;
+}
+
+const initialAISettings: WhatsAppAISettings = {
+  enabled: false,
+  personality: "ودود ومحترم ويتحدث بطريقة طبيعية",
+  responseStyle: "مختصر وواضح وبنفس لغة الشخص الذي يرسل الرسالة",
+  caption: "",
+  customInstructions: "",
+};
+
 const initialStatus: ConnectionInfo = {
   status: "disconnected",
   qr: null,
@@ -78,6 +96,103 @@ function chatNumber(chat: Chat) {
   return chat.phoneNumber || chat.jid.split("@")[0];
 }
 
+function AISettingsPanel({
+  isArabic,
+  settings,
+  saving,
+  onChange,
+  onSave,
+}: {
+  isArabic: boolean;
+  settings: WhatsAppAISettings;
+  saving: boolean;
+  onChange: (update: Partial<WhatsAppAISettings>) => void;
+  onSave: () => void;
+}) {
+  return (
+    <Card className="mb-3 overflow-hidden">
+      <CardHeader className="border-b bg-primary/5 pb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Bot className="h-5 w-5 text-primary" />
+              {isArabic ? "الرد الذكي التلقائي" : "Automatic AI replies"}
+            </CardTitle>
+            <CardDescription className="mt-1">
+              {isArabic
+                ? "خصص شخصية الردود، وسيتم الرد على الرسائل الفردية الواردة فقط."
+                : "Customize replies for incoming one-to-one messages only."}
+            </CardDescription>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant={settings.enabled ? "default" : "outline"}
+            onClick={() => onChange({ enabled: !settings.enabled })}
+          >
+            <Bot />
+            {settings.enabled
+              ? isArabic ? "مفعّل" : "Enabled"
+              : isArabic ? "متوقف" : "Disabled"}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-4 p-4 md:grid-cols-2">
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">{isArabic ? "شخصية المساعد" : "Assistant personality"}</label>
+          <Textarea
+            value={settings.personality}
+            onChange={(event) => onChange({ personality: event.target.value })}
+            rows={2}
+            maxLength={1000}
+            placeholder={isArabic ? "مثال: ودود، هادئ، وعملي" : "Example: friendly, calm, practical"}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">{isArabic ? "أسلوب الرد" : "Reply style"}</label>
+          <Textarea
+            value={settings.responseStyle}
+            onChange={(event) => onChange({ responseStyle: event.target.value })}
+            rows={2}
+            maxLength={1000}
+            placeholder={isArabic ? "مثال: رد قصير وباللهجة المصرية" : "Example: short and casual"}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">{isArabic ? "الكابشن أو التوقيع" : "Caption or signature"}</label>
+          <Input
+            value={settings.caption}
+            onChange={(event) => onChange({ caption: event.target.value })}
+            maxLength={500}
+            placeholder={isArabic ? "اختياري، يضاف في نهاية كل رد" : "Optional, added at the end of each reply"}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">{isArabic ? "تعليمات خاصة" : "Custom instructions"}</label>
+          <Textarea
+            value={settings.customInstructions}
+            onChange={(event) => onChange({ customInstructions: event.target.value })}
+            rows={2}
+            maxLength={3000}
+            placeholder={isArabic ? "قواعد أو معلومات يريد المساعد الالتزام بها" : "Rules or context the assistant should follow"}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-3 md:col-span-2">
+          <p className="text-xs leading-5 text-muted-foreground">
+            {isArabic
+              ? "لن يرد المساعد على الجروبات أو الرسائل التي ترسلها أنت."
+              : "The assistant will not reply to groups or your own messages."}
+          </p>
+          <Button type="button" onClick={onSave} disabled={saving}>
+            {saving ? <Loader2 className="animate-spin" /> : <Save />}
+            {isArabic ? "حفظ إعدادات الذكاء" : "Save AI settings"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function WhatsApp() {
   const { lang } = useLang();
   const { toast } = useToast();
@@ -91,6 +206,8 @@ export default function WhatsApp() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [aiSettings, setAISettings] = useState<WhatsAppAISettings>(initialAISettings);
+  const [aiSaving, setAISaving] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const request = useCallback(async (url: string, method = "GET", body?: unknown) => {
@@ -132,6 +249,30 @@ export default function WhatsApp() {
     }
   }, [isArabic, request, toast]);
 
+  const refreshAISettings = useCallback(async () => {
+    try {
+      setAISettings(await request("/api/whatsapp/ai-settings") as WhatsAppAISettings);
+    } catch {
+      // The default values remain available until the migration is applied.
+    }
+  }, [request]);
+
+  const saveAISettings = async () => {
+    setAISaving(true);
+    try {
+      setAISettings(await request("/api/whatsapp/ai-settings", "PUT", aiSettings) as WhatsAppAISettings);
+      toast({ title: isArabic ? "تم حفظ إعدادات الرد الذكي" : "AI settings saved" });
+    } catch (error) {
+      toast({
+        title: isArabic ? "تعذر حفظ إعدادات الرد الذكي" : "Unable to save AI settings",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setAISaving(false);
+    }
+  };
+
   const refreshMessages = useCallback(async () => {
     if (!selectedJid || connection.status !== "connected") return;
     try {
@@ -145,7 +286,8 @@ export default function WhatsApp() {
 
   useEffect(() => {
     void refreshStatus();
-  }, [refreshStatus]);
+    void refreshAISettings();
+  }, [refreshAISettings, refreshStatus]);
 
   useEffect(() => {
     if (!["connecting", "qr"].includes(connection.status)) return;
@@ -260,6 +402,14 @@ export default function WhatsApp() {
             {isArabic ? "فصل الحساب" : "Disconnect"}
           </Button>
         </div>
+
+        <AISettingsPanel
+          isArabic={isArabic}
+          settings={aiSettings}
+          saving={aiSaving}
+          onChange={(update) => setAISettings((current) => ({ ...current, ...update }))}
+          onSave={() => void saveAISettings()}
+        />
 
         <div className="grid min-h-0 flex-1 overflow-hidden rounded-2xl border bg-card shadow-sm lg:grid-cols-[320px_1fr]" dir="ltr">
           <aside className="flex min-h-0 flex-col border-e" dir={isArabic ? "rtl" : "ltr"}>
@@ -415,6 +565,13 @@ export default function WhatsApp() {
           </CardContent>
         </Card>
       </div>
+      <AISettingsPanel
+        isArabic={isArabic}
+        settings={aiSettings}
+        saving={aiSaving}
+        onChange={(update) => setAISettings((current) => ({ ...current, ...update }))}
+        onSave={() => void saveAISettings()}
+      />
     </div>
   );
 }

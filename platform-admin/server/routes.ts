@@ -14,6 +14,11 @@ import {
   sendWhatsAppMessage,
   startWhatsAppConnection,
 } from "./whatsappService";
+import {
+  defaultWhatsAppAISettings,
+  getWhatsAppAISettings,
+  saveWhatsAppAISettings,
+} from "./whatsappAiService";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -323,6 +328,34 @@ export async function registerRoutes(
       res.json(await sendWhatsAppMessage(req.user!.userId, String(jid), String(text)));
     } catch (error) {
       res.status(400).json({ message: error instanceof Error ? error.message : "تعذر إرسال الرسالة" });
+    }
+  });
+
+  app.get("/api/whatsapp/ai-settings", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      res.json(await getWhatsAppAISettings(req.user!.userId));
+    } catch (error) {
+      console.error("[whatsapp-ai] settings lookup error:", error);
+      res.json({ ...defaultWhatsAppAISettings });
+    }
+  });
+
+  app.put("/api/whatsapp/ai-settings", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const body = req.body || {};
+      const settings = {
+        enabled: Boolean(body.enabled),
+        personality: String(body.personality || "").trim().slice(0, 1000),
+        responseStyle: String(body.responseStyle || "").trim().slice(0, 1000),
+        caption: String(body.caption || "").trim().slice(0, 500),
+        customInstructions: String(body.customInstructions || "").trim().slice(0, 3000),
+      };
+      if (!settings.personality || !settings.responseStyle) {
+        return res.status(400).json({ message: "الشخصية وأسلوب الرد مطلوبان" });
+      }
+      res.json(await saveWhatsAppAISettings(req.user!.userId, settings));
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : "تعذر حفظ إعدادات الرد الذكي" });
     }
   });
 
