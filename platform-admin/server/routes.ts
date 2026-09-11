@@ -76,6 +76,25 @@ function resetLoginRateLimit(ip: string) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+function inlineContentDisposition(fileName: string | null): string {
+  if (!fileName) return "inline";
+
+  const normalizedName = fileName
+    .normalize("NFKC")
+    .replace(/[\r\n]/g, "")
+    .trim()
+    .slice(0, 255);
+  const fallbackName = normalizedName
+    .replace(/[^\x20-\x7E]/g, "_")
+    .replace(/[\\"]/g, "_")
+    .replace(/^\.+$/, "")
+    .trim() || "whatsapp-media";
+  const encodedName = encodeURIComponent(normalizedName)
+    .replace(/['()]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+
+  return `inline; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`;
+}
+
 declare global {
   namespace Express {
     interface Request {
@@ -342,7 +361,7 @@ export async function registerRoutes(
     const media = await getWhatsAppMedia(req.user!.userId, req.params.key);
     if (!media) return res.status(404).json({ message: "الملف غير موجود أو انتهت صلاحيته" });
     res.setHeader("Content-Type", media.mimeType);
-    res.setHeader("Content-Disposition", media.fileName ? `inline; filename="${media.fileName}"` : "inline");
+    res.setHeader("Content-Disposition", inlineContentDisposition(media.fileName));
     res.setHeader("Cache-Control", "private, max-age=3600");
     res.send(media.buffer);
   });
