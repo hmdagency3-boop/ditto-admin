@@ -141,15 +141,17 @@ CREATE TABLE warnings (
 ## Environment Variables
 
 ```
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_URL=your_supabase_url
+SUPABASE_ANON_KEY=your_supabase_anon_key
+JWT_SECRET=your_jwt_secret
+SESSION_SECRET=your_session_secret
 ```
 
 ## Development
 
 ### Running the app
 ```bash
-npm run dev
+cd platform-admin && npm run dev
 ```
 
 ### Port
