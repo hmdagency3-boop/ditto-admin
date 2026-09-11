@@ -84,7 +84,7 @@ export default function WhatsApp() {
   const isArabic = lang === "ar";
   const [connection, setConnection] = useState<ConnectionInfo>(initialStatus);
   const [chats, setChats] = useState<Chat[]>([]);
-  const [selectedJid, setSelectedJid] = useState<string | null>(null);
+  const [selectedJid, setSelectedJid] = useState<string | null>(() => localStorage.getItem("whatsapp_selected_jid"));
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
@@ -115,7 +115,11 @@ export default function WhatsApp() {
       if (next.status === "connected") {
         const nextChats = await request("/api/whatsapp/chats") as Chat[];
         setChats(nextChats);
-        setSelectedJid((current) => current || nextChats[0]?.jid || null);
+        setSelectedJid((current) => (
+          current && nextChats.some((chat) => chat.jid === current)
+            ? current
+            : nextChats[0]?.jid || null
+        ));
       }
     } catch (error) {
       toast({
@@ -159,6 +163,11 @@ export default function WhatsApp() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, selectedJid]);
+
+  useEffect(() => {
+    if (selectedJid) localStorage.setItem("whatsapp_selected_jid", selectedJid);
+    else localStorage.removeItem("whatsapp_selected_jid");
+  }, [selectedJid]);
 
   const connect = async () => {
     setActionLoading(true);

@@ -10,6 +10,7 @@ import {
   getWhatsAppConnection,
   getWhatsAppChats,
   getWhatsAppMessages,
+  resumeWhatsAppConnection,
   sendWhatsAppMessage,
   startWhatsAppConnection,
 } from "./whatsappService";
@@ -280,41 +281,46 @@ export async function registerRoutes(
   app.use("/api/ditto", dittoRouter);
 
   // ── WhatsApp Web connection (super admin only) ────────────────────────────
-  app.get("/api/whatsapp/status", authenticateToken, requireSuperAdmin, (_req, res) => {
-    res.json(getWhatsAppConnection());
+  app.get("/api/whatsapp/status", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      res.json(await resumeWhatsAppConnection(req.user!.userId));
+    } catch (error) {
+      console.error("[whatsapp] resume error:", error);
+      res.json(getWhatsAppConnection(req.user!.userId));
+    }
   });
 
-  app.post("/api/whatsapp/connect", authenticateToken, requireSuperAdmin, async (_req, res) => {
+  app.post("/api/whatsapp/connect", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      res.json(await startWhatsAppConnection());
+      res.json(await startWhatsAppConnection(req.user!.userId));
     } catch (error) {
       console.error("[whatsapp] connect error:", error);
       res.status(500).json({ message: "تعذر بدء ربط واتساب" });
     }
   });
 
-  app.post("/api/whatsapp/disconnect", authenticateToken, requireSuperAdmin, async (_req, res) => {
+  app.post("/api/whatsapp/disconnect", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      res.json(await disconnectWhatsApp());
+      res.json(await disconnectWhatsApp(req.user!.userId));
     } catch (error) {
       console.error("[whatsapp] disconnect error:", error);
       res.status(500).json({ message: "تعذر فصل واتساب" });
     }
   });
 
-  app.get("/api/whatsapp/chats", authenticateToken, requireSuperAdmin, (_req, res) => {
-    res.json(getWhatsAppChats());
+  app.get("/api/whatsapp/chats", authenticateToken, requireSuperAdmin, (req, res) => {
+    res.json(getWhatsAppChats(req.user!.userId));
   });
 
   app.get("/api/whatsapp/chats/:jid/messages", authenticateToken, requireSuperAdmin, (req, res) => {
-    res.json(getWhatsAppMessages(req.params.jid));
+    res.json(getWhatsAppMessages(req.user!.userId, req.params.jid));
   });
 
   app.post("/api/whatsapp/messages", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { jid, text } = req.body || {};
       if (!jid || !text) return res.status(400).json({ message: "المحادثة ونص الرسالة مطلوبان" });
-      res.json(await sendWhatsAppMessage(String(jid), String(text)));
+      res.json(await sendWhatsAppMessage(req.user!.userId, String(jid), String(text)));
     } catch (error) {
       res.status(400).json({ message: error instanceof Error ? error.message : "تعذر إرسال الرسالة" });
     }
