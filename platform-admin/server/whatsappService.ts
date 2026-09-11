@@ -26,6 +26,7 @@ export interface WhatsAppConnectionInfo {
 export interface WhatsAppChat {
   jid: string;
   name: string;
+  phoneNumber: string | null;
   unreadCount: number;
   lastMessage: string;
   lastMessageAt: number;
@@ -54,6 +55,7 @@ let state: WhatsAppConnectionInfo = {
 };
 const chats = new Map<string, WhatsAppChat>();
 const messages = new Map<string, WhatsAppMessage[]>();
+const contacts = new Map<string, any>();
 
 function updateState(update: Partial<WhatsAppConnectionInfo>) {
   state = { ...state, ...update };
@@ -85,6 +87,47 @@ function messageText(message: any): string {
   );
 }
 
+function phoneNumberFromJid(jid: string): string | null {
+  const [value, server] = jid.split("@");
+  if (!value || server === "g.us" || server === "broadcast" || server === "lid") return null;
+  return server === "s.whatsapp.net" || server === "c.us" ? value : null;
+}
+
+function rememberContact(contact: any) {
+  if (!contact?.id) return;
+  const merged = { ...(contacts.get(contact.id) || {}), ...contact };
+  const aliases = [merged.id, merged.lid, merged.phoneNumber].filter(Boolean) as string[];
+  for (const alias of aliases) contacts.set(alias, merged);
+}
+
+function findContact(jid: string, fallbackPhoneNumber?: string | null) {
+  return contacts.get(jid) || (fallbackPhoneNumber ? contacts.get(fallbackPhoneNumber) : undefined);
+}
+
+function contactIdentity(jid: string, fallbackName?: string, fallbackPhoneNumber?: string | null) {
+  const contact = findContact(jid, fallbackPhoneNumber);
+  const phoneNumber =
+    contact?.phoneNumber ||
+    fallbackPhoneNumber ||
+    phoneNumberFromJid(jid);
+  const name =
+    contact?.name ||
+    contact?.notify ||
+    contact?.verifiedName ||
+    fallbackName ||
+    phoneNumber ||
+    jid.split("@")[0] ||
+    "WhatsApp";
+  return { name: String(name), phoneNumber: phoneNumber ? String(phoneNumber).replace(/@.*$/, "").replace(/^\+/, "") : null };
+}
+
+function refreshChatIdentity(jid: string) {
+  const current = chats.get(jid);
+  if (!current) return;
+  const identity = contactIdentity(jid, current.name, current.phoneNumber);
+  chats.set(jid, { ...current, ...identity });
+}
+
 function upsertMessage(message: any, fallbackName?: string) {
   const jid = message?.key?.remoteJid;
   if (!jid || jid === "status@broadcast" || jid.endsWith("@broadcast")) return;
@@ -106,9 +149,10 @@ function upsertMessage(message: any, fallbackName?: string) {
     messages.set(jid, chatMessages.slice(-200));
   }
   const existingChat = chats.get(jid);
+  const identity = contactIdentity(jid, fallbackName || item.senderName, existingChat?.phoneNumber);
   chats.set(jid, {
     jid,
-    name: existingChat?.name || fallbackName || item.senderName,
+    ...identity,
     unreadCount: existingChat?.unreadCount || 0,
     lastMessage: item.text,
     lastMessageAt: item.timestamp,
@@ -171,13 +215,28 @@ export async function startWhatsAppConnection(): Promise<WhatsAppConnectionInfo>
 
         socket = nextSocket;
         nextSocket.ev.on("creds.update", saveCreds);
-        nextSocket.ev.on("messaging-history.set", ({ chats: historyChats, messages: historyMessages }) => {
+        nextSocket.ev.on("messaging-history.set", ({ chats: historyChats, contacts: historyContacts, messages: historyMessages, lidPnMappings }) => {
+          for (const contact of historyContacts || []) rememberContact(contact);
+          for (const mapping of lidPnMappings || []) {
+            const contact = contacts.get(mapping.lid);
+            rememberContact({
+              ...(contact || {}),
+              id: mapping.lid,
+              lid: mapping.lid,
+              phoneNumber: mapping.pn,
+            });
+          }
           for (const chat of historyChats as any[]) {
             if (!chat.id || chat.id === "status@broadcast" || chat.id.endsWith("@broadcast")) continue;
             const last = getWhatsAppMessages(chat.id).at(-1);
+            const chatPhoneNumber = chat.pnJid || chat.phoneNumber || null;
+            if (chatPhoneNumber) {
+              rememberContact({ id: chat.id, phoneNumber: chatPhoneNumber, lid: chat.lidJid });
+            }
+            const identity = contactIdentity(chat.id, chat.name || chat.displayName || chat.username, chatPhoneNumber);
             chats.set(chat.id, {
               jid: chat.id,
-              name: chat.name || chat.id.split("@")[0],
+              ...identity,
               unreadCount: Number(chat.unreadCount || 0),
               lastMessage: last?.text || "",
               lastMessageAt: last?.timestamp || Number(chat.conversationTimestamp || 0) * 1000,
@@ -187,13 +246,45 @@ export async function startWhatsAppConnection(): Promise<WhatsAppConnectionInfo>
             upsertMessage(message);
           }
         });
+        nextSocket.ev.on("contacts.upsert", (nextContacts) => {
+          for (const contact of nextContacts as any[]) {
+            rememberContact(contact);
+            refreshChatIdentity(contact.id);
+            if (contact.lid) refreshChatIdentity(contact.lid);
+            if (contact.phoneNumber) refreshChatIdentity(contact.phoneNumber);
+          }
+        });
+        nextSocket.ev.on("contacts.update", (updates) => {
+          for (const update of updates as any[]) {
+            if (!update?.id) continue;
+            rememberContact(update);
+            refreshChatIdentity(update.id);
+          }
+        });
+        nextSocket.ev.on("lid-mapping.update", (mapping: any) => {
+          if (!mapping?.lid || !mapping?.pn) return;
+          const contact = contacts.get(mapping.lid) || contacts.get(mapping.pn);
+          rememberContact({
+            ...(contact || {}),
+            id: mapping.lid,
+            lid: mapping.lid,
+            phoneNumber: mapping.pn,
+          });
+          refreshChatIdentity(mapping.lid);
+          refreshChatIdentity(mapping.pn);
+        });
         nextSocket.ev.on("chats.upsert", (historyChats) => {
           for (const chat of historyChats as any[]) {
             if (!chat.id || chat.id.endsWith("@broadcast")) continue;
             const current = chats.get(chat.id);
+            const chatPhoneNumber = chat.pnJid || chat.phoneNumber || current?.phoneNumber || null;
+            if (chatPhoneNumber) {
+              rememberContact({ id: chat.id, phoneNumber: chatPhoneNumber, lid: chat.lidJid });
+            }
+            const identity = contactIdentity(chat.id, chat.name || chat.displayName || chat.username || current?.name, chatPhoneNumber);
             chats.set(chat.id, {
               jid: chat.id,
-              name: chat.name || current?.name || chat.id.split("@")[0],
+              ...identity,
               unreadCount: Number(chat.unreadCount ?? current?.unreadCount ?? 0),
               lastMessage: current?.lastMessage || "",
               lastMessageAt: current?.lastMessageAt || Number(chat.conversationTimestamp || 0) * 1000,
@@ -252,6 +343,7 @@ export async function startWhatsAppConnection(): Promise<WhatsAppConnectionInfo>
             socket = null;
             chats.clear();
             messages.clear();
+            contacts.clear();
             updateState({
               status: loggedOut ? "logged_out" : "disconnected",
               qr: null,

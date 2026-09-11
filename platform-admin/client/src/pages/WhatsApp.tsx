@@ -35,6 +35,7 @@ interface ConnectionInfo {
 interface Chat {
   jid: string;
   name: string;
+  phoneNumber: string | null;
   unreadCount: number;
   lastMessage: string;
   lastMessageAt: number;
@@ -71,6 +72,10 @@ function initials(name: string) {
     .join("")
     .slice(0, 2)
     .toUpperCase() || "WA";
+}
+
+function chatNumber(chat: Chat) {
+  return chat.phoneNumber || chat.jid.split("@")[0];
 }
 
 export default function WhatsApp() {
@@ -279,8 +284,13 @@ export default function WhatsApp() {
                         <span className="shrink-0 text-[10px] text-muted-foreground">{formatTime(chat.lastMessageAt, isArabic)}</span>
                       </span>
                       <span className="mt-1 flex items-center justify-between gap-2">
-                        <span className="truncate text-xs text-muted-foreground">{chat.lastMessage || chat.jid.split("@")[0]}</span>
+                        <span className="truncate text-xs text-muted-foreground" dir="ltr">
+                          {chat.lastMessage || chatNumber(chat)}
+                        </span>
                         {chat.unreadCount > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#25D366] px-1 text-[10px] text-white">{chat.unreadCount}</span>}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[10px] text-muted-foreground/80" dir="ltr">
+                        {chatNumber(chat)}
                       </span>
                     </span>
                   </button>
@@ -296,7 +306,7 @@ export default function WhatsApp() {
                   <Avatar><AvatarFallback className="bg-[#25D366]/15 text-[#128C7E]">{initials(selectedChat.name)}</AvatarFallback></Avatar>
                   <div className="min-w-0">
                     <h2 className="truncate font-semibold">{selectedChat.name}</h2>
-                    <p className="truncate text-xs text-muted-foreground" dir="ltr">{selectedChat.jid.split("@")[0]}</p>
+                    <p className="truncate text-xs text-muted-foreground" dir="ltr">{chatNumber(selectedChat)}</p>
                   </div>
                   <Phone className="ms-auto h-4 w-4 text-muted-foreground" />
                 </header>
