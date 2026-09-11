@@ -69,6 +69,11 @@ interface WhatsAppMediaFile {
 
 type SerializedAuthFiles = Record<string, string>;
 type SessionRow = { auth_blob?: string | null };
+type StoredSessionRow = {
+  owner_id: string;
+  auth_blob?: string | null;
+  status?: string | null;
+};
 
 interface WhatsAppRuntime {
   ownerId: string;
@@ -125,8 +130,13 @@ export function getWhatsAppConnection(ownerId: string): WhatsAppConnectionInfo {
   return { ...getRuntime(ownerId).state };
 }
 
-function sessionKey(): Buffer {
-  const secret = process.env.SESSION_SECRET || process.env.JWT_SECRET;
+function sessionSecrets(): string[] {
+  return [...new Set([process.env.SESSION_SECRET, process.env.JWT_SECRET].filter(
+    (secret): secret is string => Boolean(secret),
+  ))];
+}
+
+function sessionKey(secret = sessionSecrets()[0]): Buffer {
   if (!secret) throw new Error("SESSION_SECRET or JWT_SECRET is required to encrypt WhatsApp sessions");
   return createHash("sha256").update(secret).digest();
 }
@@ -142,12 +152,24 @@ function encryptAuthBlob(value: string): string {
 function decryptAuthBlob(value: string): string {
   const [ivValue, tagValue, encryptedValue] = value.split(".");
   if (!ivValue || !tagValue || !encryptedValue) throw new Error("Invalid WhatsApp auth blob");
-  const decipher = createDecipheriv("aes-256-gcm", sessionKey(), Buffer.from(ivValue, "base64"));
-  decipher.setAuthTag(Buffer.from(tagValue, "base64"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(encryptedValue, "base64")),
-    decipher.final(),
-  ]).toString("utf8");
+
+  let lastError: unknown;
+  for (const secret of sessionSecrets()) {
+    try {
+      const decipher = createDecipheriv("aes-256-gcm", sessionKey(secret), Buffer.from(ivValue, "base64"));
+      decipher.setAuthTag(Buffer.from(tagValue, "base64"));
+      return Buffer.concat([
+        decipher.update(Buffer.from(encryptedValue, "base64")),
+        decipher.final(),
+      ]).toString("utf8");
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("No session secret is available to decrypt the WhatsApp auth blob");
 }
 
 function fixAuthFileName(file: string): string {
@@ -215,6 +237,7 @@ async function loadDatabaseAuthState(ownerId: string): Promise<{
       files = parsed.files || {};
     } catch (error) {
       console.error("[whatsapp] could not decrypt stored session:", error);
+      throw new Error("تعذر فك تشفير جلسة واتساب المخزنة. تحقق من SESSION_SECRET أو JWT_SECRET.");
     }
   }
 
@@ -281,6 +304,39 @@ async function hasStoredSession(ownerId: string): Promise<boolean> {
   if (row?.auth_blob) return true;
   const legacyFiles = await readAuthFiles(authDirectory);
   return Boolean(legacyFiles["creds.json"]);
+}
+
+export async function restoreStoredWhatsAppSessions(): Promise<void> {
+  const { data, error } = await storage.supabase
+    .from(sessionTable)
+    .select("owner_id, auth_blob, status")
+    .not("auth_blob", "is", null);
+
+  if (error) {
+    if (error.code !== "42P01") {
+      console.error("[whatsapp] could not list stored sessions:", error.message);
+    }
+    return;
+  }
+
+  const sessions = (data || []) as StoredSessionRow[];
+  if (sessions.length === 0) return;
+
+  const restorableSessions = sessions.filter(
+    (session) => session.owner_id && session.status !== "logged_out",
+  );
+  console.log(`[whatsapp] restoring ${restorableSessions.length} stored session(s)`);
+  await Promise.all(
+    restorableSessions
+      .map(async (session) => {
+        try {
+          const state = await resumeWhatsAppConnection(session.owner_id);
+          console.log(`[whatsapp] session restore for ${session.owner_id}: ${state.status}`);
+        } catch (restoreError) {
+          console.error(`[whatsapp] could not restore session for ${session.owner_id}:`, restoreError);
+        }
+      }),
+  );
 }
 
 function messageTimestamp(message: any): number {
@@ -942,7 +998,6 @@ export async function startWhatsAppConnection(ownerId: string): Promise<WhatsApp
       });
       await saveSessionRecord(ownerId, {
         status: "error",
-        last_error: error instanceof Error ? error.message : "تعذر بدء اتصال واتساب",
       });
     }
   })();

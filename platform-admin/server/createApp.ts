@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { createServer } from "http";
+import { restoreStoredWhatsAppSessions } from "./whatsappService";
 
 declare module "http" {
   interface IncomingMessage {
@@ -58,6 +59,7 @@ export async function createApp() {
   });
 
   await registerRoutes(httpServer, app);
+  void restoreStoredWhatsAppSessions();
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
