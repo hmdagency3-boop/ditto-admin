@@ -5,3 +5,4 @@
 - [Employment status bug](employment-status-bug.md) — تغيير الحالة بيشتغل وبيتحفظ — المشكلة اتحلت
 - [ما تم إنجازه وما تبقى](progress.md) — ملخص شامل للمشروع للرجوع إليه عند التبديل لأكونت جديد
 - [WhatsApp AI queue](whatsapp-ai-queue.md) — الردود تمر عبر Supabase queue بين الموقع وسيرفر AI خارجي
+- [Nested app dependencies](nested-app-dependencies.md) — عند تشغيل تطبيق داخل مجلد فرعي يجب تثبيت اعتمادياته في نفس المجلد لا في الجذر
