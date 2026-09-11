@@ -247,7 +247,14 @@ export default function SalaryComplaints() {
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message || 'تعذر تحميل الشكاوى');
-      setComplaints(body);
+      const complaintList = Array.isArray(body)
+        ? body
+        : Array.isArray(body?.data)
+          ? body.data
+          : Array.isArray(body?.complaints)
+            ? body.complaints
+            : [];
+      setComplaints(complaintList);
     } catch (error: any) {
       toast({ title: 'خطأ', description: error.message || 'تعذر تحميل الشكاوى', variant: 'destructive' });
     } finally {
