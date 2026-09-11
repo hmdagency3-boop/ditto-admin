@@ -13,8 +13,12 @@ import makeWASocket, {
 import QRCode from "qrcode";
 import { storage } from "./storage";
 import {
-  generateWhatsAppReply,
+  claimWhatsAppAIReply,
+  enqueueWhatsAppAIRequest,
+  getReadyWhatsAppAIRequests,
   getWhatsAppAISettings,
+  markWhatsAppAIReplyFailed,
+  markWhatsAppAIReplySent,
 } from "./whatsappAiService";
 
 export type WhatsAppConnectionStatus =
@@ -62,6 +66,8 @@ interface WhatsAppRuntime {
   messages: Map<string, WhatsAppMessage[]>;
   contacts: Map<string, any>;
   autoReplyInFlight: Set<string>;
+  replyPoller: ReturnType<typeof setInterval> | null;
+  replyPollInFlight: boolean;
 }
 
 const authDirectory = path.resolve(
@@ -89,6 +95,8 @@ function getRuntime(ownerId: string): WhatsAppRuntime {
     messages: new Map(),
     contacts: new Map(),
     autoReplyInFlight: new Set(),
+    replyPoller: null,
+    replyPollInFlight: false,
   };
   runtimes.set(ownerId, runtime);
   return runtime;
@@ -358,7 +366,7 @@ function upsertMessage(runtime: WhatsAppRuntime, message: any, fallbackName?: st
   });
 }
 
-async function maybeSendAIReply(runtime: WhatsAppRuntime, message: any) {
+async function enqueueAIRequest(runtime: WhatsAppRuntime, message: any) {
   const jid = message?.key?.remoteJid;
   const messageId = message?.key?.id;
   if (
@@ -378,35 +386,98 @@ async function maybeSendAIReply(runtime: WhatsAppRuntime, message: any) {
 
   try {
     const settings = await getWhatsAppAISettings(runtime.ownerId);
-    if (!settings.enabled || !runtime.socket || runtime.state.status !== "connected") return;
+    if (!settings.enabled) return;
 
     const chat = runtime.chats.get(jid);
-    const reply = await generateWhatsAppReply({
-      settings,
-      contactName: chat?.name || message.pushName || phoneNumberFromJid(jid) || "صديق",
-      incomingText,
+    const senderName = chat?.name || message.pushName || phoneNumberFromJid(jid) || "صديق";
+    const queued = await enqueueWhatsAppAIRequest({
+      ownerId: runtime.ownerId,
+      messageId,
+      jid,
+      senderName,
+      senderPhone: chat?.phoneNumber || phoneNumberFromJid(jid),
+      timestamp: messageTimestamp(message),
+      request: incomingText,
       conversation: getWhatsAppMessages(runtime.ownerId, jid).map((item) => ({
         fromMe: item.fromMe,
         text: item.text,
       })),
+      settings,
     });
-    if (!runtime.socket || runtime.state.status !== "connected") return;
-
-    const sent = await runtime.socket.sendMessage(jid, { text: reply });
-    upsertMessage(
-      runtime,
-      {
-        key: { ...sent?.key, remoteJid: jid, fromMe: true },
-        message: { conversation: reply },
-        messageTimestamp: Math.floor(Date.now() / 1000),
-      },
-      chat?.name,
-    );
+    console.log(`[whatsapp-ai] request queued: ${queued?.id || "already queued"}`);
   } catch (error) {
-    console.error("[whatsapp-ai] automatic reply failed:", error);
+    console.error("[whatsapp-ai] could not queue incoming message:", error);
   } finally {
     runtime.autoReplyInFlight.delete(messageId);
   }
+}
+
+async function deliverReadyAIReplies(runtime: WhatsAppRuntime) {
+  if (
+    runtime.replyPollInFlight ||
+    !runtime.socket ||
+    runtime.state.status !== "connected"
+  ) {
+    return;
+  }
+
+  runtime.replyPollInFlight = true;
+  try {
+    const readyRequests = await getReadyWhatsAppAIRequests(runtime.ownerId);
+    for (const request of readyRequests) {
+      if (!runtime.socket || runtime.state.status !== "connected") break;
+
+      const claimed = await claimWhatsAppAIReply(runtime.ownerId, request.id);
+      if (!claimed) continue;
+
+      try {
+        const responseText = claimed.response?.trim();
+        if (!responseText) throw new Error("السيرفر الخارجي وضع ردًا فارغًا");
+
+        const sent = await runtime.socket.sendMessage(claimed.chat_jid, {
+          text: responseText,
+        });
+        upsertMessage(
+          runtime,
+          {
+            key: {
+              ...(sent?.key || {}),
+              id: `whatsapp-ai-${claimed.id}`,
+              remoteJid: claimed.chat_jid,
+              fromMe: true,
+            },
+            message: { conversation: responseText },
+            messageTimestamp: Math.floor(Date.now() / 1000),
+          },
+          claimed.sender_name || undefined,
+        );
+        await markWhatsAppAIReplySent(runtime.ownerId, claimed.id);
+        console.log(`[whatsapp-ai] response sent: ${claimed.id}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "تعذر إرسال رد الذكاء الاصطناعي";
+        await markWhatsAppAIReplyFailed(runtime.ownerId, claimed.id, message);
+        console.error(`[whatsapp-ai] response delivery failed: ${claimed.id}`, error);
+      }
+    }
+  } catch (error) {
+    console.error("[whatsapp-ai] ready response polling failed:", error);
+  } finally {
+    runtime.replyPollInFlight = false;
+  }
+}
+
+function startAIReplyPoller(runtime: WhatsAppRuntime) {
+  if (runtime.replyPoller) return;
+  void deliverReadyAIReplies(runtime);
+  runtime.replyPoller = setInterval(() => {
+    void deliverReadyAIReplies(runtime);
+  }, 3000);
+}
+
+function stopAIReplyPoller(runtime: WhatsAppRuntime) {
+  if (!runtime.replyPoller) return;
+  clearInterval(runtime.replyPoller);
+  runtime.replyPoller = null;
 }
 
 export function getWhatsAppChats(ownerId: string): WhatsAppChat[] {
@@ -560,7 +631,7 @@ export async function startWhatsAppConnection(ownerId: string): Promise<WhatsApp
         nextSocket.ev.on("messages.upsert", ({ messages: incomingMessages, type }) => {
           for (const message of incomingMessages as any[]) {
             upsertMessage(runtime, message);
-            if (type === "notify") void maybeSendAIReply(runtime, message);
+            if (type === "notify") void enqueueAIRequest(runtime, message);
           }
         });
         nextSocket.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
@@ -593,6 +664,7 @@ export async function startWhatsAppConnection(ownerId: string): Promise<WhatsApp
               phone_number: phoneNumber,
               last_connected_at: new Date().toISOString(),
             });
+            startAIReplyPoller(runtime);
           }
           if (connection === "close") {
             const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
@@ -611,6 +683,7 @@ export async function startWhatsAppConnection(ownerId: string): Promise<WhatsApp
               return;
             }
             runtime.socket = null;
+            stopAIReplyPoller(runtime);
             runtime.chats.clear();
             runtime.messages.clear();
             runtime.contacts.clear();
@@ -662,6 +735,7 @@ export async function disconnectWhatsApp(ownerId: string): Promise<WhatsAppConne
   } catch (error) {
     console.warn("[whatsapp] logout failed:", error);
   } finally {
+    stopAIReplyPoller(runtime);
     runtime.chats.clear();
     runtime.messages.clear();
     runtime.contacts.clear();

@@ -70,6 +70,177 @@ export async function saveWhatsAppAISettings(
   return normalizeSettings(data as Record<string, unknown>);
 }
 
+export interface WhatsAppAIQueueRequest {
+  id: string;
+  owner_id: string;
+  session_name: string;
+  whatsapp_message_id: string;
+  chat_jid: string;
+  sender_name: string | null;
+  sender_phone: string | null;
+  message_timestamp: number | null;
+  message_type: string;
+  request: string;
+  response: string | null;
+  status: "pending" | "processing" | "ready" | "sending" | "sent" | "failed" | "ignored";
+  worker_id: string | null;
+  external_request_id: string | null;
+  attempts: number;
+  last_error: string | null;
+  requested_at: string;
+  claimed_at: string | null;
+  responded_at: string | null;
+  sent_at: string | null;
+}
+
+interface EnqueueWhatsAppAIRequestOptions {
+  ownerId: string;
+  messageId: string;
+  jid: string;
+  senderName: string;
+  senderPhone: string | null;
+  timestamp: number;
+  request: string;
+  conversation: Array<{ fromMe: boolean; text: string }>;
+  settings: WhatsAppAISettings;
+}
+
+const queueColumns = [
+  "id",
+  "owner_id",
+  "session_name",
+  "whatsapp_message_id",
+  "chat_jid",
+  "sender_name",
+  "sender_phone",
+  "message_timestamp",
+  "message_type",
+  "request",
+  "response",
+  "status",
+  "worker_id",
+  "external_request_id",
+  "attempts",
+  "last_error",
+  "requested_at",
+  "claimed_at",
+  "responded_at",
+  "sent_at",
+].join(", ");
+
+export async function enqueueWhatsAppAIRequest({
+  ownerId,
+  messageId,
+  jid,
+  senderName,
+  senderPhone,
+  timestamp,
+  request,
+  conversation,
+  settings,
+}: EnqueueWhatsAppAIRequestOptions): Promise<WhatsAppAIQueueRequest | null> {
+  const { data, error } = await storage.supabase
+    .from("whatsapp_ai_requests")
+    .upsert(
+      {
+        owner_id: ownerId,
+        session_name: "default",
+        whatsapp_message_id: messageId,
+        chat_jid: jid,
+        sender_name: senderName || null,
+        sender_phone: senderPhone,
+        message_timestamp: timestamp,
+        message_type: "text",
+        request,
+        context: {
+          conversation: conversation.slice(-20),
+          ai_settings: settings,
+        },
+      },
+      {
+        onConflict: "owner_id,session_name,whatsapp_message_id",
+        ignoreDuplicates: true,
+      },
+    )
+    .select(queueColumns)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === "42P01") {
+      throw new Error("جدول whatsapp_ai_requests غير موجود. شغّل migration رقم 26 في Supabase.");
+    }
+    throw new Error(`تعذر إضافة رسالة واتساب إلى طابور الذكاء الاصطناعي: ${error.message}`);
+  }
+  return data as WhatsAppAIQueueRequest | null;
+}
+
+export async function getReadyWhatsAppAIRequests(ownerId: string): Promise<WhatsAppAIQueueRequest[]> {
+  const { data, error } = await storage.supabase
+    .from("whatsapp_ai_requests")
+    .select(queueColumns)
+    .eq("owner_id", ownerId)
+    .eq("session_name", "default")
+    .eq("status", "ready")
+    .not("response", "is", null)
+    .order("responded_at", { ascending: true })
+    .limit(10);
+
+  if (error) {
+    if (error.code === "42P01") return [];
+    throw new Error(`تعذر قراءة ردود الذكاء الاصطناعي الجاهزة: ${error.message}`);
+  }
+  return (data || []) as unknown as WhatsAppAIQueueRequest[];
+}
+
+export async function claimWhatsAppAIReply(
+  ownerId: string,
+  requestId: string,
+): Promise<WhatsAppAIQueueRequest | null> {
+  const { data, error } = await storage.supabase
+    .from("whatsapp_ai_requests")
+    .update({ status: "sending", last_error: null })
+    .eq("id", requestId)
+    .eq("owner_id", ownerId)
+    .eq("status", "ready")
+    .not("response", "is", null)
+    .select(queueColumns)
+    .maybeSingle();
+
+  if (error) throw new Error(`تعذر حجز رد واتساب للإرسال: ${error.message}`);
+  return data as WhatsAppAIQueueRequest | null;
+}
+
+export async function markWhatsAppAIReplySent(ownerId: string, requestId: string) {
+  const { error } = await storage.supabase
+    .from("whatsapp_ai_requests")
+    .update({ status: "sent", sent_at: new Date().toISOString(), last_error: null })
+    .eq("id", requestId)
+    .eq("owner_id", ownerId)
+    .eq("status", "sending");
+
+  if (error) throw new Error(`تعذر تحديث حالة رد واتساب بعد الإرسال: ${error.message}`);
+}
+
+export async function markWhatsAppAIReplyFailed(
+  ownerId: string,
+  requestId: string,
+  errorMessage: string,
+) {
+  const { error } = await storage.supabase
+    .from("whatsapp_ai_requests")
+    .update({
+      status: "failed",
+      last_error: errorMessage.slice(0, 2000),
+    })
+    .eq("id", requestId)
+    .eq("owner_id", ownerId)
+    .eq("status", "sending");
+
+  if (error) {
+    console.error("[whatsapp-ai] failed to record delivery error:", error.message);
+  }
+}
+
 interface GenerateReplyOptions {
   settings: WhatsAppAISettings;
   contactName: string;

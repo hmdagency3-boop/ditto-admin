@@ -4,3 +4,4 @@
 - [Project architecture](project-arch.md) — نظام إدارة المشرفين: Express+React+TS في platform-admin/، Supabase PostgreSQL
 - [Employment status bug](employment-status-bug.md) — تغيير الحالة بيشتغل وبيتحفظ — المشكلة اتحلت
 - [ما تم إنجازه وما تبقى](progress.md) — ملخص شامل للمشروع للرجوع إليه عند التبديل لأكونت جديد
+- [WhatsApp AI queue](whatsapp-ai-queue.md) — الردود تمر عبر Supabase queue بين الموقع وسيرفر AI خارجي
