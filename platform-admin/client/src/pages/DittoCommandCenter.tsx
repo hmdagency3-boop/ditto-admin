@@ -210,10 +210,10 @@ export default function DittoCommandCenter() {
             onDrop={handleFlowDrop}
             className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg px-6 py-8 text-center"
           >
+            {/* Ditto exports may be extensionless and are often reported as application/octet-stream. */}
             <input
               id="ditto-flow-upload"
               type="file"
-              accept=".json,.flow,.har,.txt,application/json"
               className="sr-only"
               onChange={handleFlowInput}
               disabled={flowState === "loading"}

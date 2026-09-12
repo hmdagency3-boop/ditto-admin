@@ -11,3 +11,4 @@
 - [Nested app dependencies](nested-app-dependencies.md) — عند تشغيل تطبيق داخل مجلد فرعي يجب تثبيت اعتمادياته في نفس المجلد لا في الجذر
 - [WhatsApp session encryption](whatsapp-session-encryption.md) — تغيير مفتاح التشفير يمنع استرداد auth_blob القديم؛ يجب تثبيت المفتاح الأصلي
 - [Media response headers](media-response-headers.md) — أسماء ملفات واتساب لا تُستخدم مباشرة في HTTP headers؛ يجب ترميزها وتنظيفها
+- [Ditto flow import format](ditto-flow-import.md) — ملفات flows قد تكون سجلات ثنائية مضغوطة وبداخلها ed مشفّر، وليست JSON مباشرًا

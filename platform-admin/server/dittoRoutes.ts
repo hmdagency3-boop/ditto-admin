@@ -255,15 +255,48 @@ function scanFlowValue(value: unknown, result: ExtractedFlowSession, depth = 0) 
   if (typeof value !== "object") return;
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     addFlowField(result, key, child);
+    if (key.toLowerCase() === "ed" && typeof child === "string") {
+      const decrypted = tryDecryptDittoValue(child);
+      if (decrypted) scanFlowString(decrypted, result, depth + 1);
+    }
     scanFlowValue(child, result, depth + 1);
   }
 }
 
 function extractDittoSessionFromFlow(buffer: Buffer): ExtractedFlowSession {
-  const text = buffer.toString("utf8").replace(/^\uFEFF/, "");
   const result: ExtractedFlowSession = {};
+  const text = buffer.toString("utf8").replace(/^\uFEFF/, "");
   const parsed = tryParseJson(text);
   scanFlowValue(parsed ?? text, result);
+
+  // Some Ditto captures are exported in the binary "flows" format rather
+  // than JSON. Its response bodies are stored as a byte length followed by a
+  // gzip member, for example: `content;415:<gzip bytes>`. Scan each body
+  // after decompressing it. The buffer stays in memory for the duration of
+  // this request and no credential values are logged.
+  for (let offset = 0; offset + 3 <= buffer.length; offset += 1) {
+    if (buffer[offset] !== 0x1f || buffer[offset + 1] !== 0x8b || buffer[offset + 2] !== 0x08) {
+      continue;
+    }
+
+    const prefix = buffer.subarray(Math.max(0, offset - 48), offset).toString("latin1");
+    const lengthMatch = prefix.match(/(\d+):$/);
+    if (!lengthMatch) continue;
+
+    const bodyLength = Number(lengthMatch[1]);
+    if (!Number.isSafeInteger(bodyLength) || bodyLength <= 0 || offset + bodyLength > buffer.length) {
+      continue;
+    }
+
+    try {
+      const decompressed = gunzipSync(buffer.subarray(offset, offset + bodyLength));
+      scanFlowString(decompressed.toString("utf8"), result, 0);
+    } catch {
+      // A random gzip marker or an incomplete body should not abort the
+      // extraction of other responses in the same flow.
+    }
+  }
+
   return result;
 }
 
