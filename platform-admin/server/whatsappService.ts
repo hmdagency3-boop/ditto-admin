@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import makeWASocket, {
+import * as Baileys from "@whiskeysockets/baileys";
+import {
   Browsers,
   BufferJSON,
   DisconnectReason,
@@ -27,6 +28,13 @@ import {
   parseWhatsAppAIResponse,
   recordWhatsAppAIReplyMediaCodes,
 } from "./whatsappAiService";
+
+// Baileys exposes its socket factory differently between native ESM and the
+// CommonJS wrapper used by the production bundle. Normalize both shapes.
+const baileysRuntime = Baileys as any;
+const makeWASocket = (
+  baileysRuntime.default?.default ?? baileysRuntime.default ?? baileysRuntime
+) as typeof import("@whiskeysockets/baileys").default;
 
 export type WhatsAppConnectionStatus =
   | "disconnected"
