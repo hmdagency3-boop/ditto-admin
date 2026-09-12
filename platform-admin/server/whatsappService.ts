@@ -19,8 +19,11 @@ import {
   enqueueWhatsAppAIRequest,
   getReadyWhatsAppAIRequests,
   getWhatsAppAISettings,
+  downloadWhatsAppAIMedia,
   markWhatsAppAIReplyFailed,
   markWhatsAppAIReplySent,
+  parseWhatsAppAIResponse,
+  recordWhatsAppAIReplyMediaCodes,
 } from "./whatsappAiService";
 
 export type WhatsAppConnectionStatus =
@@ -669,26 +672,76 @@ async function deliverReadyAIReplies(runtime: WhatsAppRuntime) {
       if (!claimed) continue;
 
       try {
-        const responseText = claimed.response?.trim();
-        if (!responseText) throw new Error("السيرفر الخارجي وضع ردًا فارغًا");
+        const rawResponse = claimed.response?.trim();
+        if (!rawResponse) throw new Error("السيرفر الخارجي وضع ردًا فارغًا");
+        const parsedResponse = parseWhatsAppAIResponse(rawResponse);
+        const media = await downloadWhatsAppAIMedia(runtime.ownerId, parsedResponse.mediaCodes);
+        const foundCodes = new Set(media.map((item) => item.code));
+        const missingCodes = parsedResponse.mediaCodes.filter((code) => !foundCodes.has(code));
+        if (missingCodes.length > 0) {
+          console.warn(`[whatsapp-ai] image codes not found: ${missingCodes.join(", ")}`);
+        }
+        await recordWhatsAppAIReplyMediaCodes(runtime.ownerId, claimed.id, parsedResponse.mediaCodes);
+        if (!parsedResponse.text && media.length === 0) {
+          throw new Error("رد الذكاء الاصطناعي لا يحتوي على نص أو صورة صالحة");
+        }
 
-        const sent = await runtime.socket.sendMessage(claimed.chat_jid, {
-          text: responseText,
-        });
-        upsertMessage(
-          runtime,
-          {
-            key: {
-              ...(sent?.key || {}),
-              id: `whatsapp-ai-${claimed.id}`,
-              remoteJid: claimed.chat_jid,
-              fromMe: true,
+        const sendAndRemember = async (
+          content: any,
+          messageText: string,
+          mediaType?: WhatsAppMessage["mediaType"],
+          mediaFile?: { buffer: Buffer; mimeType: string; fileName: string },
+        ) => {
+          const sent = await runtime.socket!.sendMessage(claimed.chat_jid, content);
+          const messageId = sent?.key?.id || `whatsapp-ai-${claimed.id}-${Date.now()}`;
+          upsertMessage(
+            runtime,
+            {
+              key: {
+                ...(sent?.key || {}),
+                id: messageId,
+                remoteJid: claimed.chat_jid,
+                fromMe: true,
+              },
+              message: mediaType
+                ? { [`${mediaType}Message`]: { mimetype: content.mimetype, caption: messageText || undefined } }
+                : { conversation: messageText },
+              messageTimestamp: Math.floor(Date.now() / 1000),
             },
-            message: { conversation: responseText },
-            messageTimestamp: Math.floor(Date.now() / 1000),
-          },
-          claimed.sender_name || undefined,
-        );
+            claimed.sender_name || undefined,
+          );
+          if (mediaFile) {
+            const savedUrl = await saveMediaBuffer(
+              runtime,
+              messageId,
+              mediaFile.buffer,
+              mediaFile.mimeType,
+              mediaFile.fileName,
+            );
+            updateMessageMedia(runtime, claimed.chat_jid, messageId, savedUrl);
+          }
+        };
+
+        if (media.length > 0) {
+          for (const [index, asset] of media.entries()) {
+            await sendAndRemember(
+              {
+                image: asset.buffer,
+                mimetype: asset.mimeType,
+                ...(index === 0 && parsedResponse.text ? { caption: parsedResponse.text } : {}),
+              },
+              index === 0 ? parsedResponse.text : "",
+              "image",
+              {
+                buffer: asset.buffer,
+                mimeType: asset.mimeType,
+                fileName: asset.fileName,
+              },
+            );
+          }
+        } else {
+          await sendAndRemember({ text: parsedResponse.text }, parsedResponse.text);
+        }
         await markWhatsAppAIReplySent(runtime.ownerId, claimed.id);
         console.log(`[whatsapp-ai] response sent: ${claimed.id}`);
       } catch (error) {

@@ -4,6 +4,7 @@ import {
   Check,
   CheckCheck,
   FileAudio,
+  FileImage,
   Link2,
   Loader2,
   MessageCircle,
@@ -17,6 +18,7 @@ import {
   ShieldCheck,
   Smartphone,
   Square,
+  Trash2,
   Unplug,
   Video,
   X,
@@ -68,6 +70,16 @@ interface WhatsAppAISettings {
   responseStyle: string;
   caption: string;
   customInstructions: string;
+}
+
+interface WhatsAppAIMediaAsset {
+  id: string;
+  code: string;
+  title: string;
+  purpose: string;
+  file_name: string;
+  mime_type: string;
+  file_size: number;
 }
 
 const initialAISettings: WhatsAppAISettings = {
@@ -182,7 +194,7 @@ function AISettingsPanel({
   onSave: () => void;
 }) {
   return (
-    <Card className="mb-3 overflow-hidden">
+    <Card className="overflow-hidden">
       <CardHeader className="border-b bg-primary/5 pb-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -209,7 +221,7 @@ function AISettingsPanel({
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="grid gap-4 p-4 md:grid-cols-2">
+      <CardContent className="grid gap-4 p-4 xl:grid-cols-2">
         <div className="space-y-1.5">
           <label className="text-sm font-medium">{isArabic ? "شخصية المساعد" : "Assistant personality"}</label>
           <Textarea
@@ -265,6 +277,121 @@ function AISettingsPanel({
   );
 }
 
+function AIMediaLibraryPanel({
+  isArabic,
+  assets,
+  uploading,
+  onUpload,
+  onDelete,
+}: {
+  isArabic: boolean;
+  assets: WhatsAppAIMediaAsset[];
+  uploading: boolean;
+  onUpload: (input: { code: string; title: string; purpose: string; file: File }) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const [code, setCode] = useState("");
+  const [title, setTitle] = useState("");
+  const [purpose, setPurpose] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+
+  const submit = async () => {
+    if (!file || !code.trim() || !title.trim()) return;
+    await onUpload({ code, title, purpose, file });
+    setCode("");
+    setTitle("");
+    setPurpose("");
+    setFile(null);
+  };
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="border-b bg-amber-500/5 pb-4">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <FileImage className="h-5 w-5 text-amber-600" />
+          {isArabic ? "مكتبة صور الردود" : "Reply image library"}
+        </CardTitle>
+        <CardDescription>
+          {isArabic
+            ? "ارفع صورة واربطها بكود. يطلبها الـ AI بهذا الشكل: [[IMAGE:TARGET_TABLE]]"
+            : "Upload an image with a code. The AI requests it with [[IMAGE:TARGET_TABLE]]."}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4 p-4">
+        <div className="grid gap-3 xl:grid-cols-2">
+          <Input
+            value={code}
+            onChange={(event) => setCode(event.target.value.toUpperCase())}
+            maxLength={50}
+            placeholder={isArabic ? "الكود: TARGET_TABLE" : "Code: TARGET_TABLE"}
+          />
+          <Input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            maxLength={160}
+            placeholder={isArabic ? "اسم الصورة" : "Image title"}
+          />
+          <Input
+            value={purpose}
+            onChange={(event) => setPurpose(event.target.value)}
+            maxLength={1000}
+            placeholder={isArabic ? "تُستخدم عندما..." : "Use when..."}
+          />
+          <div className="flex gap-2 xl:col-span-2">
+            <Input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="min-w-0"
+              onChange={(event) => setFile(event.target.files?.[0] || null)}
+            />
+            <Button
+              type="button"
+              onClick={() => void submit()}
+              disabled={uploading || !file || !code.trim() || !title.trim()}
+              className="shrink-0"
+            >
+              {uploading ? <Loader2 className="animate-spin" /> : <Plus />}
+              {isArabic ? "إضافة" : "Add"}
+            </Button>
+          </div>
+        </div>
+        {assets.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            {isArabic ? "لا توجد صور مضافة حتى الآن." : "No reply images have been added yet."}
+          </p>
+        ) : (
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {assets.map((asset) => (
+              <div key={asset.id} className="flex items-start gap-3 rounded-xl border bg-muted/20 p-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600">
+                  <FileImage className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-semibold">{asset.code}</code>
+                    <span className="truncate text-sm font-medium">{asset.title}</span>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{asset.purpose || (isArabic ? "بدون وصف" : "No purpose")}</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
+                  title={isArabic ? "حذف الصورة" : "Delete image"}
+                  onClick={() => void onDelete(asset.id)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function WhatsApp() {
   const { lang } = useLang();
   const { toast } = useToast();
@@ -282,6 +409,8 @@ export default function WhatsApp() {
   const [recording, setRecording] = useState(false);
   const [aiSettings, setAISettings] = useState<WhatsAppAISettings>(initialAISettings);
   const [aiSaving, setAISaving] = useState(false);
+  const [aiMedia, setAIMedia] = useState<WhatsAppAIMediaAsset[]>([]);
+  const [aiMediaUploading, setAIMediaUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -352,6 +481,51 @@ export default function WhatsApp() {
     }
   };
 
+  const refreshAIMedia = useCallback(async () => {
+    try {
+      setAIMedia(await request("/api/whatsapp/ai-media") as WhatsAppAIMediaAsset[]);
+    } catch {
+      // The library remains empty until migration 27 is applied.
+    }
+  }, [request]);
+
+  const uploadAIMedia = async (input: { code: string; title: string; purpose: string; file: File }) => {
+    setAIMediaUploading(true);
+    try {
+      const body = new FormData();
+      body.append("code", input.code);
+      body.append("title", input.title);
+      body.append("purpose", input.purpose);
+      body.append("file", input.file);
+      const created = await request("/api/whatsapp/ai-media", "POST", body) as WhatsAppAIMediaAsset;
+      setAIMedia((current) => [...current, created].sort((a, b) => a.code.localeCompare(b.code)));
+      toast({ title: isArabic ? "تمت إضافة الصورة" : "Image added" });
+    } catch (error) {
+      toast({
+        title: isArabic ? "تعذر إضافة الصورة" : "Unable to add image",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setAIMediaUploading(false);
+    }
+  };
+
+  const deleteAIMedia = async (id: string) => {
+    try {
+      await request(`/api/whatsapp/ai-media/${encodeURIComponent(id)}`, "DELETE");
+      setAIMedia((current) => current.filter((asset) => asset.id !== id));
+      toast({ title: isArabic ? "تم حذف الصورة" : "Image deleted" });
+    } catch (error) {
+      toast({
+        title: isArabic ? "تعذر حذف الصورة" : "Unable to delete image",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    }
+  };
+
   const refreshMessages = useCallback(async () => {
     if (!selectedJid || connection.status !== "connected") return;
     try {
@@ -366,7 +540,8 @@ export default function WhatsApp() {
   useEffect(() => {
     void refreshStatus();
     void refreshAISettings();
-  }, [refreshAISettings, refreshStatus]);
+    void refreshAIMedia();
+  }, [refreshAIMedia, refreshAISettings, refreshStatus]);
 
   useEffect(() => {
     if (!["connecting", "qr"].includes(connection.status)) return;
@@ -527,8 +702,8 @@ export default function WhatsApp() {
 
   if (isConnected) {
     return (
-      <div className="flex h-[calc(100vh-4.5rem)] min-h-[560px] flex-col p-3 md:p-5" dir={isArabic ? "rtl" : "ltr"}>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex h-[calc(100vh-4.5rem)] min-h-[560px] flex-col overflow-y-auto p-3 md:p-5" dir={isArabic ? "rtl" : "ltr"}>
+        <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#25D366]/10 text-[#128C7E]"><MessageCircle className="h-6 w-6" /></div>
             <div>
@@ -543,15 +718,16 @@ export default function WhatsApp() {
           </Button>
         </div>
 
-        <AISettingsPanel
-          isArabic={isArabic}
-          settings={aiSettings}
-          saving={aiSaving}
-          onChange={(update) => setAISettings((current) => ({ ...current, ...update }))}
-          onSave={() => void saveAISettings()}
-        />
-
-        <div className="grid min-h-0 flex-1 overflow-hidden rounded-2xl border bg-card shadow-sm lg:grid-cols-[320px_1fr]" dir="ltr">
+        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]" dir="ltr">
+          <div className="order-1 flex min-h-[560px] min-w-0 flex-col overflow-hidden rounded-2xl border bg-card shadow-sm lg:min-h-0">
+            <div className="flex items-center justify-between border-b px-4 py-3 lg:hidden">
+              <div>
+                <h2 className="font-semibold">{isArabic ? "المحادثات" : "Chats"}</h2>
+                <p className="text-xs text-muted-foreground">{isArabic ? "اختر محادثة لبدء الرد" : "Choose a chat to start replying"}</p>
+              </div>
+              <MessageCircle className="h-5 w-5 text-[#128C7E]" />
+            </div>
+            <div className="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[320px_1fr]" dir="ltr">
           <aside className="flex min-h-0 flex-col border-e" dir={isArabic ? "rtl" : "ltr"}>
             <div className="border-b p-4">
               <div className="mb-3 flex items-center justify-between">
@@ -703,6 +879,34 @@ export default function WhatsApp() {
               </div>
             )}
           </section>
+            </div>
+          </div>
+
+          <aside className="order-2 min-w-0 space-y-4 lg:max-h-full lg:overflow-y-auto lg:pe-1" dir={isArabic ? "rtl" : "ltr"}>
+            <div className="hidden items-center gap-2 px-1 lg:flex">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Bot className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold">{isArabic ? "إعدادات الرد الذكي" : "AI reply settings"}</h2>
+                <p className="text-xs text-muted-foreground">{isArabic ? "تحكم في سلوك الردود والصور" : "Control replies and media"}</p>
+              </div>
+            </div>
+            <AISettingsPanel
+              isArabic={isArabic}
+              settings={aiSettings}
+              saving={aiSaving}
+              onChange={(update) => setAISettings((current) => ({ ...current, ...update }))}
+              onSave={() => void saveAISettings()}
+            />
+            <AIMediaLibraryPanel
+              isArabic={isArabic}
+              assets={aiMedia}
+              uploading={aiMediaUploading}
+              onUpload={uploadAIMedia}
+              onDelete={deleteAIMedia}
+            />
+          </aside>
         </div>
       </div>
     );
@@ -757,6 +961,13 @@ export default function WhatsApp() {
         saving={aiSaving}
         onChange={(update) => setAISettings((current) => ({ ...current, ...update }))}
         onSave={() => void saveAISettings()}
+      />
+      <AIMediaLibraryPanel
+        isArabic={isArabic}
+        assets={aiMedia}
+        uploading={aiMediaUploading}
+        onUpload={uploadAIMedia}
+        onDelete={deleteAIMedia}
       />
     </div>
   );

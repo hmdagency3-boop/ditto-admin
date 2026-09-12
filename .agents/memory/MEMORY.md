@@ -5,6 +5,7 @@
 - [Employment status bug](employment-status-bug.md) — تغيير الحالة بيشتغل وبيتحفظ — المشكلة اتحلت
 - [ما تم إنجازه وما تبقى](progress.md) — ملخص شامل للمشروع للرجوع إليه عند التبديل لأكونت جديد
 - [WhatsApp AI queue](whatsapp-ai-queue.md) — الردود تمر عبر Supabase queue بين الموقع وسيرفر AI خارجي
+- [WhatsApp AI media codes](whatsapp-ai-media.md) — الصور تُطلب من رد الـ AI بصيغة [[IMAGE:CODE]] وتُرسل من Supabase Storage
 - [Nested app dependencies](nested-app-dependencies.md) — عند تشغيل تطبيق داخل مجلد فرعي يجب تثبيت اعتمادياته في نفس المجلد لا في الجذر
 - [WhatsApp session encryption](whatsapp-session-encryption.md) — تغيير مفتاح التشفير يمنع استرداد auth_blob القديم؛ يجب تثبيت المفتاح الأصلي
 - [Media response headers](media-response-headers.md) — أسماء ملفات واتساب لا تُستخدم مباشرة في HTTP headers؛ يجب ترميزها وتنظيفها

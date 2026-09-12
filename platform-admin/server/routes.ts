@@ -16,8 +16,11 @@ import {
   startWhatsAppConnection,
 } from "./whatsappService";
 import {
+  createWhatsAppAIMedia,
+  deleteWhatsAppAIMedia,
   defaultWhatsAppAISettings,
   getWhatsAppAISettings,
+  listWhatsAppAIMedia,
   saveWhatsAppAISettings,
 } from "./whatsappAiService";
 
@@ -421,6 +424,55 @@ export async function registerRoutes(
       res.json(await saveWhatsAppAISettings(req.user!.userId, settings));
     } catch (error) {
       res.status(400).json({ message: error instanceof Error ? error.message : "تعذر حفظ إعدادات الرد الذكي" });
+    }
+  });
+
+  const whatsappAIMediaUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype.startsWith("image/")) cb(null, true);
+      else cb(new Error("مكتبة صور الذكاء تقبل الصور فقط"));
+    },
+  });
+
+  app.get("/api/whatsapp/ai-media", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      res.json(await listWhatsAppAIMedia(req.user!.userId));
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : "تعذر تحميل مكتبة الصور" });
+    }
+  });
+
+  app.post(
+    "/api/whatsapp/ai-media",
+    authenticateToken,
+    requireSuperAdmin,
+    whatsappAIMediaUpload.single("file"),
+    async (req: any, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ message: "الصورة مطلوبة" });
+        const asset = await createWhatsAppAIMedia(req.user!.userId, {
+          code: String(req.body?.code || ""),
+          title: String(req.body?.title || ""),
+          purpose: String(req.body?.purpose || ""),
+          fileName: req.file.originalname || "whatsapp-ai-image",
+          mimeType: req.file.mimetype,
+          buffer: req.file.buffer,
+        });
+        res.status(201).json(asset);
+      } catch (error) {
+        res.status(400).json({ message: error instanceof Error ? error.message : "تعذر رفع الصورة" });
+      }
+    },
+  );
+
+  app.delete("/api/whatsapp/ai-media/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      await deleteWhatsAppAIMedia(req.user!.userId, req.params.id);
+      res.status(204).end();
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : "تعذر حذف الصورة" });
     }
   });
 
