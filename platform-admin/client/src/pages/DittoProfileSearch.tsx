@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Search, User, Hash, Users, Star, AlertTriangle, Radio,
   Car, Shield, Award, Zap,
@@ -130,6 +131,31 @@ function fmtVipDays(days: number | null | undefined): string {
   if (days <= 0) return "منتهية ⚠";
   if (days === 1) return "يوم واحد متبقي";
   return `${days} يوم متبقي`;
+}
+
+function ProfileDataTable({ rows }: { rows: Array<{ label: string; value: React.ReactNode }> }) {
+  const visibleRows = rows.filter(row => row.value !== null && row.value !== undefined && row.value !== "");
+
+  return (
+    <div className="overflow-x-auto rounded-lg border">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/40">
+            <TableHead className="w-1/3 text-right">البيان</TableHead>
+            <TableHead className="text-right">القيمة</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {visibleRows.map((row) => (
+            <TableRow key={row.label}>
+              <TableCell className="font-medium text-muted-foreground">{row.label}</TableCell>
+              <TableCell className="font-semibold">{row.value}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
 }
 
 export default function DittoProfileSearch() {
@@ -301,27 +327,39 @@ export default function DittoProfileSearch() {
             {searchResult.users.length === 0 ? (
               <div className="p-8 text-center text-muted-foreground text-sm">لم يتم العثور على نتائج</div>
             ) : (
-              <div className="divide-y">
-                {searchResult.users.map((u, i) => (
-                  <div
-                    key={String(u.uid ?? i)}
-                    className="flex items-center gap-4 p-4 hover:bg-muted/30 transition-colors cursor-pointer"
-                    onClick={() => drillIntoUid(u.uid)}
-                  >
-                    <Avatar src={u.avatar} size={10} />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold truncate">{u.nickname ?? "—"}</div>
-                      <div className="text-xs text-muted-foreground">
-                        UID: {String(u.uid ?? "—")}{u.erbanNo ? ` | ID: ${u.erbanNo}` : ""}
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      {u.fansNum != null && <div className="text-xs text-muted-foreground">{u.fansNum.toLocaleString()} متابع</div>}
-                      {u.level != null && <div className="text-xs text-primary">Lv {u.level}</div>}
-                    </div>
-                    <span className="text-primary text-xs">›</span>
-                  </div>
-                ))}
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40">
+                      <TableHead className="text-right">المستخدم</TableHead>
+                      <TableHead className="text-right">UID</TableHead>
+                      <TableHead className="text-right">رقم الـ ID</TableHead>
+                      <TableHead className="text-right">المتابعون</TableHead>
+                      <TableHead className="text-right">المستوى</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {searchResult.users.map((u, i) => (
+                      <TableRow
+                        key={String(u.uid ?? i)}
+                        className="cursor-pointer hover:bg-muted/30"
+                        onClick={() => drillIntoUid(u.uid)}
+                        title="اضغط لفتح الملف"
+                      >
+                        <TableCell>
+                          <div className="flex min-w-[180px] items-center gap-3">
+                            <Avatar src={u.avatar} size={10} />
+                            <span className="font-semibold">{u.nickname ?? "—"}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-mono text-sm" dir="ltr">{String(u.uid ?? "—")}</TableCell>
+                        <TableCell className="font-mono text-sm">{u.erbanNo ?? "—"}</TableCell>
+                        <TableCell>{u.fansNum != null ? u.fansNum.toLocaleString() : "—"}</TableCell>
+                        <TableCell className="text-primary">{u.level != null ? `Lv ${u.level}` : "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             )}
           </CardContent>
@@ -377,35 +415,32 @@ export default function DittoProfileSearch() {
                   )}
                 </div>
 
-                {/* Info grid */}
-                <div className="flex-1 grid grid-cols-2 md:grid-cols-3 gap-2">
-                  <InfoCell label="UID" value={gifts?.uid ?? activeUid} color="text-primary" />
-                  <InfoCell label="الاسم" value={profile?.nickname} />
-                  <InfoCell label="رقم الـ ID" value={profile?.erbanNo != null ? `${profile.erbanNo}${profile.hasPrettyErbanNo ? " ✦" : ""}` : undefined} />
-                  <InfoCell label="الدولة" value={profile?.countryName ?? profile?.countryCode} />
-                  <InfoCell label="المجموعة" value={profile?.countryGroup} />
-                  <InfoCell label="ترتيب المجموعة" value={profile?.countryGroup ? profile.countryGroupRank : undefined} />
-                  <InfoCell label="العمر" value={profile?.age != null ? `${profile.age} سنة` : undefined} />
-                  <InfoCell label="VIP" value={profile?.vipName || (profile?.vipLevel ? `Level ${profile.vipLevel}` : undefined)} color="text-yellow-500" />
-                  {(profile?.vipInfoDto?.vipDate != null) && (
-                    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-2">
-                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">مدة VIP</div>
-                      <div className={`text-sm font-semibold ${(profile.vipInfoDto.vipDate ?? 0) <= 7 ? "text-destructive" : "text-yellow-500"}`}>
+                {/* Profile data table */}
+                <div className="flex-1 min-w-0">
+                  <ProfileDataTable rows={[
+                    { label: "UID", value: <span className="font-mono text-primary" dir="ltr">{gifts?.uid ?? activeUid}</span> },
+                    { label: "الاسم", value: profile?.nickname ?? "—" },
+                    { label: "رقم الـ ID", value: profile?.erbanNo != null ? `${profile.erbanNo}${profile.hasPrettyErbanNo ? " ✦" : ""}` : "—" },
+                    { label: "الدولة", value: profile?.countryName ?? profile?.countryCode ?? "—" },
+                    { label: "المجموعة", value: profile?.countryGroup ?? "—" },
+                    { label: "ترتيب المجموعة", value: profile?.countryGroup ? profile.countryGroupRank ?? "—" : "—" },
+                    { label: "العمر", value: profile?.age != null ? `${profile.age} سنة` : "—" },
+                    { label: "VIP", value: <span className="text-yellow-500">{profile?.vipName || (profile?.vipLevel ? `Level ${profile.vipLevel}` : "—")}</span> },
+                    ...(profile?.vipInfoDto?.vipDate != null ? [{
+                      label: "مدة VIP",
+                      value: <span className={(profile.vipInfoDto.vipDate ?? 0) <= 7 ? "text-destructive" : "text-yellow-500"}>
                         {fmtVipDays(profile.vipInfoDto.vipDate)}
-                      </div>
-                      {profile.vipInfoDto.hasEntranceEffect && <div className="text-[9px] text-muted-foreground mt-0.5">✓ تأثير الدخول · {profile.vipInfoDto.hasVipGift ? "✓ هدية" : ""} · {profile.vipInfoDto.hasAntiKick ? "✓ حماية" : ""}</div>}
-                    </div>
-                  )}
-                  <InfoCell label="SVIP" value={profile?.svipInfo?.level ? `Level ${profile.svipInfo.level}` : undefined} color="text-purple-500" />
-                  {profile?.svipInfo?.expirationTime != null && profile.svipInfo.expirationTime > 0 && (
-                    <div className="bg-purple-500/10 border border-purple-500/30 rounded p-2">
-                      <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">مدة SVIP</div>
-                      <div className="text-sm font-semibold text-purple-500">{fmtExpiry(profile.svipInfo.expirationTime)}</div>
-                    </div>
-                  )}
-                  <InfoCell label="المتابعون" value={profile?.fansNum?.toLocaleString()} />
-                  <InfoCell label="الماس" value={profile?.diamond != null ? String(profile.diamond) : undefined} color="text-blue-400" />
-                  {profile?.signature && <InfoCell label="التوقيع" value={profile.signature} wide />}
+                      </span>,
+                    }] : []),
+                    { label: "SVIP", value: <span className="text-purple-500">{profile?.svipInfo?.level ? `Level ${profile.svipInfo.level}` : "—"}</span> },
+                    ...(profile?.svipInfo?.expirationTime != null && profile.svipInfo.expirationTime > 0 ? [{
+                      label: "مدة SVIP",
+                      value: <span className="text-purple-500">{fmtExpiry(profile.svipInfo.expirationTime)}</span>,
+                    }] : []),
+                    { label: "المتابعون", value: profile?.fansNum?.toLocaleString() ?? "—" },
+                    { label: "الماس", value: <span className="text-blue-400">{profile?.diamond != null ? String(profile.diamond) : "—"}</span> },
+                    ...(profile?.signature ? [{ label: "التوقيع", value: profile.signature }] : []),
+                  ]} />
                 </div>
               </div>
             </CardContent>
@@ -421,30 +456,39 @@ export default function DittoProfileSearch() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-4">
-                <div className="flex gap-6 mb-4 text-sm">
-                  {gifts.totalGiftsNum != null && (
-                    <div><span className="text-muted-foreground ml-1">إجمالي:</span><span className="font-bold">{gifts.totalGiftsNum.toLocaleString()}</span></div>
-                  )}
-                  {gifts.totalGiftTypes != null && (
-                    <div><span className="text-muted-foreground ml-1">أنواع:</span><span className="font-bold">{gifts.totalGiftTypes}</span></div>
-                  )}
-                </div>
+                <ProfileDataTable rows={[
+                  { label: "إجمالي الهدايا", value: gifts.totalGiftsNum?.toLocaleString() ?? "—" },
+                  { label: "أنواع الهدايا", value: gifts.totalGiftTypes ?? "—" },
+                ]} />
                 {gifts.topGifts && gifts.topGifts.length > 0 && (
-                  <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-8 gap-3">
-                    {gifts.topGifts.map((g, i) => (
-                      <div key={i} className="flex flex-col items-center gap-1 text-center">
-                        {g.icon ? (
-                          <img src={g.icon} alt={g.giftName ?? ""} className="w-10 h-10 object-contain"
-                            onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                        ) : (
-                          <div className="w-10 h-10 bg-muted rounded flex items-center justify-center">
-                            <Star className="w-4 h-4 text-muted-foreground/40" />
-                          </div>
-                        )}
-                        <span className="text-[10px] text-muted-foreground truncate w-full">{g.giftName}</span>
-                        {g.num && <span className="text-[10px] font-bold text-primary">×{g.num.toLocaleString()}</span>}
-                      </div>
-                    ))}
+                  <div className="mt-4 overflow-x-auto rounded-lg border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/40">
+                          <TableHead className="text-right">الهدية</TableHead>
+                          <TableHead className="text-right">الاسم</TableHead>
+                          <TableHead className="text-right">العدد</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {gifts.topGifts.map((g, i) => (
+                          <TableRow key={i}>
+                            <TableCell>
+                              {g.icon ? (
+                                <img src={g.icon} alt={g.giftName ?? ""} className="h-10 w-10 object-contain"
+                                  onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                              ) : (
+                                <div className="flex h-10 w-10 items-center justify-center rounded bg-muted">
+                                  <Star className="h-4 w-4 text-muted-foreground/40" />
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell className="font-medium">{g.giftName ?? "—"}</TableCell>
+                            <TableCell className="font-bold text-primary">{g.num != null ? `×${g.num.toLocaleString()}` : "—"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   </div>
                 )}
               </CardContent>
@@ -461,35 +505,41 @@ export default function DittoProfileSearch() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-4">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {profile?.experLevel != null && (
-                    <div className="border rounded-lg p-3 flex flex-col items-center gap-1">
-                      {profile.experLevelPic && <img src={profile.experLevelPic} alt="" className="h-8 object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />}
-                      <div className="text-[10px] text-muted-foreground">الخبرة</div>
-                      <div className="text-xl font-bold text-yellow-500">Lv {profile.experLevel}</div>
-                    </div>
-                  )}
-                  {profile?.charmLevel != null && (
-                    <div className="border rounded-lg p-3 flex flex-col items-center gap-1">
-                      {profile.charmLevelPic && <img src={profile.charmLevelPic} alt="" className="h-8 object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />}
-                      <div className="text-[10px] text-muted-foreground">السحر</div>
-                      <div className="text-xl font-bold text-pink-500">Lv {profile.charmLevel}</div>
-                    </div>
-                  )}
-                  {profile?.growthLevel != null && (
-                    <div className="border rounded-lg p-3 flex flex-col items-center gap-1">
-                      {profile.growthLevelPic ? <img src={profile.growthLevelPic} alt="" className="h-8 object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} /> : <Shield className="w-6 h-6 text-green-500" />}
-                      <div className="text-[10px] text-muted-foreground">النمو</div>
-                      <div className="text-xl font-bold text-green-500">Lv {profile.growthLevel}</div>
-                    </div>
-                  )}
-                  {profile?.noLv != null && (
-                    <div className="border rounded-lg p-3 flex flex-col items-center gap-1">
-                      <Hash className="w-6 h-6 text-orange-500" />
-                      <div className="text-[10px] text-muted-foreground">مستوى الغرفة</div>
-                      <div className="text-xl font-bold text-orange-500">Lv {profile.noLv}</div>
-                    </div>
-                  )}
+                <div className="overflow-x-auto rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/40">
+                        <TableHead className="text-right">المستوى</TableHead>
+                        <TableHead className="text-right">القيمة</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {profile?.experLevel != null && (
+                        <TableRow>
+                          <TableCell className="font-medium">الخبرة</TableCell>
+                          <TableCell className="font-bold text-yellow-500">Lv {profile.experLevel}</TableCell>
+                        </TableRow>
+                      )}
+                      {profile?.charmLevel != null && (
+                        <TableRow>
+                          <TableCell className="font-medium">السحر</TableCell>
+                          <TableCell className="font-bold text-pink-500">Lv {profile.charmLevel}</TableCell>
+                        </TableRow>
+                      )}
+                      {profile?.growthLevel != null && (
+                        <TableRow>
+                          <TableCell className="font-medium">النمو</TableCell>
+                          <TableCell className="font-bold text-green-500">Lv {profile.growthLevel}</TableCell>
+                        </TableRow>
+                      )}
+                      {profile?.noLv != null && (
+                        <TableRow>
+                          <TableCell className="font-medium">مستوى الغرفة</TableCell>
+                          <TableCell className="font-bold text-orange-500">Lv {profile.noLv}</TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
                 </div>
               </CardContent>
             </Card>
@@ -504,25 +554,40 @@ export default function DittoProfileSearch() {
                   الإكسسوارات
                 </CardTitle>
               </CardHeader>
-              <CardContent className="pt-4 flex gap-6 flex-wrap">
-                {hasCar && (
-                  <div className="flex items-center gap-3">
-                    {profile?.carUrl && <img src={profile.carUrl} alt="" className="h-12 object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />}
-                    <div>
-                      <div className="text-[10px] text-muted-foreground">السيارة</div>
-                      <div className="font-semibold text-sm">{profile?.carName}</div>
-                    </div>
-                  </div>
-                )}
-                {profile?.headwearName && (
-                  <div className="flex items-center gap-3">
-                    {profile.headwearUrl && <img src={profile.headwearUrl} alt="" className="h-12 object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />}
-                    <div>
-                      <div className="text-[10px] text-muted-foreground">الإطار</div>
-                      <div className="font-semibold text-sm">{profile.headwearName}</div>
-                    </div>
-                  </div>
-                )}
+              <CardContent className="pt-4">
+                <div className="overflow-x-auto rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/40">
+                        <TableHead className="text-right">النوع</TableHead>
+                        <TableHead className="text-right">الاسم</TableHead>
+                        <TableHead className="text-right">المعاينة</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {hasCar && (
+                        <TableRow>
+                          <TableCell className="font-medium">السيارة</TableCell>
+                          <TableCell>{profile?.carName ?? "—"}</TableCell>
+                          <TableCell>
+                            {profile?.carUrl && <img src={profile.carUrl} alt="" className="h-10 object-contain"
+                              onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {profile?.headwearName && (
+                        <TableRow>
+                          <TableCell className="font-medium">الإطار</TableCell>
+                          <TableCell>{profile.headwearName}</TableCell>
+                          <TableCell>
+                            {profile.headwearUrl && <img src={profile.headwearUrl} alt="" className="h-10 object-contain"
+                              onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -537,15 +602,28 @@ export default function DittoProfileSearch() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-4">
-                <div className="flex gap-3 flex-wrap">
-                  {medals.map((m, i) => (
-                    <div key={i} className="flex flex-col items-center gap-1 border rounded-lg p-2 min-w-16">
-                      <img src={m.url} alt={m.name} className="h-8 object-contain"
-                        onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                      <span className="text-[10px] text-center text-muted-foreground leading-tight">{m.name}</span>
-                      {m.expiration && <span className="text-[9px] text-muted-foreground">{fmtExpiry(m.expiration)}</span>}
-                    </div>
-                  ))}
+                <div className="overflow-x-auto rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/40">
+                        <TableHead className="text-right">الميدالية</TableHead>
+                        <TableHead className="text-right">الاسم</TableHead>
+                        <TableHead className="text-right">الانتهاء</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {medals.map((m, i) => (
+                        <TableRow key={i}>
+                          <TableCell>
+                            <img src={m.url} alt={m.name} className="h-9 w-9 object-contain"
+                              onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                          </TableCell>
+                          <TableCell className="font-medium">{m.name}</TableCell>
+                          <TableCell className="text-muted-foreground">{m.expiration ? fmtExpiry(m.expiration) : "—"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               </CardContent>
             </Card>
@@ -561,17 +639,28 @@ export default function DittoProfileSearch() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-4">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                  {wearProps.map((p, i) => (
-                    <div key={i} className="border rounded-lg p-3 flex items-center gap-3">
-                      {p.coverImg && <img src={p.coverImg} alt="" className="w-10 h-10 object-contain rounded"
-                        onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />}
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{p.propName}</div>
-                        {p.expireSecond != null && <div className="text-[10px] text-muted-foreground">{fmtExpiry(p.expireSecond)}</div>}
-                      </div>
-                    </div>
-                  ))}
+                <div className="overflow-x-auto rounded-lg border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/40">
+                        <TableHead className="text-right">العنصر</TableHead>
+                        <TableHead className="text-right">الاسم</TableHead>
+                        <TableHead className="text-right">الانتهاء</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {wearProps.map((p, i) => (
+                        <TableRow key={i}>
+                          <TableCell>
+                            {p.coverImg && <img src={p.coverImg} alt="" className="h-9 w-9 rounded object-contain"
+                              onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />}
+                          </TableCell>
+                          <TableCell className="font-medium">{p.propName}</TableCell>
+                          <TableCell className="text-muted-foreground">{p.expireSecond != null ? fmtExpiry(p.expireSecond) : "—"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               </CardContent>
             </Card>
