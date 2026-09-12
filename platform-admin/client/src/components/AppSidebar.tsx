@@ -126,9 +126,9 @@ export function AppSidebar() {
 
   return (
     <Sidebar side={isRtl ? 'right' : 'left'} collapsible="icon">
-      <SidebarHeader className="border-b border-sidebar-border p-3">
-        <div className="flex items-center gap-3 rounded-xl border border-sidebar-border bg-sidebar-accent/30 p-2.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-sidebar-primary to-sidebar-primary/70 text-lg font-bold text-sidebar-primary-foreground shadow-sm shrink-0">
+      <SidebarHeader className="border-b border-sidebar-border p-3 group-data-[collapsible=icon]:p-2">
+        <div className="flex items-center gap-3 rounded-xl border border-sidebar-border bg-sidebar-accent/30 p-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sidebar-primary to-sidebar-primary/70 text-lg font-bold text-sidebar-primary-foreground shadow-sm group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:text-base">
             {isCollapsed ? 'A' : 'AD'}
           </div>
           {!isCollapsed && (
@@ -142,14 +142,19 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="px-2 py-3">
+      <SidebarContent className="px-2 py-3 group-data-[collapsible=icon]:px-1">
         {menuSections.map((section, sectionIndex) => (
-          <SidebarGroup key={section.key} className={sectionIndex > 0 ? 'pt-3' : ''}>
+          <SidebarGroup
+            key={section.key}
+            className={sectionIndex > 0
+              ? 'pt-3 group-data-[collapsible=icon]:mt-2 group-data-[collapsible=icon]:border-t group-data-[collapsible=icon]:border-sidebar-border/60 group-data-[collapsible=icon]:pt-2'
+              : ''}
+          >
             <SidebarGroupLabel className="mb-1 px-2 text-[10px] font-bold uppercase tracking-[0.08em] text-sidebar-foreground/45">
               {t(section.key)}
             </SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu className="gap-1">
+              <SidebarMenu className="gap-1 group-data-[collapsible=icon]:gap-1">
                 {section.items.map((item) => {
                   const isActive = location === item.url;
                   return (
@@ -158,12 +163,12 @@ export function AppSidebar() {
                         asChild
                         isActive={isActive}
                         tooltip={t(item.key)}
-                        className="h-9 rounded-lg px-3 text-[13px] data-[active=true]:bg-sidebar-primary/10 data-[active=true]:font-bold data-[active=true]:text-sidebar-primary"
+                        className="h-9 rounded-lg px-3 text-[13px] data-[active=true]:bg-sidebar-primary/10 data-[active=true]:font-bold data-[active=true]:text-sidebar-primary group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:rounded-md"
                       >
                         <Link href={item.url}>
                           <item.icon className="h-4 w-4 shrink-0" />
-                          <span>{t(item.key)}</span>
-                          {isActive && <ActiveArrow className="ms-auto h-4 w-4" />}
+                          <span className="group-data-[collapsible=icon]:hidden">{t(item.key)}</span>
+                          {isActive && <ActiveArrow className="ms-auto h-4 w-4 group-data-[collapsible=icon]:hidden" />}
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -175,9 +180,9 @@ export function AppSidebar() {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border p-3">
-        <div className="flex items-center gap-2 rounded-xl border border-sidebar-border bg-sidebar-accent/30 p-2">
-          <Avatar className="h-9 w-9 shrink-0">
+      <SidebarFooter className="border-t border-sidebar-border p-3 group-data-[collapsible=icon]:p-2">
+        <div className="flex items-center gap-2 rounded-xl border border-sidebar-border bg-sidebar-accent/30 p-2 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-2 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0">
+          <Avatar className="h-9 w-9 shrink-0 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8">
             {user?.externalImage && <AvatarImage src={user.externalImage} />}
             <AvatarFallback className="bg-sidebar-primary/10 text-sm font-bold text-sidebar-primary">
               {user?.full_name ? getInitials(user.full_name) : 'A'}
@@ -191,7 +196,7 @@ export function AppSidebar() {
               <p className="truncate text-[10px] text-sidebar-foreground/55">@{user?.username}</p>
             </div>
           )}
-          <Button variant="ghost" size="icon" onClick={signOut} className="h-8 w-8 shrink-0 rounded-lg text-sidebar-foreground/60 hover:bg-destructive/10 hover:text-destructive" title={t('auth.logout')}>
+          <Button variant="ghost" size="icon" onClick={signOut} className="h-8 w-8 shrink-0 rounded-lg text-sidebar-foreground/60 hover:bg-destructive/10 hover:text-destructive group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8" title={t('auth.logout')}>
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
