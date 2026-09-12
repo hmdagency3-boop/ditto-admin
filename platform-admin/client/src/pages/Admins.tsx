@@ -446,9 +446,8 @@ export default function Admins() {
                     return (
                       <tr
                         key={admin.id}
-                        className={`cursor-pointer transition-colors hover:bg-muted/40 ${isDismissed ? 'opacity-60' : ''}`}
+                        className={`transition-colors hover:bg-muted/40 ${isDismissed ? 'opacity-60' : ''}`}
                         data-testid={`row-admin-${admin.id}`}
-                        onClick={() => navigate(`/admins/${admin.id}`)}
                       >
                         <td className={`${cellCls} text-center text-muted-foreground`}>{index + 1}</td>
                         <td className={cellCls}>
@@ -460,7 +459,13 @@ export default function Admins() {
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0">
-                              <p className="truncate font-semibold">{admin.full_name}</p>
+                              <p
+                                className="cursor-pointer select-none truncate font-semibold"
+                                title="اضغط مرتين لفتح الملف الشخصي"
+                                onDoubleClick={() => navigate(`/admins/${admin.id}`)}
+                              >
+                                {admin.full_name}
+                              </p>
                               {admin.externalName && admin.externalName !== admin.full_name && (
                                 <p className="platform-nick truncate text-xs text-primary/70">{admin.externalName}</p>
                               )}
