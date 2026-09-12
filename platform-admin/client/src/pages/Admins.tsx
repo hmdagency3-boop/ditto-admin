@@ -128,7 +128,12 @@ export default function Admins() {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: data.username, password: data.password, full_name: data.fullName }),
+        body: JSON.stringify({
+          username: data.username,
+          password: data.password,
+          full_name: data.fullName,
+          phone: data.phone || null,
+        }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message);
@@ -445,7 +450,7 @@ export default function Admins() {
                             <div className="min-w-0">
                               <p className="truncate font-semibold">{admin.full_name}</p>
                               {admin.externalName && admin.externalName !== admin.full_name && (
-                                <p className="truncate text-xs text-primary/70">{admin.externalName}</p>
+                                <p className="platform-nick truncate text-xs text-primary/70">{admin.externalName}</p>
                               )}
                             </div>
                           </div>
