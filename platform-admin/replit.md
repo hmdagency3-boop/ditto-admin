@@ -157,6 +157,11 @@ cd platform-admin && npm run dev
 ### Port
 The application runs on port 5000.
 
+### Ditto flow import
+From the Ditto command center (`/ditto-center`), upload an exported Ditto flow file. The upload starts automatically; the server parses the file in memory, decrypts Ditto request payloads when present, extracts the session fields, and stores them encrypted in the `ditto_sessions` table. The original file is not written to disk and the UI only reports extraction status and UID.
+
+The `ditto_sessions` migration (`supabase/29_ditto_sessions.sql`) must be applied in Supabase before importing a flow. A stable `SESSION_SECRET` (or the existing JWT secret fallback) is required to encrypt and decrypt stored credentials.
+
 ## Design System
 See `design_guidelines.md` for complete design specifications including:
 - Typography system (Cairo font for Arabic)

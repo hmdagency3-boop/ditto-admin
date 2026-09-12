@@ -9,6 +9,7 @@ import { gunzipSync } from "zlib";
 import { readFileSync, unlinkSync, existsSync } from "fs";
 import { resolve } from "path";
 import { storage } from "./storage";
+import multer from "multer";
 
 const router = Router();
 
@@ -17,6 +18,10 @@ const DITTO_SESSION_TABLE = "ditto_sessions";
 const DITTO_SESSION_NAME = "default";
 const KEY = Buffer.from("a38e5f04f39b11ed", "ascii");
 const IV  = Buffer.from("884e00163e02b26e", "ascii");
+const flowUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+});
 
 // ── Crypto ────────────────────────────────────────────────────────────────────
 function encrypt(plain: string): string {
@@ -148,6 +153,118 @@ async function saveDittoSession(session: DittoSession) {
     }
     throw new Error(`تعذر حفظ جلسة Ditto في قاعدة البيانات: ${error.message}`);
   }
+}
+
+type ExtractedFlowSession = {
+  uid?: string;
+  access_token?: string;
+  ticket?: string;
+  netEaseToken?: string;
+  deviceId?: string;
+  nimAppKey?: string;
+};
+
+const flowFieldNames: Record<keyof ExtractedFlowSession, Set<string>> = {
+  uid: new Set(["uid", "userid", "useruid", "account", "nimaccount"]),
+  access_token: new Set(["accesstoken", "oauthaccesstoken", "authtoken"]),
+  ticket: new Set(["ticket", "sessionticket", "loginticket"]),
+  netEaseToken: new Set(["neteasetoken", "nimtoken", "imtoken", "chatroomtoken"]),
+  deviceId: new Set(["deviceid", "deviceidentifier"]),
+  nimAppKey: new Set(["nimappkey", "nimkey", "appkey"]),
+};
+
+function normalizedFlowKey(key: string) {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isUsefulFlowValue(value: unknown): value is string | number {
+  return (typeof value === "string" || typeof value === "number")
+    && String(value).trim().length > 0
+    && String(value).length <= 4096;
+}
+
+function addFlowField(result: ExtractedFlowSession, key: string, value: unknown) {
+  if (!isUsefulFlowValue(value)) return;
+  const normalized = normalizedFlowKey(key);
+  const stringValue = String(value).trim();
+  for (const field of Object.keys(flowFieldNames) as (keyof ExtractedFlowSession)[]) {
+    if (!flowFieldNames[field].has(normalized) || result[field]) continue;
+    if (field === "uid" && !/^\d{3,20}$/.test(stringValue)) continue;
+    result[field] = stringValue as never;
+  }
+}
+
+function tryParseJson(value: string): unknown {
+  try { return JSON.parse(value); } catch { return undefined; }
+}
+
+function tryDecryptDittoValue(value: string): string | undefined {
+  try {
+    const decoded = decrypt(decodeURIComponent(value.trim()));
+    return decoded.length <= 200000 ? decoded : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function scanFlowString(value: string, result: ExtractedFlowSession, depth: number) {
+  if (!value || depth > 5) return;
+  const trimmed = value.trim();
+
+  const parsed = tryParseJson(trimmed);
+  if (parsed !== undefined) scanFlowValue(parsed, result, depth + 1);
+
+  try {
+    const params = new URLSearchParams(trimmed.startsWith("?") ? trimmed.slice(1) : trimmed);
+    for (const [key, item] of params.entries()) {
+      addFlowField(result, key, item);
+      if (key.toLowerCase() === "ed") {
+        const decrypted = tryDecryptDittoValue(item);
+        if (decrypted) scanFlowString(decrypted, result, depth + 1);
+      }
+    }
+  } catch {}
+
+  const encodedValues = trimmed.match(/(?:^|[?&\s])ed=([^&\s"'<>}]+)/gi) ?? [];
+  for (const match of encodedValues) {
+    const encoded = match.replace(/^.*?ed=/i, "");
+    const decrypted = tryDecryptDittoValue(encoded);
+    if (decrypted) scanFlowString(decrypted, result, depth + 1);
+  }
+
+  const patterns: Array<[keyof ExtractedFlowSession, RegExp]> = [
+    ["uid", /["']?(?:uid|userId|user_uid)["']?\s*[:=]\s*["']?(\d{3,20})/i],
+    ["ticket", /["']?(?:ticket|sessionTicket|loginTicket)["']?\s*[:=]\s*["']?([a-z0-9._-]{16,256})/i],
+    ["access_token", /["']?(?:access_token|accessToken|oauthAccessToken)["']?\s*[:=]\s*["']?([a-z0-9._-]{16,4096})/i],
+    ["netEaseToken", /["']?(?:netEaseToken|nimToken|imToken)["']?\s*[:=]\s*["']?([a-z0-9._-]{16,4096})/i],
+    ["deviceId", /["']?(?:deviceId|deviceIdentifier)["']?\s*[:=]\s*["']?([a-z0-9._-]{4,256})/i],
+    ["nimAppKey", /["']?(?:nimAppKey|nimKey|appKey)["']?\s*[:=]\s*["']?([a-z0-9._-]{16,256})/i],
+  ];
+  for (const [field, pattern] of patterns) {
+    const match = trimmed.match(pattern);
+    if (match?.[1]) addFlowField(result, field, match[1]);
+  }
+}
+
+function scanFlowValue(value: unknown, result: ExtractedFlowSession, depth = 0) {
+  if (depth > 7 || value == null) return;
+  if (typeof value === "string") {
+    scanFlowString(value, result, depth);
+    return;
+  }
+  if (typeof value !== "object") return;
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    addFlowField(result, key, child);
+    scanFlowValue(child, result, depth + 1);
+  }
+}
+
+function extractDittoSessionFromFlow(buffer: Buffer): ExtractedFlowSession {
+  const text = buffer.toString("utf8").replace(/^\uFEFF/, "");
+  const result: ExtractedFlowSession = {};
+  const parsed = tryParseJson(text);
+  scanFlowValue(parsed ?? text, result);
+  return result;
 }
 
 function readLegacyDittoSession(): DittoSession | null {
@@ -486,6 +603,74 @@ router.post("/session/inject", async (req, res) => {
     res.json({ ok: true, uid: session.uid, ticket_prefix: ticket.slice(0, 8) + "...", hasNimToken: !!session.netEaseToken });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// ── POST /api/ditto/session/import-flow ──────────────────────────────────────
+// The uploaded flow is processed in memory and is never written to disk.
+router.post("/session/import-flow", flowUpload.single("flow"), async (req, res) => {
+  if (!req.file) {
+    res.status(400).json({ ok: false, error: "flow file required" });
+    return;
+  }
+
+  try {
+    const extracted = extractDittoSessionFromFlow(req.file.buffer);
+    const missing = ["uid", "ticket", "access_token"].filter(field => !extracted[field as keyof ExtractedFlowSession]);
+    if (missing.length > 0) {
+      res.status(422).json({
+        ok: false,
+        error: "لم يتم العثور على بيانات جلسة Ditto مكتملة داخل الملف",
+        missing,
+        extracted: {
+          uid: !!extracted.uid,
+          ticket: !!extracted.ticket,
+          access_token: !!extracted.access_token,
+          netEaseToken: !!extracted.netEaseToken,
+          deviceId: !!extracted.deviceId,
+          nimAppKey: !!extracted.nimAppKey,
+        },
+      });
+      return;
+    }
+
+    // A complete flow is self-contained. Do not make a stale/corrupt encrypted
+    // row prevent importing the fresh credentials from the file.
+    let existing: DittoSession = {};
+    try {
+      existing = await loadSession();
+    } catch (error) {
+      console.warn("[ditto] replacing unreadable stored session during flow import");
+    }
+    const nextSession: DittoSession = { ...existing };
+    const now = Date.now();
+    nextSession.uid = extracted.uid;
+    nextSession.ticket = extracted.ticket;
+    nextSession.ticket_saved_at = now;
+    nextSession.access_token = extracted.access_token;
+    nextSession.access_token_saved_at = now;
+    if (extracted.netEaseToken) nextSession.netEaseToken = extracted.netEaseToken;
+    if (extracted.deviceId) nextSession.deviceId = extracted.deviceId;
+    if (extracted.nimAppKey) nextSession.nimAppKey = extracted.nimAppKey;
+
+    await saveDittoSession(nextSession);
+    try { unlinkSync(SESSION_FILE); } catch {}
+    res.json({
+      ok: true,
+      uid: nextSession.uid,
+      extracted: {
+        uid: !!extracted.uid,
+        ticket: !!extracted.ticket,
+        access_token: !!extracted.access_token,
+        netEaseToken: !!extracted.netEaseToken,
+        deviceId: !!extracted.deviceId,
+        nimAppKey: !!extracted.nimAppKey,
+      },
+      hasNimToken: !!nextSession.netEaseToken,
+    });
+  } catch (error) {
+    console.error("[ditto] flow import failed:", error instanceof Error ? error.message : error);
+    res.status(500).json({ ok: false, error: "تعذر تحليل ملف الـflow أو حفظ الجلسة" });
   }
 });
 

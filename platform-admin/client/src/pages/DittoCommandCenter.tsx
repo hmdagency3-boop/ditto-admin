@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import {
   Activity, Database, Key, Zap, LayoutGrid, Users, Radio,
   AlertTriangle, RefreshCw, X, Wifi, WifiOff, Copy, Check,
+  Upload, FileJson, LoaderCircle,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -76,6 +77,10 @@ export default function DittoCommandCenter() {
   });
   const [injectState, setInjectState] = useState<"idle" | "loading" | "ok" | "err">("idle");
   const [injectMsg, setInjectMsg] = useState("");
+  const [flowState, setFlowState] = useState<"idle" | "loading" | "ok" | "err">("idle");
+  const [flowMsg, setFlowMsg] = useState("");
+  const [flowFileName, setFlowFileName] = useState("");
+  const [isFlowDragging, setIsFlowDragging] = useState(false);
 
   const { data: session, isLoading: sessionLoading } = useQuery<SessionData>({
     queryKey: ["/api/ditto/session"],
@@ -109,6 +114,53 @@ export default function DittoCommandCenter() {
   });
 
   const sessionExpired = !sessionLoading && session?.ticket_expired;
+
+  async function importFlowFile(file?: File) {
+    if (!file) return;
+    setFlowFileName(file.name);
+    setFlowState("loading");
+    setFlowMsg("");
+    const form = new FormData();
+    form.append("flow", file);
+    try {
+      const res = await fetch("/api/ditto/session/import-flow", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json() as {
+        ok: boolean;
+        uid?: string;
+        error?: string;
+        missing?: string[];
+        extracted?: Record<string, boolean>;
+        hasNimToken?: boolean;
+      };
+      if (!res.ok || !data.ok) {
+        const missing = data.missing?.length ? ` (${data.missing.join(", ")})` : "";
+        setFlowState("err");
+        setFlowMsg(`${data.error ?? "فشل تحليل الملف"}${missing}`);
+        return;
+      }
+      setFlowState("ok");
+      setFlowMsg(`تم استخراج الجلسة وحفظها تلقائيًا — UID: ${data.uid ?? "—"}${data.hasNimToken ? " — NIM مفعّل" : ""}`);
+      queryClient.invalidateQueries();
+    } catch {
+      setFlowState("err");
+      setFlowMsg("تعذر الاتصال بالسيرفر أثناء معالجة الملف");
+    }
+  }
+
+  function handleFlowInput(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    void importFlowFile(file);
+  }
+
+  function handleFlowDrop(event: React.DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setIsFlowDragging(false);
+    void importFlowFile(event.dataTransfer.files?.[0]);
+  }
 
   async function handleInject(e: React.FormEvent) {
     e.preventDefault();
@@ -147,6 +199,59 @@ export default function DittoCommandCenter() {
         </h1>
         <p className="text-muted-foreground text-sm mt-1">مراقبة حالة الجلسة والرصيد والغرف الحية</p>
       </div>
+
+      {/* Automatic flow import */}
+      <Card className={`border-primary/30 transition-colors ${isFlowDragging ? "border-primary bg-primary/5" : ""}`}>
+        <CardContent className="p-0">
+          <label
+            htmlFor="ditto-flow-upload"
+            onDragOver={event => { event.preventDefault(); setIsFlowDragging(true); }}
+            onDragLeave={() => setIsFlowDragging(false)}
+            onDrop={handleFlowDrop}
+            className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg px-6 py-8 text-center"
+          >
+            <input
+              id="ditto-flow-upload"
+              type="file"
+              accept=".json,.flow,.har,.txt,application/json"
+              className="sr-only"
+              onChange={handleFlowInput}
+              disabled={flowState === "loading"}
+            />
+            {flowState === "loading" ? (
+              <LoaderCircle className="h-8 w-8 animate-spin text-primary" />
+            ) : flowState === "ok" ? (
+              <Check className="h-8 w-8 text-green-600" />
+            ) : (
+              <div className="rounded-full bg-primary/10 p-3">
+                <Upload className="h-6 w-6 text-primary" />
+              </div>
+            )}
+            <div>
+              <p className="font-semibold">
+                {flowState === "loading" ? "جاري تحليل ملف الـflow وحفظ الجلسة..." : "ارفع ملف Ditto flow"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                اختر الملف أو اسحبه هنا — يبدأ الاستخراج والحفظ تلقائيًا بدون زر تنفيذ
+              </p>
+            </div>
+            {flowFileName && (
+              <div className="flex items-center gap-2 rounded-md bg-muted/50 px-3 py-1.5 text-xs">
+                <FileJson className="h-4 w-4 text-primary" />
+                <span className="max-w-[260px] truncate">{flowFileName}</span>
+              </div>
+            )}
+            {flowMsg && (
+              <p className={`text-xs font-medium ${flowState === "ok" ? "text-green-600" : "text-destructive"}`}>
+                {flowMsg}
+              </p>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              يتم التعامل مع الملف في الذاكرة فقط، ولا تظهر المفاتيح السرية في النتيجة
+            </p>
+          </label>
+        </CardContent>
+      </Card>
 
       {/* Session expired banner */}
       {sessionExpired && !showInject && (
