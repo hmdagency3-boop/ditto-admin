@@ -3,6 +3,7 @@ import { storage } from "./storage";
 
 const imageCodePattern = /\[\[\s*(?:WA_)?IMAGE\s*:\s*([A-Z0-9_-]{2,50})\s*\]\]/gi;
 const mediaBucket = "whatsapp-ai-images";
+const incomingMediaBucket = "whatsapp-ai-incoming";
 
 export interface WhatsAppAISettings {
   enabled: boolean;
@@ -35,6 +36,14 @@ export interface WhatsAppAIMediaAsset {
   updated_at: string;
 }
 
+export interface WhatsAppAIIncomingImage {
+  storage_path: string;
+  image_url: string;
+  mime_type: string;
+  file_name: string;
+  caption: string;
+}
+
 const mediaColumns = [
   "id",
   "owner_id",
@@ -52,6 +61,11 @@ const mediaColumns = [
 
 function normalizeMediaCode(value: string) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "_").slice(0, 50);
+}
+
+function extensionForMimeType(mimeType: string) {
+  const extension = mimeType.split("/")[1]?.split(";")[0]?.toLowerCase();
+  return extension === "jpeg" ? "jpg" : extension || "bin";
 }
 
 export function parseWhatsAppAIResponse(response: string) {
@@ -219,6 +233,58 @@ export async function downloadWhatsAppAIMedia(ownerId: string, codes: string[]) 
   return result;
 }
 
+export async function uploadWhatsAppAIIncomingImage(
+  ownerId: string,
+  input: {
+    fileName: string | null;
+    mimeType: string;
+    buffer: Buffer;
+  },
+): Promise<WhatsAppAIIncomingImage> {
+  if (!input.mimeType.startsWith("image/")) {
+    throw new Error("رسالة الـAI الواردة يجب أن تكون صورة");
+  }
+
+  const extension = input.fileName?.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "")
+    || extensionForMimeType(input.mimeType);
+  const storagePath = `${ownerId}/${crypto.randomUUID()}.${extension}`;
+  const upload = await storage.supabase.storage
+    .from(incomingMediaBucket)
+    .upload(storagePath, input.buffer, {
+      contentType: input.mimeType,
+      upsert: false,
+    });
+  if (upload.error) {
+    throw new Error(`تعذر حفظ صورة الرسالة للذكاء الاصطناعي: ${upload.error.message}`);
+  }
+
+  const signed = await storage.supabase.storage
+    .from(incomingMediaBucket)
+    .createSignedUrl(storagePath, 60 * 60 * 2);
+  if (signed.error || !signed.data?.signedUrl) {
+    await storage.supabase.storage.from(incomingMediaBucket).remove([storagePath]);
+    throw new Error(`تعذر إنشاء رابط صورة الرسالة للذكاء الاصطناعي: ${signed.error?.message || "رابط غير متاح"}`);
+  }
+
+  return {
+    storage_path: storagePath,
+    image_url: signed.data.signedUrl,
+    mime_type: input.mimeType,
+    file_name: input.fileName || `whatsapp-image.${extension}`,
+    caption: "",
+  };
+}
+
+export async function deleteWhatsAppAIIncomingImage(storagePath: string) {
+  if (!storagePath) return;
+  const { error } = await storage.supabase.storage
+    .from(incomingMediaBucket)
+    .remove([storagePath]);
+  if (error) {
+    console.error("[whatsapp-ai] failed to remove incoming image:", error.message);
+  }
+}
+
 const tableName = "whatsapp_ai_settings";
 
 function normalizeSettings(row?: Record<string, unknown> | null): WhatsAppAISettings {
@@ -285,6 +351,7 @@ export interface WhatsAppAIQueueRequest {
   message_type: string;
   request: string;
   response: string | null;
+  context: WhatsAppAIQueueContext;
   requested_media_codes: string[];
   response_media_codes: string[];
   status: "pending" | "processing" | "ready" | "sending" | "sent" | "failed" | "ignored";
@@ -298,6 +365,18 @@ export interface WhatsAppAIQueueRequest {
   sent_at: string | null;
 }
 
+export interface WhatsAppAIQueueContext {
+  conversation: Array<{ fromMe: boolean; text: string }>;
+  ai_settings: WhatsAppAISettings;
+  available_images: Array<{
+    code: string;
+    title: string;
+    purpose: string;
+    image_url: string | null;
+  }>;
+  incoming_images?: WhatsAppAIIncomingImage[];
+}
+
 interface EnqueueWhatsAppAIRequestOptions {
   ownerId: string;
   messageId: string;
@@ -306,6 +385,8 @@ interface EnqueueWhatsAppAIRequestOptions {
   senderPhone: string | null;
   timestamp: number;
   request: string;
+  messageType?: "text" | "image";
+  incomingImages?: WhatsAppAIIncomingImage[];
   conversation: Array<{ fromMe: boolean; text: string }>;
   settings: WhatsAppAISettings;
 }
@@ -322,6 +403,7 @@ const queueColumns = [
   "message_type",
   "request",
   "response",
+  "context",
   "requested_media_codes",
   "response_media_codes",
   "status",
@@ -343,6 +425,8 @@ export async function enqueueWhatsAppAIRequest({
   senderPhone,
   timestamp,
   request,
+  messageType = "text",
+  incomingImages = [],
   conversation,
   settings,
 }: EnqueueWhatsAppAIRequestOptions): Promise<WhatsAppAIQueueRequest | null> {
@@ -358,13 +442,14 @@ export async function enqueueWhatsAppAIRequest({
         sender_name: senderName || null,
         sender_phone: senderPhone,
         message_timestamp: timestamp,
-        message_type: "text",
+        message_type: messageType,
         request,
-         requested_media_codes: availableMedia.map((media) => media.code),
+        requested_media_codes: availableMedia.map((media) => media.code),
         context: {
           conversation: conversation.slice(-20),
           ai_settings: settings,
-           available_images: availableMedia,
+          available_images: availableMedia,
+          ...(incomingImages.length > 0 ? { incoming_images: incomingImages } : {}),
         },
       },
       {

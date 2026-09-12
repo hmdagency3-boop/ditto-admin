@@ -19,7 +19,9 @@ import {
   enqueueWhatsAppAIRequest,
   getReadyWhatsAppAIRequests,
   getWhatsAppAISettings,
+  deleteWhatsAppAIIncomingImage,
   downloadWhatsAppAIMedia,
+  uploadWhatsAppAIIncomingImage,
   markWhatsAppAIReplyFailed,
   markWhatsAppAIReplySent,
   parseWhatsAppAIResponse,
@@ -359,6 +361,13 @@ interface WhatsAppMediaDescriptor {
   caption: string;
 }
 
+interface DownloadedIncomingMedia {
+  buffer: Buffer;
+  mimeType: string;
+  fileName: string | null;
+  caption: string;
+}
+
 function normalizedMessageContent(message: any) {
   return normalizeMessageContent(message?.message) || message?.message || null;
 }
@@ -563,12 +572,12 @@ function updateMessageMedia(
   runtime.messages.set(jid, chatMessages);
 }
 
-async function downloadIncomingMedia(runtime: WhatsAppRuntime, message: any) {
+async function downloadIncomingMedia(runtime: WhatsAppRuntime, message: any): Promise<DownloadedIncomingMedia | null> {
   const messageId = message?.key?.id;
   const jid = message?.key?.remoteJid;
   const descriptor = messageMedia(message);
   const socket = runtime.socket;
-  if (!messageId || !jid || !descriptor || !socket) return;
+  if (!messageId || !jid || !descriptor || !socket) return null;
 
   try {
     const buffer = await downloadMediaMessage(
@@ -588,8 +597,15 @@ async function downloadIncomingMedia(runtime: WhatsAppRuntime, message: any) {
       descriptor.fileName,
     );
     updateMessageMedia(runtime, jid, messageId, savedUrl);
+    return {
+      buffer,
+      mimeType: descriptor.mimeType,
+      fileName: descriptor.fileName,
+      caption: descriptor.caption,
+    };
   } catch (error) {
     console.error(`[whatsapp] could not download media message ${messageId}:`, error);
+    return null;
   }
 }
 
@@ -607,7 +623,11 @@ export async function getWhatsAppMedia(ownerId: string, key: string) {
   }
 }
 
-async function enqueueAIRequest(runtime: WhatsAppRuntime, message: any) {
+async function enqueueAIRequest(
+  runtime: WhatsAppRuntime,
+  message: any,
+  incomingMediaPromise?: Promise<DownloadedIncomingMedia | null>,
+) {
   const jid = message?.key?.remoteJid;
   const messageId = message?.key?.id;
   if (
@@ -622,7 +642,9 @@ async function enqueueAIRequest(runtime: WhatsAppRuntime, message: any) {
   }
 
   const incomingText = messageText(message).trim();
-  if (!incomingText || runtime.autoReplyInFlight.has(messageId)) return;
+  const descriptor = messageMedia(message);
+  const isImageMessage = descriptor?.mediaType === "image";
+  if ((!incomingText && !isImageMessage) || runtime.autoReplyInFlight.has(messageId)) return;
   runtime.autoReplyInFlight.add(messageId);
 
   try {
@@ -631,6 +653,23 @@ async function enqueueAIRequest(runtime: WhatsAppRuntime, message: any) {
 
     const chat = runtime.chats.get(jid);
     const senderName = chat?.name || message.pushName || phoneNumberFromJid(jid) || "صديق";
+    const downloadedMedia = isImageMessage
+      ? await (incomingMediaPromise || downloadIncomingMedia(runtime, message))
+      : null;
+    if (isImageMessage && !downloadedMedia) {
+      throw new Error("تعذر تنزيل الصورة لإرسالها إلى الذكاء الاصطناعي");
+    }
+
+    const incomingImages = downloadedMedia
+      ? [{
+        ...(await uploadWhatsAppAIIncomingImage(runtime.ownerId, {
+          fileName: downloadedMedia.fileName,
+          mimeType: downloadedMedia.mimeType,
+          buffer: downloadedMedia.buffer,
+        })),
+        caption: downloadedMedia.caption,
+      }]
+      : [];
     const queued = await enqueueWhatsAppAIRequest({
       ownerId: runtime.ownerId,
       messageId,
@@ -638,7 +677,9 @@ async function enqueueAIRequest(runtime: WhatsAppRuntime, message: any) {
       senderName,
       senderPhone: chat?.phoneNumber || phoneNumberFromJid(jid),
       timestamp: messageTimestamp(message),
-      request: incomingText,
+      request: incomingText || "أرسل صورة بدون نص",
+      messageType: isImageMessage ? "image" : "text",
+      incomingImages,
       conversation: getWhatsAppMessages(runtime.ownerId, jid).map((item) => ({
         fromMe: item.fromMe,
         text: item.text,
@@ -743,6 +784,8 @@ async function deliverReadyAIReplies(runtime: WhatsAppRuntime) {
           await sendAndRemember({ text: parsedResponse.text }, parsedResponse.text);
         }
         await markWhatsAppAIReplySent(runtime.ownerId, claimed.id);
+        const incomingImages = claimed.context?.incoming_images || [];
+        await Promise.all(incomingImages.map((image) => deleteWhatsAppAIIncomingImage(image.storage_path)));
         console.log(`[whatsapp-ai] response sent: ${claimed.id}`);
       } catch (error) {
         const message = error instanceof Error ? error.message : "تعذر إرسال رد الذكاء الاصطناعي";
@@ -968,8 +1011,15 @@ export async function startWhatsAppConnection(ownerId: string): Promise<WhatsApp
         nextSocket.ev.on("messages.upsert", ({ messages: incomingMessages, type }) => {
           for (const message of incomingMessages as any[]) {
             upsertMessage(runtime, message);
-            if (messageMedia(message)) void downloadIncomingMedia(runtime, message);
-            if (type === "notify") void enqueueAIRequest(runtime, message);
+            const descriptor = messageMedia(message);
+            const shouldSendImageToAI = type === "notify" && descriptor?.mediaType === "image";
+            if (shouldSendImageToAI) {
+              const incomingMediaPromise = downloadIncomingMedia(runtime, message);
+              void enqueueAIRequest(runtime, message, incomingMediaPromise);
+            } else {
+              if (descriptor) void downloadIncomingMedia(runtime, message);
+              if (type === "notify") void enqueueAIRequest(runtime, message);
+            }
           }
         });
         nextSocket.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
