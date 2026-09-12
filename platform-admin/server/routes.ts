@@ -79,6 +79,48 @@ function resetLoginRateLimit(ip: string) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+type FixedSalaryGroup = {
+  id: string;
+  girl_one_id: string;
+  girl_two_id: string;
+  girl_one_shift: number;
+  girl_two_shift: number;
+  shared_shift: number;
+  girl_one_salary: number | string;
+  girl_two_salary: number | string;
+  active: boolean;
+  created_at?: string;
+};
+
+type FixedShiftAssignment = {
+  groupId: string;
+  userId: string;
+  shiftNumber: number;
+  assignmentType: "primary" | "shared";
+  scheduledMinutes: 60 | 120;
+  startOffsetMinutes: number;
+  salary: number | string;
+};
+
+function fixedShiftAssignments(group: FixedSalaryGroup): FixedShiftAssignment[] {
+  return [
+    { groupId: group.id, userId: group.girl_one_id, shiftNumber: group.girl_one_shift, assignmentType: "primary", scheduledMinutes: 120, startOffsetMinutes: 0, salary: group.girl_one_salary },
+    { groupId: group.id, userId: group.girl_one_id, shiftNumber: group.shared_shift, assignmentType: "shared", scheduledMinutes: 60, startOffsetMinutes: 0, salary: group.girl_one_salary },
+    { groupId: group.id, userId: group.girl_two_id, shiftNumber: group.girl_two_shift, assignmentType: "primary", scheduledMinutes: 120, startOffsetMinutes: 0, salary: group.girl_two_salary },
+    { groupId: group.id, userId: group.girl_two_id, shiftNumber: group.shared_shift, assignmentType: "shared", scheduledMinutes: 60, startOffsetMinutes: 60, salary: group.girl_two_salary },
+  ];
+}
+
+function isValidDateString(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function getEgyptMinutesNow(): number {
+  const egyptMs = Date.now() + 2 * 3600000;
+  const egyptDate = new Date(egyptMs);
+  return egyptDate.getUTCHours() * 60 + egyptDate.getUTCMinutes();
+}
+
 function inlineContentDisposition(fileName: string | null): string {
   if (!fileName) return "inline";
 
@@ -948,6 +990,343 @@ export async function registerRoutes(
     }
   });
 
+  // مجموعات البنات ذوات الراتب الشهري الثابت
+  app.get("/api/fixed-salary/groups", authenticateToken, requireSuperAdmin, async (_req, res) => {
+    try {
+      const { data: groups, error } = await storage.supabase
+        .from('fixed_salary_groups')
+        .select('*')
+        .eq('active', true)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      const ids = [...new Set((groups || []).flatMap((group: FixedSalaryGroup) => [
+        group.girl_one_id,
+        group.girl_two_id,
+      ]))];
+      let users: any[] = [];
+      if (ids.length > 0) {
+        const { data: userData, error: usersError } = await storage.supabase
+          .from('users')
+          .select('id, full_name, username, role, platform_id, employment_status')
+          .in('id', ids);
+        if (usersError) throw usersError;
+        users = userData || [];
+      }
+
+      const usersById = new Map(users.map((user) => [user.id, user]));
+      res.json((groups || []).map((group: FixedSalaryGroup) => ({
+        ...group,
+        girl_one: usersById.get(group.girl_one_id) || null,
+        girl_two: usersById.get(group.girl_two_id) || null,
+      })));
+    } catch (error) {
+      console.error("Get fixed salary groups error:", error);
+      res.status(500).json({ message: "حدث خطأ أثناء جلب مجموعات الراتب الثابت" });
+    }
+  });
+
+  app.post("/api/fixed-salary/groups", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const {
+        girl_one_id,
+        girl_two_id,
+        girl_one_shift,
+        girl_two_shift,
+        shared_shift,
+        girl_one_salary,
+        girl_two_salary,
+      } = req.body;
+      const shiftValues = [girl_one_shift, girl_two_shift, shared_shift].map(Number);
+      const salaries = [girl_one_salary, girl_two_salary].map(Number);
+
+      if (!girl_one_id || !girl_two_id || girl_one_id === girl_two_id) {
+        return res.status(400).json({ message: "يجب اختيار بنتين مختلفتين" });
+      }
+      if (shiftValues.some((value) => !Number.isInteger(value) || value < 1 || value > 12) ||
+          new Set(shiftValues).size !== 3) {
+        return res.status(400).json({ message: "اختار 3 شيفتات مختلفة من الشيفتات الـ12" });
+      }
+      if (salaries.some((value) => !Number.isFinite(value) || value < 0)) {
+        return res.status(400).json({ message: "قيمة الراتب يجب أن تكون رقماً صحيحاً أو صفراً" });
+      }
+
+      const { data: existingGroups, error: existingError } = await storage.supabase
+        .from('fixed_salary_groups')
+        .select('id')
+        .eq('active', true)
+        .or(`and(girl_one_id.eq.${girl_one_id},girl_two_id.eq.${girl_two_id}),and(girl_one_id.eq.${girl_two_id},girl_two_id.eq.${girl_one_id})`);
+      if (existingError) throw existingError;
+      if ((existingGroups || []).length > 0) {
+        return res.status(400).json({ message: "هذه البنتان مسجلتان بالفعل في مجموعة راتب ثابت" });
+      }
+
+      const { data, error } = await storage.supabase
+        .from('fixed_salary_groups')
+        .insert({
+          girl_one_id,
+          girl_two_id,
+          girl_one_shift: shiftValues[0],
+          girl_two_shift: shiftValues[1],
+          shared_shift: shiftValues[2],
+          girl_one_salary: salaries[0],
+          girl_two_salary: salaries[1],
+          created_by: req.user!.userId,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      res.status(201).json({ message: "تم حفظ مجموعة الراتب الثابت", data });
+    } catch (error) {
+      console.error("Create fixed salary group error:", error);
+      res.status(500).json({ message: "حدث خطأ أثناء حفظ مجموعة الراتب الثابت" });
+    }
+  });
+
+  app.delete("/api/fixed-salary/groups/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { error } = await storage.supabase
+        .from('fixed_salary_groups')
+        .update({ active: false })
+        .eq('id', req.params.id);
+      if (error) throw error;
+      res.json({ message: "تم إلغاء مجموعة الراتب الثابت" });
+    } catch (error) {
+      console.error("Delete fixed salary group error:", error);
+      res.status(500).json({ message: "حدث خطأ أثناء إلغاء المجموعة" });
+    }
+  });
+
+  app.get("/api/fixed-salary/attendance", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const date = req.query.date;
+      if (!isValidDateString(date)) {
+        return res.status(400).json({ message: "التاريخ غير صحيح" });
+      }
+
+      const { data: groups, error: groupsError } = await storage.supabase
+        .from('fixed_salary_groups')
+        .select('*')
+        .eq('active', true);
+      if (groupsError) throw groupsError;
+
+      const activeGroups = (groups || []) as FixedSalaryGroup[];
+      if (activeGroups.length === 0) return res.json([]);
+
+      const groupIds = activeGroups.map((group) => group.id);
+      const userIds = [...new Set(activeGroups.flatMap((group) => [group.girl_one_id, group.girl_two_id]))];
+      const [{ data: records, error: recordsError }, { data: users, error: usersError }] = await Promise.all([
+        storage.supabase
+          .from('attendance')
+          .select('*')
+          .eq('date', date)
+          .in('fixed_salary_group_id', groupIds),
+        storage.supabase
+          .from('users')
+          .select('id, full_name, username, platform_id')
+          .in('id', userIds),
+      ]);
+      if (recordsError) throw recordsError;
+      if (usersError) throw usersError;
+
+      const usersById = new Map((users || []).map((user: any) => [user.id, user]));
+      const recordsByAssignment = new Map(
+        (records || []).map((record: any) => [
+          `${record.fixed_salary_group_id}:${record.user_id}:${record.shift_number}`,
+          record,
+        ]),
+      );
+
+      const result = activeGroups.flatMap((group) =>
+        fixedShiftAssignments(group).map((assignment) => {
+          const record = recordsByAssignment.get(
+            `${assignment.groupId}:${assignment.userId}:${assignment.shiftNumber}`,
+          );
+          return {
+            ...assignment,
+            id: `${assignment.groupId}:${assignment.userId}:${assignment.shiftNumber}`,
+            date,
+            user: usersById.get(assignment.userId) || null,
+            attendance_id: record?.id || null,
+            status: record?.status || 'unmarked',
+            check_in: record?.check_in || null,
+            check_out: record?.check_out || null,
+            late_minutes: record?.late_minutes || 0,
+            notes: record?.notes || null,
+          };
+        }),
+      );
+      res.json(result);
+    } catch (error) {
+      console.error("Get fixed salary attendance error:", error);
+      res.status(500).json({ message: "حدث خطأ أثناء جلب حضور الراتب الثابت" });
+    }
+  });
+
+  app.post("/api/fixed-salary/attendance", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const {
+        group_id,
+        user_id,
+        date,
+        shift_number,
+        status,
+        check_in,
+        check_out,
+        late_minutes,
+        notes,
+      } = req.body;
+      if (!group_id || !user_id || !isValidDateString(date)) {
+        return res.status(400).json({ message: "بيانات الحضور غير مكتملة" });
+      }
+      if (!['present', 'late', 'absent'].includes(status)) {
+        return res.status(400).json({ message: "حالة الحضور غير صحيحة" });
+      }
+
+      const { data: group, error: groupError } = await storage.supabase
+        .from('fixed_salary_groups')
+        .select('*')
+        .eq('id', group_id)
+        .eq('active', true)
+        .single();
+      if (groupError || !group) {
+        return res.status(404).json({ message: "مجموعة الراتب الثابت غير موجودة" });
+      }
+
+      const assignment = fixedShiftAssignments(group as FixedSalaryGroup).find(
+        (item) => item.userId === user_id && item.shiftNumber === Number(shift_number),
+      );
+      if (!assignment) {
+        return res.status(400).json({ message: "هذا الشيفت غير معيّن لهذه البنت" });
+      }
+
+      const parsedLateMinutes = Math.max(0, Number(late_minutes) || 0);
+      const values = {
+        user_id,
+        date,
+        shift_number: assignment.shiftNumber,
+        scheduled_minutes: assignment.scheduledMinutes,
+        fixed_salary_group_id: group_id,
+        status,
+        check_in: status === 'absent' ? null : (check_in || new Date().toISOString()),
+        check_out: status === 'absent' ? null : (check_out || null),
+        late_minutes: status === 'late' ? parsedLateMinutes : 0,
+        notes: notes || null,
+      };
+
+      const { data: existing, error: existingError } = await storage.supabase
+        .from('attendance')
+        .select('id')
+        .eq('user_id', user_id)
+        .eq('date', date)
+        .eq('shift_number', assignment.shiftNumber)
+        .eq('fixed_salary_group_id', group_id)
+        .limit(1);
+      if (existingError) throw existingError;
+
+      let data;
+      let error;
+      if (existing && existing.length > 0) {
+        ({ data, error } = await storage.supabase
+          .from('attendance')
+          .update(values)
+          .eq('id', existing[0].id)
+          .select()
+          .single());
+      } else {
+        ({ data, error } = await storage.supabase
+          .from('attendance')
+          .insert(values)
+          .select()
+          .single());
+      }
+      if (error) throw error;
+      res.json({ message: "تم حفظ حالة الحضور", data });
+    } catch (error) {
+      console.error("Save fixed salary attendance error:", error);
+      res.status(500).json({ message: "حدث خطأ أثناء حفظ حالة الحضور" });
+    }
+  });
+
+  app.get("/api/fixed-salary/summary", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const month = typeof req.query.month === 'string' ? req.query.month : '';
+      if (!/^\d{4}-\d{2}$/.test(month)) {
+        return res.status(400).json({ message: "الشهر غير صحيح" });
+      }
+
+      const startDate = `${month}-01`;
+      const monthEnd = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0));
+      const today = new Date();
+      const todayDate = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+      const endDate = monthEnd < todayDate
+        ? monthEnd.toISOString().slice(0, 10)
+        : todayDate.toISOString().slice(0, 10);
+      const dayCount = endDate < startDate ? 0 : Math.floor(
+        (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86400000,
+      ) + 1;
+
+      const { data: groups, error: groupsError } = await storage.supabase
+        .from('fixed_salary_groups')
+        .select('*')
+        .eq('active', true);
+      if (groupsError) throw groupsError;
+      const activeGroups = (groups || []) as FixedSalaryGroup[];
+      if (activeGroups.length === 0) return res.json([]);
+
+      const groupIds = activeGroups.map((group) => group.id);
+      const { data: records, error: recordsError } = await storage.supabase
+        .from('attendance')
+        .select('user_id, status, scheduled_minutes, late_minutes, fixed_salary_group_id')
+        .in('fixed_salary_group_id', groupIds)
+        .gte('date', startDate)
+        .lte('date', endDate);
+      if (recordsError) throw recordsError;
+
+      const userIds = [...new Set(activeGroups.flatMap((group) => [group.girl_one_id, group.girl_two_id]))];
+      const { data: users, error: usersError } = await storage.supabase
+        .from('users')
+        .select('id, full_name, username')
+        .in('id', userIds);
+      if (usersError) throw usersError;
+      const usersById = new Map((users || []).map((user: any) => [user.id, user]));
+
+      const result = activeGroups.flatMap((group) => {
+        const groupRecords = (records || []).filter((record: any) => record.fixed_salary_group_id === group.id);
+        return [
+          { userId: group.girl_one_id, salary: group.girl_one_salary },
+          { userId: group.girl_two_id, salary: group.girl_two_salary },
+        ].map(({ userId, salary }) => {
+          const userRecords = groupRecords.filter((record: any) => record.user_id === userId);
+          const expected = dayCount * 2;
+          const present = userRecords.filter((record: any) => record.status === 'present').length;
+          const late = userRecords.filter((record: any) => record.status === 'late').length;
+          const absent = userRecords.filter((record: any) => record.status === 'absent').length;
+          const workedMinutes = userRecords
+            .filter((record: any) => record.status === 'present' || record.status === 'late')
+            .reduce((sum: number, record: any) => sum + Number(record.scheduled_minutes || 0), 0);
+          return {
+            group_id: group.id,
+            user_id: userId,
+            user: usersById.get(userId) || null,
+            salary,
+            expected_assignments: expected,
+            recorded_assignments: userRecords.length,
+            present,
+            late,
+            absent,
+            unmarked: Math.max(0, expected - userRecords.length),
+            worked_minutes: workedMinutes,
+          };
+        });
+      });
+      res.json(result);
+    } catch (error) {
+      console.error("Get fixed salary summary error:", error);
+      res.status(500).json({ message: "حدث خطأ أثناء جلب ملخص الراتب الثابت" });
+    }
+  });
+
   // مشرفو شيفت معيّن — متاح لكل الأدمنز (بدون super_admin)
   // يقبل ?shift_number=N للحصول على مشرفي شيفت محدد
   app.get("/api/shifts/colleagues", authenticateToken, async (req, res) => {
@@ -1081,7 +1460,7 @@ export async function registerRoutes(
       if (currentUserRole === 'super_admin') {
         const { data, error } = await storage.supabase
           .from('attendance')
-          .insert({ user_id, check_in, date, status })
+          .insert({ user_id, check_in: check_in || null, date, status })
           .select()
           .single();
         if (error) throw error;
@@ -1094,40 +1473,79 @@ export async function registerRoutes(
       }
 
       // التحقق من نافذة الوقت: دقيقتين قبل بداية الشيفت وحتى نهايته
-      const egyptMs = Date.now() + 2 * 3600000; // مصر = UTC+2
-      const egyptDate = new Date(egyptMs);
-      const nowMinutes = egyptDate.getUTCHours() * 60 + egyptDate.getUTCMinutes();
-
-      const { data: myShifts, error: shiftErr } = await storage.supabase
-        .from('shifts')
-        .select('shift_number')
-        .eq('user_id', user_id);
+      const [{ data: myShifts, error: shiftErr }, { data: fixedGroups, error: fixedError }] = await Promise.all([
+        storage.supabase.from('shifts').select('shift_number').eq('user_id', user_id),
+        storage.supabase.from('fixed_salary_groups').select('*').eq('active', true)
+          .or(`girl_one_id.eq.${user_id},girl_two_id.eq.${user_id}`),
+      ]);
       if (shiftErr) throw shiftErr;
+      if (fixedError) throw fixedError;
 
-      if (!myShifts || myShifts.length === 0) {
+      const assignments = [
+        ...(myShifts || []).map((shift: any) => ({
+          shiftNumber: shift.shift_number,
+          groupId: null as string | null,
+          scheduledMinutes: 120,
+          startOffsetMinutes: 0,
+        })),
+        ...((fixedGroups || []) as FixedSalaryGroup[]).flatMap((group) =>
+          fixedShiftAssignments(group)
+            .filter((assignment) => assignment.userId === user_id)
+            .map((assignment) => ({
+              shiftNumber: assignment.shiftNumber,
+              groupId: assignment.groupId,
+              scheduledMinutes: assignment.scheduledMinutes,
+              startOffsetMinutes: assignment.startOffsetMinutes,
+            })),
+        ),
+      ];
+
+      if (assignments.length === 0) {
         return res.status(403).json({ message: "لا يوجد شيفت معيّن لك" });
       }
 
-      // كل شيفت مدته ساعتان (120 دقيقة) — الشيفت N يبدأ عند (N-1)*120 دقيقة من منتصف الليل
-      const isInWindow = myShifts.some((s: any) => {
-        const shiftStart = (s.shift_number - 1) * 120;
-        const shiftEnd   = s.shift_number * 120;
+      const nowMinutes = getEgyptMinutesNow();
+      const currentAssignment = assignments.find((assignment) => {
+        const shiftStart = (assignment.shiftNumber - 1) * 120 + assignment.startOffsetMinutes;
+        const shiftEnd = shiftStart + assignment.scheduledMinutes;
         return nowMinutes >= shiftStart - 2 && nowMinutes < shiftEnd;
       });
 
-      if (!isInWindow) {
+      if (!currentAssignment) {
         // احسب متى يبدأ أقرب شيفت
-        const nextAllowed = myShifts.map((s: any) => (s.shift_number - 1) * 120 - 2)
-          .find((t: number) => t > nowMinutes);
+        const nextAllowed = assignments
+          .map((assignment) => (assignment.shiftNumber - 1) * 120 + assignment.startOffsetMinutes - 2)
+          .filter((start) => start > nowMinutes)
+          .sort((a, b) => a - b)[0];
         const msg = nextAllowed != null
           ? `لا يمكن تسجيل الحضور الآن. يمكنك التسجيل من الساعة ${Math.floor(nextAllowed / 60)}:${String(nextAllowed % 60).padStart(2, '0')} (قبل دقيقتين من شيفتك)`
           : "لا يمكن تسجيل الحضور خارج نطاق وقت شيفتك";
         return res.status(403).json({ message: msg });
       }
 
+      const { data: existing, error: existingError } = await storage.supabase
+        .from('attendance')
+        .select('id')
+        .eq('user_id', user_id)
+        .eq('date', date)
+        .eq('shift_number', currentAssignment.shiftNumber)
+        .eq('fixed_salary_group_id', currentAssignment.groupId);
+      if (existingError) throw existingError;
+      if (existing && existing.length > 0) {
+        return res.status(400).json({ message: "تم تسجيل حضورك لهذا الشيفت بالفعل" });
+      }
+
       const { data, error } = await storage.supabase
         .from('attendance')
-        .insert({ user_id, check_in, date, status })
+        .insert({
+          user_id,
+          check_in,
+          date,
+          status,
+          shift_number: currentAssignment.shiftNumber,
+          scheduled_minutes: currentAssignment.scheduledMinutes,
+          fixed_salary_group_id: currentAssignment.groupId,
+        })
         .select()
         .single();
       if (error) throw error;
@@ -1315,13 +1733,28 @@ export async function registerRoutes(
   // Own shifts only
   app.get("/api/me/shifts", authenticateToken, async (req, res) => {
     try {
-      const { data, error } = await storage.supabase
-        .from('shifts')
-        .select('*')
-        .eq('user_id', req.user!.userId)
-        .order('shift_number', { ascending: true });
-      if (error) throw error;
-      res.json(data || []);
+      const userId = req.user!.userId;
+      const [{ data: regularShifts, error: shiftsError }, { data: fixedGroups, error: fixedError }] = await Promise.all([
+        storage.supabase.from('shifts').select('*').eq('user_id', userId).order('shift_number', { ascending: true }),
+        storage.supabase.from('fixed_salary_groups').select('*').eq('active', true)
+          .or(`girl_one_id.eq.${userId},girl_two_id.eq.${userId}`),
+      ]);
+      if (shiftsError) throw shiftsError;
+      if (fixedError) throw fixedError;
+
+      const fixedAssignments = ((fixedGroups || []) as FixedSalaryGroup[]).flatMap((group) =>
+        fixedShiftAssignments(group)
+          .filter((assignment) => assignment.userId === userId)
+          .map((assignment) => ({
+            id: `${assignment.groupId}:${assignment.userId}:${assignment.shiftNumber}`,
+            user_id: userId,
+            shift_number: assignment.shiftNumber,
+            scheduled_minutes: assignment.scheduledMinutes,
+            assignment_type: assignment.assignmentType,
+            fixed_salary_group_id: assignment.groupId,
+          })),
+      );
+      res.json([...(regularShifts || []), ...fixedAssignments].sort((a: any, b: any) => a.shift_number - b.shift_number));
     } catch (error) {
       console.error("Get my shifts error:", error);
       res.status(500).json({ message: "حدث خطأ" });

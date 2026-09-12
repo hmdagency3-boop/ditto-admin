@@ -65,7 +65,7 @@ interface NextShiftUser {
 interface Attendance {
   id: string;
   user_id: string;
-  check_in: string;
+  check_in?: string;
   check_out?: string;
   date: string;
   status: string;
@@ -311,7 +311,9 @@ export default function AdminDashboard() {
 
       setTodayAttendance(data.data);
       
-      const hoursWorked = differenceInMinutes(now, new Date(todayAttendance.check_in)) / 60;
+      const hoursWorked = todayAttendance.check_in
+        ? differenceInMinutes(now, new Date(todayAttendance.check_in)) / 60
+        : 0;
       toast({
         title: 'تم تسجيل الانصراف',
         description: `تم تسجيل انصرافك في ${format(now, 'hh:mm a', { locale: ar })} - عملت ${hoursWorked.toFixed(1)} ساعات`,
@@ -366,7 +368,9 @@ export default function AdminDashboard() {
           </CardTitle>
           <CardDescription>
             {todayAttendance 
-              ? `سجلت حضورك اليوم في ${format(new Date(todayAttendance.check_in), 'hh:mm a', { locale: ar })}`
+              ? todayAttendance.check_in
+                ? `سجلت حضورك اليوم في ${format(new Date(todayAttendance.check_in), 'hh:mm a', { locale: ar })}`
+                : 'تم تسجيل غيابك اليوم'
               : 'لم تسجل حضورك اليوم بعد'
             }
           </CardDescription>
@@ -394,6 +398,11 @@ export default function AdminDashboard() {
                   <p className="text-sm text-muted-foreground">⛔ انتهى وقت شيفتك اليوم</p>
                 )}
               </>
+            ) : todayAttendance.status === 'absent' ? (
+              <div className="flex items-center gap-2 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+                <span className="font-medium">تم تسجيل غيابك اليوم</span>
+              </div>
             ) : !todayAttendance.check_out ? (
               <Button 
                 size="lg" 
@@ -411,7 +420,7 @@ export default function AdminDashboard() {
                 <CheckCircle2 className="h-5 w-5" />
                 <span className="font-medium">انتهت ورديتك اليوم</span>
                 <span className="text-muted-foreground">
-                  ({format(new Date(todayAttendance.check_in), 'hh:mm a', { locale: ar })} - {format(new Date(todayAttendance.check_out), 'hh:mm a', { locale: ar })})
+                  ({todayAttendance.check_in ? format(new Date(todayAttendance.check_in), 'hh:mm a', { locale: ar }) : '—'} - {format(new Date(todayAttendance.check_out), 'hh:mm a', { locale: ar })})
                 </span>
               </div>
             )}

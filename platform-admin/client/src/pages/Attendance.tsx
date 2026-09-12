@@ -7,7 +7,9 @@ import {
   Download,
   UserCheck,
   UserX,
-  AlertCircle
+  AlertCircle,
+  WalletCards,
+  Save
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,7 +37,7 @@ interface UserInfo {
 interface AttendanceRecord {
   id: string;
   user_id: string;
-  check_in: string;
+  check_in?: string;
   check_out?: string;
   date: string;
   status: 'present' | 'late' | 'absent';
@@ -44,17 +46,55 @@ interface AttendanceRecord {
   user?: UserInfo;
 }
 
+interface FixedAttendanceRecord {
+  id: string;
+  groupId: string;
+  userId: string;
+  shiftNumber: number;
+  assignmentType: 'primary' | 'shared';
+  scheduledMinutes: number;
+  date: string;
+  status: 'present' | 'late' | 'absent' | 'unmarked';
+  check_in?: string | null;
+  late_minutes: number;
+  user?: UserInfo;
+}
+
+interface FixedSummaryRecord {
+  group_id: string;
+  user_id: string;
+  salary: number | string;
+  expected_assignments: number;
+  recorded_assignments: number;
+  present: number;
+  late: number;
+  absent: number;
+  unmarked: number;
+  worked_minutes: number;
+  user?: UserInfo;
+}
+
 export default function AttendancePage() {
-  const { token } = useAuth();
+  const { token, isSuperAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'all'>('today');
   const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'late' | 'absent'>('all');
+  const [fixedDate, setFixedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [fixedAttendance, setFixedAttendance] = useState<FixedAttendanceRecord[]>([]);
+  const [fixedSummary, setFixedSummary] = useState<FixedSummaryRecord[]>([]);
+  const [fixedLoading, setFixedLoading] = useState(false);
+  const [fixedSavingId, setFixedSavingId] = useState<string | null>(null);
+  const [fixedLateMinutes, setFixedLateMinutes] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (token) fetchAttendance();
   }, [dateFilter, token]);
+
+  useEffect(() => {
+    if (token && isSuperAdmin) fetchFixedSalaryAttendance();
+  }, [token, isSuperAdmin, fixedDate]);
 
   async function fetchAttendance() {
     if (!token) return;
@@ -106,6 +146,66 @@ export default function AttendancePage() {
     }
   }
 
+  async function fetchFixedSalaryAttendance() {
+    if (!token) return;
+    setFixedLoading(true);
+    try {
+      const month = fixedDate.slice(0, 7);
+      const [attendanceRes, summaryRes] = await Promise.all([
+        fetch(`/api/fixed-salary/attendance?date=${fixedDate}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        }),
+        fetch(`/api/fixed-salary/summary?month=${month}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        }),
+      ]);
+      if (!attendanceRes.ok || !summaryRes.ok) throw new Error();
+      const attendanceData: FixedAttendanceRecord[] = await attendanceRes.json();
+      const summaryData: FixedSummaryRecord[] = await summaryRes.json();
+      setFixedAttendance(attendanceData);
+      setFixedSummary(summaryData);
+      setFixedLateMinutes(Object.fromEntries(
+        attendanceData.map((record) => [record.id, String(record.late_minutes || '')]),
+      ));
+    } catch (error) {
+      console.error('Error fetching fixed salary attendance:', error);
+      setFixedAttendance([]);
+      setFixedSummary([]);
+    } finally {
+      setFixedLoading(false);
+    }
+  }
+
+  async function saveFixedAttendance(record: FixedAttendanceRecord) {
+    if (!token || record.status === 'unmarked') return;
+    setFixedSavingId(record.id);
+    try {
+      const res = await fetch('/api/fixed-salary/attendance', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          group_id: record.groupId,
+          user_id: record.userId,
+          date: fixedDate,
+          shift_number: record.shiftNumber,
+          status: record.status,
+          late_minutes: Number(fixedLateMinutes[record.id] || 0),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      toast({ title: 'تم الحفظ', description: 'تم تسجيل حالة الحضور للشيفت' });
+      fetchFixedSalaryAttendance();
+    } catch (error: any) {
+      toast({ title: 'خطأ', description: error.message || 'حدث خطأ أثناء حفظ الحضور', variant: 'destructive' });
+    } finally {
+      setFixedSavingId(null);
+    }
+  }
+
   function exportCSV() {
     const headers = ['الاسم', 'اسم المستخدم', 'التاريخ', 'وقت الدخول', 'وقت الخروج', 'الساعات', 'الحالة'];
     const statusMap: Record<string, string> = { present: 'حاضر', late: 'متأخر', absent: 'غائب' };
@@ -151,8 +251,8 @@ export default function AttendancePage() {
       .toUpperCase();
   };
 
-  const calculateHours = (checkIn: string, checkOut?: string) => {
-    if (!checkOut) return '-';
+  const calculateHours = (checkIn?: string, checkOut?: string) => {
+    if (!checkIn || !checkOut) return '-';
     const diff = new Date(checkOut).getTime() - new Date(checkIn).getTime();
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -195,6 +295,104 @@ export default function AttendancePage() {
           تصدير CSV
         </Button>
       </div>
+
+      {isSuperAdmin && (fixedLoading || fixedAttendance.length > 0 || fixedSummary.length > 0) && (
+        <Card className="border-amber-200 bg-amber-50/40 dark:border-amber-900/50 dark:bg-amber-950/10">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <WalletCards className="h-5 w-5 text-amber-600" />
+                  حضور شيفتات الراتب الثابت
+                </CardTitle>
+                <CardDescription>
+                  سجّل حضور أو غياب كل بنت لكل شيفت، والشيفت المشترك ساعة لكل واحدة
+                </CardDescription>
+              </div>
+              <Input
+                type="date"
+                value={fixedDate}
+                onChange={(event) => setFixedDate(event.target.value)}
+                className="w-44"
+              />
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {fixedLoading ? (
+              <Skeleton className="h-32 w-full" />
+            ) : (
+              <>
+                {fixedSummary.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {fixedSummary.map((summary) => (
+                      <div key={`${summary.group_id}:${summary.user_id}`} className="rounded-lg border bg-background p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold">{summary.user?.full_name || 'غير معروف'}</span>
+                          <Badge variant="outline">{Number(summary.salary).toLocaleString('ar-EG')} شهرياً</Badge>
+                        </div>
+                        <div className="grid grid-cols-4 gap-2 mt-3 text-center text-xs">
+                          <div><p className="text-lg font-bold text-green-600">{summary.present}</p><p className="text-muted-foreground">حضور</p></div>
+                          <div><p className="text-lg font-bold text-yellow-600">{summary.late}</p><p className="text-muted-foreground">تأخير</p></div>
+                          <div><p className="text-lg font-bold text-red-600">{summary.absent}</p><p className="text-muted-foreground">غياب</p></div>
+                          <div><p className="text-lg font-bold text-muted-foreground">{summary.unmarked}</p><p className="text-muted-foreground">لم يُحدد</p></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {fixedAttendance.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">لا توجد مجموعة راتب ثابت مضافة حالياً.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {fixedAttendance.map((record) => (
+                      <div key={record.id} className="flex items-center gap-3 flex-wrap rounded-lg border bg-background p-3">
+                        <div className="min-w-[170px] flex-1">
+                          <p className="font-medium">{record.user?.full_name || 'غير معروف'}</p>
+                          <p className="text-xs text-muted-foreground">
+                            شيفت #{record.shiftNumber} · {record.assignmentType === 'shared' ? 'ساعة مشتركة' : 'شيفت كامل'} · {record.scheduledMinutes} دقيقة
+                          </p>
+                        </div>
+                        <Select
+                          value={record.status}
+                          onValueChange={(status: FixedAttendanceRecord['status']) => {
+                            setFixedAttendance((items) => items.map((item) => item.id === record.id ? { ...item, status } : item));
+                          }}
+                        >
+                          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="unmarked">لم يُحدد</SelectItem>
+                            <SelectItem value="present">حاضر</SelectItem>
+                            <SelectItem value="late">متأخر</SelectItem>
+                            <SelectItem value="absent">غائب</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          type="number"
+                          min="0"
+                          placeholder="دقائق التأخير"
+                          value={fixedLateMinutes[record.id] || ''}
+                          onChange={(event) => setFixedLateMinutes((values) => ({ ...values, [record.id]: event.target.value }))}
+                          className="w-32"
+                          disabled={record.status !== 'late'}
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => saveFixedAttendance(record)}
+                          disabled={record.status === 'unmarked' || fixedSavingId === record.id}
+                        >
+                          <Save className="h-4 w-4 ml-1" />
+                          {fixedSavingId === record.id ? 'جاري الحفظ...' : 'حفظ'}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="stats-grid-4">
         <Card>
@@ -347,7 +545,7 @@ export default function AttendancePage() {
                           </div>
                         </TableCell>
                         <TableCell className="font-mono text-sm">
-                          {format(new Date(record.check_in), 'hh:mm a', { locale: ar })}
+                          {record.check_in ? format(new Date(record.check_in), 'hh:mm a', { locale: ar }) : '—'}
                         </TableCell>
                         <TableCell className="font-mono text-sm">
                           {record.check_out 
@@ -416,7 +614,7 @@ export default function AttendancePage() {
                       </div>
                       <div>
                         <span className="font-medium text-foreground">الحضور: </span>
-                        <span className="font-mono">{format(new Date(record.check_in), 'hh:mm a', { locale: ar })}</span>
+                        <span className="font-mono">{record.check_in ? format(new Date(record.check_in), 'hh:mm a', { locale: ar }) : '—'}</span>
                       </div>
                       <div>
                         <span className="font-medium text-foreground">الانصراف: </span>

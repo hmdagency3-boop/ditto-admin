@@ -20,7 +20,7 @@ import { ar } from 'date-fns/locale';
 interface Attendance {
   id: string;
   user_id: string;
-  check_in: string;
+  check_in?: string;
   check_out?: string;
   date: string;
   status: string;
@@ -83,8 +83,8 @@ export default function MyAttendance() {
     ? Math.round((stats.present / stats.total) * 100) 
     : 0;
 
-  const calculateHours = (checkIn: string, checkOut?: string) => {
-    if (!checkOut) return '-';
+  const calculateHours = (checkIn?: string, checkOut?: string) => {
+    if (!checkIn || !checkOut) return '-';
     const diff = new Date(checkOut).getTime() - new Date(checkIn).getTime();
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -229,7 +229,7 @@ export default function MyAttendance() {
                           {format(new Date(record.date), 'EEEE', { locale: ar })}
                         </TableCell>
                         <TableCell className="font-mono text-sm">
-                          {format(new Date(record.check_in), 'hh:mm a', { locale: ar })}
+                          {record.check_in ? format(new Date(record.check_in), 'hh:mm a', { locale: ar }) : '—'}
                         </TableCell>
                         <TableCell className="font-mono text-sm">
                           {record.check_out 
@@ -278,7 +278,7 @@ export default function MyAttendance() {
                     <div className="grid grid-cols-3 gap-2 text-xs">
                       <div>
                         <div className="text-muted-foreground">الحضور</div>
-                        <div className="font-mono font-medium">{format(new Date(record.check_in), 'hh:mm a', { locale: ar })}</div>
+                        <div className="font-mono font-medium">{record.check_in ? format(new Date(record.check_in), 'hh:mm a', { locale: ar }) : '—'}</div>
                       </div>
                       <div>
                         <div className="text-muted-foreground">الانصراف</div>
