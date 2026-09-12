@@ -466,7 +466,7 @@ router.get("/session", async (_req, res) => {
 
 // ── POST /api/ditto/session/inject ───────────────────────────────────────────
 router.post("/session/inject", async (req, res) => {
-  const { ticket, access_token, uid, netEaseToken, nimAppKey } = req.body ?? {};
+  const { ticket, access_token, uid, deviceId, netEaseToken, nimAppKey } = req.body ?? {};
   if (!ticket || typeof ticket !== "string") { res.status(400).json({ ok: false, error: "ticket required" }); return; }
   if (!access_token || typeof access_token !== "string") { res.status(400).json({ ok: false, error: "access_token required" }); return; }
   if (!uid) { res.status(400).json({ ok: false, error: "uid required" }); return; }
@@ -478,6 +478,7 @@ router.post("/session/inject", async (req, res) => {
     session.uid = String(uid);
     session.ticket_saved_at = now;
     session.access_token_saved_at = now;
+    if (typeof deviceId === "string" && deviceId.trim()) session.deviceId = deviceId.trim();
     if (typeof netEaseToken === "string" && netEaseToken.trim()) session.netEaseToken = netEaseToken.trim();
     if (typeof nimAppKey === "string" && nimAppKey.trim()) session.nimAppKey = nimAppKey.trim();
     await saveDittoSession(session);
