@@ -478,7 +478,7 @@ export async function registerRoutes(
 
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { username, password, full_name, device_fingerprint } = req.body;
+      const { username, password, full_name, phone, platform_id, device_fingerprint } = req.body;
       const ip_address = req.headers['x-forwarded-for']?.toString().split(',')[0] || req.socket.remoteAddress || 'unknown';
 
       if (!username || !password || !full_name) {
@@ -502,6 +502,8 @@ export async function registerRoutes(
         username,
         password,
         full_name,
+        phone: phone || null,
+        platform_id: platform_id || null,
         device_fingerprint: device_fingerprint || null,
         ip_address: ip_address,
       });
@@ -512,6 +514,8 @@ export async function registerRoutes(
           id: user.id,
           username: user.username,
           full_name: user.full_name,
+          phone: user.phone || null,
+          platform_id: user.platform_id || null,
           status: user.status,
         },
       });

@@ -157,6 +157,8 @@ export class SupabaseStorage implements IStorage {
     name?: string | null;
     device_fingerprint?: string | null;
     ip_address?: string | null;
+    phone?: string | null;
+    platform_id?: string | null;
   }): Promise<User> {
     const id = randomUUID();
     const hashedPassword = await bcrypt.hash(insertUser.password, 10);
@@ -167,6 +169,8 @@ export class SupabaseStorage implements IStorage {
       password: hashedPassword,
       full_name: insertUser.full_name,
       name: insertUser.username,
+      phone: insertUser.phone || null,
+      platform_id: insertUser.platform_id || null,
       role: "admin",
       status: "pending",
     };

@@ -38,8 +38,9 @@ import { ar } from 'date-fns/locale';
 const addAdminSchema = z.object({
   username: z.string().min(3, 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل'),
   password: z.string().min(6, 'كلمة المرور يجب أن تكون 6 أحرف على الأقل'),
-  fullName: z.string().min(2, 'الاسم يجب أن يكون حرفين على الأقل'),
+  full_name: z.string().min(2, 'الاسم يجب أن يكون حرفين على الأقل'),
   phone: z.string().optional(),
+  platform_id: z.string().optional(),
 });
 
 const editAdminSchema = z.object({
@@ -83,7 +84,7 @@ export default function Admins() {
 
   const form = useForm<AddAdminFormData>({
     resolver: zodResolver(addAdminSchema),
-    defaultValues: { username: '', password: '', fullName: '', phone: '' },
+    defaultValues: { username: '', password: '', full_name: '', phone: '', platform_id: '' },
   });
 
   const editForm = useForm<EditAdminFormData>({
@@ -131,8 +132,9 @@ export default function Admins() {
         body: JSON.stringify({
           username: data.username,
           password: data.password,
-          full_name: data.fullName,
+          full_name: data.full_name,
           phone: data.phone || null,
+          platform_id: data.platform_id || null,
         }),
       });
       const result = await response.json();
@@ -289,7 +291,7 @@ export default function Admins() {
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField control={form.control} name="fullName" render={({ field }) => (
+                <FormField control={form.control} name="full_name" render={({ field }) => (
                   <FormItem>
                     <FormLabel>الاسم الكامل</FormLabel>
                     <FormControl><Input placeholder="أحمد محمد" data-testid="input-admin-name" {...field} /></FormControl>
@@ -303,17 +305,27 @@ export default function Admins() {
                     <FormMessage />
                   </FormItem>
                 )} />
-                <FormField control={form.control} name="password" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>كلمة المرور</FormLabel>
-                    <FormControl><Input type="password" placeholder="••••••••" data-testid="input-admin-password" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
                 <FormField control={form.control} name="phone" render={({ field }) => (
                   <FormItem>
                     <FormLabel>رقم الهاتف (اختياري)</FormLabel>
                     <FormControl><Input placeholder="+966 5xxxxxxxx" data-testid="input-admin-phone" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="platform_id" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-1">
+                      <Link className="h-3.5 w-3.5" />
+                      ID المنصة (sayyouditto)
+                    </FormLabel>
+                    <FormControl><Input placeholder="مثال: 123456" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="password" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>كلمة المرور</FormLabel>
+                    <FormControl><Input type="password" placeholder="••••••••" data-testid="input-admin-password" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
