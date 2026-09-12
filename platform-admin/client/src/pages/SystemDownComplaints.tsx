@@ -115,7 +115,12 @@ export default function SystemDownComplaints() {
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message || 'تعذر تحميل شكاوى النزول');
-      setComplaints(body);
+      const items = Array.isArray(body)
+        ? body
+        : Array.isArray(body?.data)
+          ? body.data
+          : [];
+      setComplaints(items);
     } catch (error: any) {
       toast({ title: 'خطأ', description: error.message || 'تعذر تحميل شكاوى النزول', variant: 'destructive' });
     } finally {
@@ -217,7 +222,7 @@ export default function SystemDownComplaints() {
       item.host_phone,
       item.complaint_type,
       item.down_reason,
-    ].some(value => value.toLowerCase().includes(query)));
+    ].some(value => String(value ?? '').toLowerCase().includes(query)));
   }, [complaints, search]);
 
   if (loading) {
