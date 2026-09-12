@@ -89,10 +89,21 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider style={style as React.CSSProperties}>
-      <div className="flex min-h-screen w-full" dir={dir}>
+      <div
+        className="flex min-h-screen w-full"
+        dir={dir}
+        onDragStart={(event) => {
+          const target = event.target as HTMLElement;
+          // Keep normal text selection/copying responsive instead of letting
+          // the browser start a full-page drag operation.
+          if (!target.closest('input, textarea, [contenteditable="true"], [data-allow-drag]')) {
+            event.preventDefault();
+          }
+        }}
+      >
         <AppSidebar />
         <SidebarInset className="flex flex-col flex-1 min-h-0">
-          <header className="sticky top-0 z-50 flex items-center justify-between gap-2 p-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          <header className="sticky top-0 z-50 flex items-center justify-between gap-2 p-3 border-b bg-background">
             <SidebarTrigger />
             <ThemeToggle />
           </header>
