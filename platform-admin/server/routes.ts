@@ -24,9 +24,9 @@ import {
   saveWhatsAppAISettings,
 } from "./whatsappAiService";
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET;
 if (!JWT_SECRET) {
-  throw new Error("[SECURITY] JWT_SECRET environment variable is required but not set. Set it in Replit Secrets.");
+  throw new Error("[SECURITY] JWT_SECRET or SESSION_SECRET environment variable is required but not set. Set it in Replit Secrets.");
 }
 
 interface JWTPayload {
