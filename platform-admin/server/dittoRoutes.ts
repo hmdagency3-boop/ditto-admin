@@ -3,23 +3,20 @@
  * Merged from Open-Environment project
  */
 import { Router } from "express";
-import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 import { request as httpsRequest } from "https";
 import { gunzipSync } from "zlib";
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, unlinkSync, existsSync } from "fs";
 import { resolve } from "path";
 import { storage } from "./storage";
 
 const router = Router();
 
 const SESSION_FILE = resolve(process.cwd(), "ditto_session.json");
+const DITTO_SESSION_TABLE = "ditto_sessions";
+const DITTO_SESSION_NAME = "default";
 const KEY = Buffer.from("a38e5f04f39b11ed", "ascii");
 const IV  = Buffer.from("884e00163e02b26e", "ascii");
-
-// Ensure session file exists
-if (!existsSync(SESSION_FILE)) {
-  writeFileSync(SESSION_FILE, JSON.stringify({}), "utf8");
-}
 
 // ── Crypto ────────────────────────────────────────────────────────────────────
 function encrypt(plain: string): string {
@@ -35,9 +32,151 @@ function decrypt(b64: string): string {
 }
 
 // ── Session ───────────────────────────────────────────────────────────────────
-function loadSession(): Record<string, string> {
-  try { return JSON.parse(readFileSync(SESSION_FILE, "utf8")); }
-  catch { return {}; }
+type DittoSession = {
+  uid?: string;
+  access_token?: string;
+  ticket?: string;
+  ticket_saved_at?: number;
+  access_token_saved_at?: number;
+  netEaseToken?: string;
+  deviceId?: string;
+  nimAppKey?: string;
+};
+
+type DittoSessionRow = {
+  session_name: string;
+  uid: string | null;
+  access_token_enc: string | null;
+  ticket_enc: string | null;
+  ticket_saved_at: string | number | null;
+  access_token_saved_at: string | number | null;
+  net_ease_token_enc: string | null;
+  device_id_enc: string | null;
+  nim_app_key_enc: string | null;
+};
+
+const dittoSessionColumns = [
+  "session_name",
+  "uid",
+  "access_token_enc",
+  "ticket_enc",
+  "ticket_saved_at",
+  "access_token_saved_at",
+  "net_ease_token_enc",
+  "device_id_enc",
+  "nim_app_key_enc",
+].join(", ");
+
+function sessionEncryptionKey() {
+  const secret = process.env.SESSION_SECRET || process.env.JWT_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET or JWT_SECRET is required to protect Ditto session credentials");
+  return createHash("sha256").update(`ditto-session:${secret}`).digest();
+}
+
+function encryptSessionSecret(value: string) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", sessionEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return [iv, cipher.getAuthTag(), encrypted].map(part => part.toString("base64")).join(".");
+}
+
+function decryptSessionSecret(value: string) {
+  const [ivValue, tagValue, encryptedValue] = value.split(".");
+  if (!ivValue || !tagValue || !encryptedValue) throw new Error("Invalid encrypted Ditto session credential");
+  const decipher = createDecipheriv("aes-256-gcm", sessionEncryptionKey(), Buffer.from(ivValue, "base64"));
+  decipher.setAuthTag(Buffer.from(tagValue, "base64"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(encryptedValue, "base64")),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
+function encryptOptional(value?: string) {
+  return value?.trim() ? encryptSessionSecret(value.trim()) : null;
+}
+
+function decryptOptional(value: string | null) {
+  return value ? decryptSessionSecret(value) : undefined;
+}
+
+function sessionFromRow(row: DittoSessionRow): DittoSession {
+  return {
+    uid: row.uid || undefined,
+    access_token: decryptOptional(row.access_token_enc),
+    ticket: decryptOptional(row.ticket_enc),
+    ticket_saved_at: row.ticket_saved_at ? Number(row.ticket_saved_at) : undefined,
+    access_token_saved_at: row.access_token_saved_at ? Number(row.access_token_saved_at) : undefined,
+    netEaseToken: decryptOptional(row.net_ease_token_enc),
+    deviceId: decryptOptional(row.device_id_enc),
+    nimAppKey: decryptOptional(row.nim_app_key_enc),
+  };
+}
+
+async function readDittoSessionFromDatabase() {
+  const { data, error } = await storage.supabase
+    .from(DITTO_SESSION_TABLE)
+    .select(dittoSessionColumns)
+    .eq("session_name", DITTO_SESSION_NAME)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === "42P01") return { row: null, tableMissing: true };
+    throw new Error(`تعذر قراءة جلسة Ditto من قاعدة البيانات: ${error.message}`);
+  }
+  return { row: data as DittoSessionRow | null, tableMissing: false };
+}
+
+async function saveDittoSession(session: DittoSession) {
+  const { error } = await storage.supabase
+    .from(DITTO_SESSION_TABLE)
+    .upsert({
+      session_name: DITTO_SESSION_NAME,
+      uid: session.uid || null,
+      access_token_enc: encryptOptional(session.access_token),
+      ticket_enc: encryptOptional(session.ticket),
+      ticket_saved_at: session.ticket_saved_at || null,
+      access_token_saved_at: session.access_token_saved_at || null,
+      net_ease_token_enc: encryptOptional(session.netEaseToken),
+      device_id_enc: encryptOptional(session.deviceId),
+      nim_app_key_enc: encryptOptional(session.nimAppKey),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "session_name" });
+
+  if (error) {
+    if (error.code === "42P01") {
+      throw new Error("جدول جلسة Ditto غير موجود. شغّل migration رقم 29 في Supabase.");
+    }
+    throw new Error(`تعذر حفظ جلسة Ditto في قاعدة البيانات: ${error.message}`);
+  }
+}
+
+function readLegacyDittoSession(): DittoSession | null {
+  if (!existsSync(SESSION_FILE)) return null;
+  try {
+    return JSON.parse(readFileSync(SESSION_FILE, "utf8")) as DittoSession;
+  } catch {
+    return null;
+  }
+}
+
+async function loadSession(): Promise<DittoSession> {
+  const stored = await readDittoSessionFromDatabase();
+  if (stored.row) return sessionFromRow(stored.row);
+
+  const legacy = readLegacyDittoSession();
+  if (!legacy) {
+    if (stored.tableMissing) {
+      throw new Error("جدول جلسة Ditto غير موجود. شغّل migration رقم 29 في Supabase.");
+    }
+    return {};
+  }
+
+  // One-time migration for the old local file. Future reads use Supabase only.
+  if (!stored.tableMissing) {
+    await saveDittoSession(legacy);
+    try { unlinkSync(SESSION_FILE); } catch {}
+  }
+  return legacy;
 }
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
@@ -80,7 +219,7 @@ function dittoRaw(path: string, body: string | null = null, method = "GET"): Pro
 }
 
 async function dittoCall(endpoint: string, params: Record<string, string>, method = "GET"): Promise<unknown> {
-  const session = loadSession();
+  const session = await loadSession();
   const merged = { ticket: session.ticket ?? "", uid: session.uid ?? "", deviceId: session.deviceId ?? "", simCountry: "eg", ...params };
   const plain = new URLSearchParams(merged).toString();
   const enc = encrypt(plain);
@@ -306,9 +445,9 @@ router.get("/lookup/erban/:no", async (req, res) => {
 });
 
 // ── GET /api/ditto/session ────────────────────────────────────────────────────
-router.get("/session", (_req, res) => {
+router.get("/session", async (_req, res) => {
   try {
-    const session = JSON.parse(readFileSync(SESSION_FILE, "utf8")) as Record<string, unknown>;
+    const session = await loadSession();
     const now = Date.now();
     const savedAt = Number(session.ticket_saved_at) || 0;
     const ageMin = savedAt ? Math.round((now - savedAt) / 60000) : null;
@@ -326,14 +465,13 @@ router.get("/session", (_req, res) => {
 });
 
 // ── POST /api/ditto/session/inject ───────────────────────────────────────────
-router.post("/session/inject", (req, res) => {
+router.post("/session/inject", async (req, res) => {
   const { ticket, access_token, uid, netEaseToken, nimAppKey } = req.body ?? {};
   if (!ticket || typeof ticket !== "string") { res.status(400).json({ ok: false, error: "ticket required" }); return; }
   if (!access_token || typeof access_token !== "string") { res.status(400).json({ ok: false, error: "access_token required" }); return; }
   if (!uid) { res.status(400).json({ ok: false, error: "uid required" }); return; }
   try {
-    let session: Record<string, unknown> = {};
-    try { session = JSON.parse(readFileSync(SESSION_FILE, "utf8")); } catch { /* new file */ }
+    const session = await loadSession();
     const now = Date.now();
     session.ticket = ticket;
     session.access_token = access_token;
@@ -342,7 +480,8 @@ router.post("/session/inject", (req, res) => {
     session.access_token_saved_at = now;
     if (typeof netEaseToken === "string" && netEaseToken.trim()) session.netEaseToken = netEaseToken.trim();
     if (typeof nimAppKey === "string" && nimAppKey.trim()) session.nimAppKey = nimAppKey.trim();
-    writeFileSync(SESSION_FILE, JSON.stringify(session, null, 2));
+    await saveDittoSession(session);
+    try { unlinkSync(SESSION_FILE); } catch {}
     res.json({ ok: true, uid: session.uid, ticket_prefix: ticket.slice(0, 8) + "...", hasNimToken: !!session.netEaseToken });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
@@ -350,16 +489,17 @@ router.post("/session/inject", (req, res) => {
 });
 
 // ── PATCH /api/ditto/session/ticket ──────────────────────────────────────────
-router.patch("/session/ticket", (req, res) => {
+router.patch("/session/ticket", async (req, res) => {
   const { ticket } = req.body ?? {};
   if (!ticket || typeof ticket !== "string" || !/^[0-9a-f]{24,64}$/i.test(ticket)) {
     res.status(400).json({ ok: false, error: "invalid ticket format" }); return;
   }
   try {
-    const session = JSON.parse(readFileSync(SESSION_FILE, "utf8")) as Record<string, unknown>;
+    const session = await loadSession();
     session.ticket = ticket;
     session.ticket_saved_at = Date.now();
-    writeFileSync(SESSION_FILE, JSON.stringify(session, null, 2));
+    await saveDittoSession(session);
+    try { unlinkSync(SESSION_FILE); } catch {}
     res.json({ ok: true, ticket_prefix: ticket.slice(0, 8) + "..." });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
@@ -368,7 +508,7 @@ router.patch("/session/ticket", (req, res) => {
 
 // ── POST /api/session/update (webhook for Frida) ─────────────────────────────
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET ?? "";
-router.post("/session/update", (req, res) => {
+router.post("/session/update", async (req, res) => {
   const candidate = req.headers["x-webhook-secret"] ?? req.body?.secret ?? req.query?.secret;
   if (!WEBHOOK_SECRET || typeof candidate !== "string" || candidate !== WEBHOOK_SECRET) {
     res.status(401).json({ error: "Unauthorized" }); return;
@@ -378,8 +518,7 @@ router.post("/session/update", (req, res) => {
     res.status(400).json({ error: "ticket must be a 32-char hex string" }); return;
   }
   try {
-    let session: Record<string, unknown> = {};
-    try { session = JSON.parse(readFileSync(SESSION_FILE, "utf8")); } catch {}
+    const session = await loadSession();
     const now = Date.now();
     session.ticket = ticket;
     session.ticket_saved_at = now;
@@ -389,7 +528,8 @@ router.post("/session/update", (req, res) => {
       session.access_token = access_token;
       session.access_token_saved_at = now;
     }
-    writeFileSync(SESSION_FILE, JSON.stringify(session, null, 2));
+    await saveDittoSession(session);
+    try { unlinkSync(SESSION_FILE); } catch {}
     res.json({ ok: true, uid: session.uid, ticket_prefix: ticket.slice(0, 8) + "...", saved_at: now });
   } catch (err) {
     res.status(500).json({ error: "Failed to save session" });
@@ -397,12 +537,12 @@ router.post("/session/update", (req, res) => {
 });
 
 // ── GET /api/ditto/nim-credentials ───────────────────────────────────────────
-router.get("/nim-credentials", (_req, res) => {
+router.get("/nim-credentials", async (_req, res) => {
   try {
-    const session = JSON.parse(readFileSync(SESSION_FILE, "utf8")) as Record<string, unknown>;
-    const nimAppKey = (session.nimAppKey as string | undefined) || "a1f28028ba4e22c11cfaffe0e37ae27b";
-    const netEaseToken = session.netEaseToken as string | undefined;
-    const uid = session.uid as string | undefined;
+    const session = await loadSession();
+    const nimAppKey = session.nimAppKey || "a1f28028ba4e22c11cfaffe0e37ae27b";
+    const netEaseToken = session.netEaseToken;
+    const uid = session.uid;
     res.json({ ok: true, nimAppKey, nimAccount: uid ?? null, nimToken: netEaseToken ?? null, hasToken: !!netEaseToken });
   } catch {
     res.json({ ok: false, nimAppKey: null, nimAccount: null, nimToken: null, hasToken: false });
@@ -412,9 +552,9 @@ router.get("/nim-credentials", (_req, res) => {
 // ── GET /api/ditto/nim-addresses ─────────────────────────────────────────────
 router.get("/nim-addresses", async (_req, res) => {
   try {
-    const session = JSON.parse(readFileSync(SESSION_FILE, "utf8")) as Record<string, unknown>;
-    const appkey = (session.nimAppKey as string | undefined) || "a1f28028ba4e22c11cfaffe0e37ae27b";
-    const uid = (session.uid as string | undefined) ?? "";
+    const session = await loadSession();
+    const appkey = session.nimAppKey || "a1f28028ba4e22c11cfaffe0e37ae27b";
+    const uid = session.uid ?? "";
     const url = `https://lbs.netease.im/lbs/chatroom.id?appkey=${encodeURIComponent(appkey)}&nrtcg=&uid=${encodeURIComponent(uid)}`;
     const lbsData = await new Promise<string>((resolve, reject) => {
       httpsRequest(url, (r) => {

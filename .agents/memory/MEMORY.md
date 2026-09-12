@@ -7,6 +7,7 @@
 - [WhatsApp AI queue](whatsapp-ai-queue.md) — الردود تمر عبر Supabase queue بين الموقع وسيرفر AI خارجي
 - [WhatsApp AI media codes](whatsapp-ai-media.md) — الصور تُطلب من رد الـ AI بصيغة [[IMAGE:CODE]] وتُرسل من Supabase Storage
 - [WhatsApp AI incoming images](whatsapp-ai-incoming-images.md) — صور واتساب الواردة تصل للـAI كرابط موقّع داخل context.incoming_images
+- [Ditto session storage](ditto-session-storage.md) — جلسة Ditto ومفاتيح NIM تُشفّر وتُحفظ في Supabase بدل الملف المحلي
 - [Nested app dependencies](nested-app-dependencies.md) — عند تشغيل تطبيق داخل مجلد فرعي يجب تثبيت اعتمادياته في نفس المجلد لا في الجذر
 - [WhatsApp session encryption](whatsapp-session-encryption.md) — تغيير مفتاح التشفير يمنع استرداد auth_blob القديم؛ يجب تثبيت المفتاح الأصلي
 - [Media response headers](media-response-headers.md) — أسماء ملفات واتساب لا تُستخدم مباشرة في HTTP headers؛ يجب ترميزها وتنظيفها
