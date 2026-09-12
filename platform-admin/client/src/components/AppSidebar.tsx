@@ -53,41 +53,71 @@ export function AppSidebar() {
   const isCollapsed = state === 'collapsed';
   const isRtl = lang === 'ar';
 
-  const superAdminItems = [
-    { key: 'nav.dashboard', url: '/', icon: LayoutDashboard },
-    { key: 'nav.search', url: '/search', icon: Search },
-    { key: 'nav.pending', url: '/pending-requests', icon: UserCheck },
-    { key: 'nav.admins', url: '/admins', icon: Users },
-    { key: 'nav.attendance', url: '/attendance', icon: Clock },
-    { key: 'nav.shifts', url: '/shifts', icon: Calendar },
-    { key: 'nav.ratings', url: '/ratings', icon: Star },
-    { key: 'nav.warnings', url: '/warnings', icon: AlertTriangle },
-    { key: 'nav.tasks', url: '/tasks', icon: ClipboardList },
-    { key: 'nav.events', url: '/events', icon: Megaphone },
-    { key: 'nav.workManagement', url: '/work-management', icon: Briefcase },
-    { key: 'nav.agencies', url: '/agencies', icon: Building2 },
-    { key: 'nav.supporters', url: '/supporters', icon: HeartHandshake },
-    { key: 'nav.changeLogs', url: '/change-logs', icon: History },
-    { key: 'nav.settings', url: '/settings', icon: Settings },
-    { key: 'nav.dittoCenter', url: '/ditto-center', icon: Activity },
-    { key: 'nav.dittoRooms', url: '/ditto-rooms', icon: LayoutGrid },
-    { key: 'nav.dittoSearch', url: '/ditto-search', icon: UserSearch },
-    { key: 'nav.recordings', url: '/recordings', icon: Video },
-    { key: 'nav.absences', url: '/absences', icon: CalendarX },
-    { key: 'nav.salaryComplaints', url: '/salary-complaints', icon: FileWarning },
-    { key: 'nav.systemDownComplaints', url: '/system-down-complaints', icon: ArrowDownCircle },
-    { key: 'nav.whatsapp', url: '/whatsapp', icon: MessageCircle },
+  const superAdminSections = [
+    {
+      key: 'nav.overview',
+      items: [
+        { key: 'nav.dashboard', url: '/', icon: LayoutDashboard },
+        { key: 'nav.search', url: '/search', icon: Search },
+        { key: 'nav.pending', url: '/pending-requests', icon: UserCheck },
+      ],
+    },
+    {
+      key: 'nav.adminManagement',
+      items: [
+        { key: 'nav.admins', url: '/admins', icon: Users },
+        { key: 'nav.attendance', url: '/attendance', icon: Clock },
+        { key: 'nav.shifts', url: '/shifts', icon: Calendar },
+      ],
+    },
+    {
+      key: 'nav.operations',
+      items: [
+        { key: 'nav.ratings', url: '/ratings', icon: Star },
+        { key: 'nav.warnings', url: '/warnings', icon: AlertTriangle },
+        { key: 'nav.tasks', url: '/tasks', icon: ClipboardList },
+        { key: 'nav.events', url: '/events', icon: Megaphone },
+        { key: 'nav.workManagement', url: '/work-management', icon: Briefcase },
+        { key: 'nav.agencies', url: '/agencies', icon: Building2 },
+        { key: 'nav.supporters', url: '/supporters', icon: HeartHandshake },
+      ],
+    },
+    {
+      key: 'nav.tools',
+      items: [
+        { key: 'nav.dittoCenter', url: '/ditto-center', icon: Activity },
+        { key: 'nav.dittoRooms', url: '/ditto-rooms', icon: LayoutGrid },
+        { key: 'nav.dittoSearch', url: '/ditto-search', icon: UserSearch },
+        { key: 'nav.whatsapp', url: '/whatsapp', icon: MessageCircle },
+        { key: 'nav.settings', url: '/settings', icon: Settings },
+      ],
+    },
+    {
+      key: 'nav.reports',
+      items: [
+        { key: 'nav.changeLogs', url: '/change-logs', icon: History },
+        { key: 'nav.recordings', url: '/recordings', icon: Video },
+        { key: 'nav.absences', url: '/absences', icon: CalendarX },
+        { key: 'nav.salaryComplaints', url: '/salary-complaints', icon: FileWarning },
+        { key: 'nav.systemDownComplaints', url: '/system-down-complaints', icon: ArrowDownCircle },
+      ],
+    },
   ];
 
-  const adminItems = [
-    { key: 'nav.dashboard', url: '/', icon: LayoutDashboard },
-    { key: 'nav.myTasks', url: '/my-tasks', icon: ClipboardList },
-    { key: 'nav.myAttendance', url: '/my-attendance', icon: Clock },
-    { key: 'nav.myShifts', url: '/my-shifts', icon: Calendar },
-    { key: 'nav.settings', url: '/settings', icon: Settings },
+  const adminSections = [
+    {
+      key: 'nav.myAccount',
+      items: [
+        { key: 'nav.dashboard', url: '/', icon: LayoutDashboard },
+        { key: 'nav.myTasks', url: '/my-tasks', icon: ClipboardList },
+        { key: 'nav.myAttendance', url: '/my-attendance', icon: Clock },
+        { key: 'nav.myShifts', url: '/my-shifts', icon: Calendar },
+        { key: 'nav.settings', url: '/settings', icon: Settings },
+      ],
+    },
   ];
 
-  const menuItems = isSuperAdmin ? superAdminItems : adminItems;
+  const menuSections = isSuperAdmin ? superAdminSections : adminSections;
 
   const getInitials = (name: string) =>
     name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
@@ -96,15 +126,15 @@ export function AppSidebar() {
 
   return (
     <Sidebar side={isRtl ? 'right' : 'left'} collapsible="icon">
-      <SidebarHeader className="border-b border-sidebar-border p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-md bg-primary text-primary-foreground font-bold text-lg shrink-0">
+      <SidebarHeader className="border-b border-sidebar-border p-3">
+        <div className="flex items-center gap-3 rounded-xl border border-sidebar-border bg-sidebar-accent/30 p-2.5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-sidebar-primary to-sidebar-primary/70 text-lg font-bold text-sidebar-primary-foreground shadow-sm shrink-0">
             {isCollapsed ? 'A' : 'AD'}
           </div>
           {!isCollapsed && (
             <div className="flex flex-col min-w-0">
-              <span className="font-semibold text-sidebar-foreground truncate">{t('app.name')}</span>
-              <span className="text-xs text-muted-foreground">
+              <span className="truncate text-sm font-bold text-sidebar-foreground">{t('app.name')}</span>
+              <span className="mt-0.5 truncate text-[11px] text-sidebar-foreground/55">
                 {isSuperAdmin ? t('app.role.super') : t('app.role.admin')}
               </span>
             </div>
@@ -112,49 +142,56 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>
-            {isSuperAdmin ? t('nav.management') : t('nav.myAccount')}
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {menuItems.map((item) => {
-                const isActive = location === item.url;
-                return (
-                  <SidebarMenuItem key={item.key}>
-                    <SidebarMenuButton asChild isActive={isActive} tooltip={t(item.key)}>
-                      <Link href={item.url}>
-                        <item.icon className="h-5 w-5 shrink-0" />
-                        <span>{t(item.key)}</span>
-                        {isActive && <ActiveArrow className="ms-auto h-4 w-4" />}
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+      <SidebarContent className="px-2 py-3">
+        {menuSections.map((section, sectionIndex) => (
+          <SidebarGroup key={section.key} className={sectionIndex > 0 ? 'pt-3' : ''}>
+            <SidebarGroupLabel className="mb-1 px-2 text-[10px] font-bold uppercase tracking-[0.08em] text-sidebar-foreground/45">
+              {t(section.key)}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-1">
+                {section.items.map((item) => {
+                  const isActive = location === item.url;
+                  return (
+                    <SidebarMenuItem key={item.key}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
+                        tooltip={t(item.key)}
+                        className="h-9 rounded-lg px-3 text-[13px] data-[active=true]:bg-sidebar-primary/10 data-[active=true]:font-bold data-[active=true]:text-sidebar-primary"
+                      >
+                        <Link href={item.url}>
+                          <item.icon className="h-4 w-4 shrink-0" />
+                          <span>{t(item.key)}</span>
+                          {isActive && <ActiveArrow className="ms-auto h-4 w-4" />}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border p-4">
-        <div className="flex items-center gap-3">
+      <SidebarFooter className="border-t border-sidebar-border p-3">
+        <div className="flex items-center gap-2 rounded-xl border border-sidebar-border bg-sidebar-accent/30 p-2">
           <Avatar className="h-9 w-9 shrink-0">
             {user?.externalImage && <AvatarImage src={user.externalImage} />}
-            <AvatarFallback className="bg-primary/10 text-primary text-sm">
+            <AvatarFallback className="bg-sidebar-primary/10 text-sm font-bold text-sidebar-primary">
               {user?.full_name ? getInitials(user.full_name) : 'A'}
             </AvatarFallback>
           </Avatar>
           {!isCollapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate text-sidebar-foreground">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-bold text-sidebar-foreground">
                 {user?.externalName || user?.full_name || t('nav.myAccount')}
               </p>
-              <p className="text-xs text-muted-foreground truncate">@{user?.username}</p>
+              <p className="truncate text-[10px] text-sidebar-foreground/55">@{user?.username}</p>
             </div>
           )}
-          <Button variant="ghost" size="icon" onClick={signOut} className="shrink-0" title={t('auth.logout')}>
+          <Button variant="ghost" size="icon" onClick={signOut} className="h-8 w-8 shrink-0 rounded-lg text-sidebar-foreground/60 hover:bg-destructive/10 hover:text-destructive" title={t('auth.logout')}>
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
