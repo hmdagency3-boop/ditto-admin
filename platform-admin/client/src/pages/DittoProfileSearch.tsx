@@ -103,8 +103,10 @@ function InfoCell({ label, value, color, wide }: { label: string; value: unknown
 }
 
 function Avatar({ src, size = 10 }: { src?: string | null; size?: number }) {
+  const sizeClass = size === 10 ? "w-10 h-10" : "w-8 h-8";
+
   return (
-    <div className={`w-${size} h-${size} rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0`}>
+    <div className={`${sizeClass} rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0`}>
       {src ? (
         <img src={src} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
       ) : (
@@ -344,7 +346,16 @@ export default function DittoProfileSearch() {
                         key={String(u.uid ?? i)}
                         className="cursor-pointer hover:bg-muted/30"
                         onClick={() => drillIntoUid(u.uid)}
+                        onKeyDown={event => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            drillIntoUid(u.uid);
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
                         title="اضغط لفتح الملف"
+                        aria-label={`فتح ملف ${u.nickname ?? u.uid ?? "المستخدم"}`}
                       >
                         <TableCell>
                           <div className="flex min-w-[180px] items-center gap-3">
