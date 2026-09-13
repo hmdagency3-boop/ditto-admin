@@ -59,6 +59,7 @@ interface DittoSessionContextValue {
   videoContainerRef:    React.RefObject<HTMLDivElement>;
   chatEndRef:           React.RefObject<HTMLDivElement>;
   stopSession:          () => Promise<void>;
+  playAudioTrack:       (track: IRemoteAudioTrack) => void;
   toggleMute:           () => void;
   toggleMic:            () => Promise<void>;
   setIsMicMuted:        React.Dispatch<React.SetStateAction<boolean>>;
@@ -276,6 +277,17 @@ export function DittoSessionProvider({ children }: { children: ReactNode }) {
     setIsMuted(newMuted);
   }, [activeSession, isMuted]);
 
+  // Always route remote audio through the local room-mute state. Agora may
+  // emit a fresh track after a speaker unmutes; calling track.play() directly
+  // would bypass the listener's existing room mute.
+  const playAudioTrack = useCallback((track: IRemoteAudioTrack) => {
+    if (isMuted) {
+      track.stop();
+      return;
+    }
+    track.play();
+  }, [isMuted]);
+
   const toggleMic = useCallback(async () => {
     if (!activeSession?.localTrack) return;
     const newMicMuted = !isMicMuted;
@@ -305,7 +317,7 @@ export function DittoSessionProvider({ children }: { children: ReactNode }) {
       agoraPublisherUids, setAgoraPublisherUids,
       chatMessages, chatStatus,
       videoContainerRef, chatEndRef,
-      stopSession, toggleMute, toggleMic,
+       stopSession, playAudioTrack, toggleMute, toggleMic,
       setIsMicMuted,
     }}>
       {children}

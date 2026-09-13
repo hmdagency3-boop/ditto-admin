@@ -84,6 +84,8 @@ export default function Recordings() {
   const blinkRef    = useRef(true);
   const blinkTimer  = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const audioSourcesRef = useRef<Map<MediaStreamTrack, MediaStreamAudioSourceNode>>(new Map());
   const videoElRef  = useRef<HTMLVideoElement | null>(null);
 
   const [recording, setRecording] = useState(false);
@@ -357,6 +359,13 @@ export default function Recordings() {
     return () => { if (blinkTimer.current) clearInterval(blinkTimer.current); };
   }, []);
 
+  // A speaker can publish a fresh Agora track after muting and unmuting.
+  // Attach every new raw track to the recording mix while recording is active.
+  useEffect(() => {
+    if (!recording || !activeSession || !audioCtxRef.current || !audioDestRef.current) return;
+    activeSession.audioTracks.forEach(connectAgoraAudioTrack);
+  }, [activeSession?.audioTracks, recording]);
+
   // ── Helpers ───────────────────────────────────────────────────────────────
   function fmt(s: number) {
     return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
@@ -367,6 +376,32 @@ export default function Recordings() {
     const a   = document.createElement("a");
     a.href = url; a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 6000);
+  }
+
+  function connectAgoraAudioTrack(agoraTrack: any) {
+    const audioCtx = audioCtxRef.current;
+    const dest = audioDestRef.current;
+    if (!audioCtx || !dest) return;
+
+    try {
+      const mediaTrack = agoraTrack?.getMediaStreamTrack?.() as MediaStreamTrack | undefined;
+      if (!mediaTrack || audioSourcesRef.current.has(mediaTrack)) return;
+      const source = audioCtx.createMediaStreamSource(new MediaStream([mediaTrack]));
+      source.connect(dest);
+      audioSourcesRef.current.set(mediaTrack, source);
+    } catch {
+      // A track can disappear while Agora is replacing it.
+    }
+  }
+
+  function cleanupAudioCapture() {
+    audioSourcesRef.current.forEach(source => {
+      try { source.disconnect(); } catch {}
+    });
+    audioSourcesRef.current.clear();
+    audioDestRef.current = null;
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
   }
 
   async function uploadToServer(blob: Blob, filename: string) {
@@ -405,18 +440,11 @@ export default function Recordings() {
         const audioCtx = new AudioContext();
         audioCtxRef.current = audioCtx;
         const dest = audioCtx.createMediaStreamDestination();
+        audioDestRef.current = dest;
+        audioSourcesRef.current.clear();
 
         for (const agoraTrack of audioTracks) {
-          try {
-            // getMediaStreamTrack() gives the raw browser MediaStreamTrack
-            const mt = (agoraTrack as any).getMediaStreamTrack?.() as MediaStreamTrack | undefined;
-            if (mt) {
-              // createMediaStreamSource reads from the track WITHOUT rerouting
-              // so Agora's own audio output (speakers) is unaffected
-              const src = audioCtx.createMediaStreamSource(new MediaStream([mt]));
-              src.connect(dest);
-            }
-          } catch { /* skip this track */ }
+          connectAgoraAudioTrack(agoraTrack);
         }
 
         // Add mixed audio track to canvas stream so recorder captures it
@@ -437,9 +465,7 @@ export default function Recordings() {
 
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     recorder.onstop = async () => {
-      // Clean up AudioContext
-      audioCtxRef.current?.close().catch(() => {});
-      audioCtxRef.current = null;
+      cleanupAudioCapture();
 
       const blob = new Blob(chunksRef.current, { type: "video/webm" });
       const name = `room-${activeSession.roomId}-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.webm`;
@@ -461,9 +487,8 @@ export default function Recordings() {
   // ── Stop recording ────────────────────────────────────────────────────────
   function stopRecording() {
     if (recRef.current?.state === "recording") recRef.current.stop();
+    else cleanupAudioCapture();
     if (timerRef.current) clearInterval(timerRef.current);
-    audioCtxRef.current?.close().catch(() => {});
-    audioCtxRef.current = null;
     setRecording(false);
     setElapsed(0);
     elapsedRef.current = 0;
