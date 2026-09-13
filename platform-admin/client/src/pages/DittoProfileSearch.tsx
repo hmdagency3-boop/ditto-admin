@@ -231,6 +231,8 @@ export default function DittoProfileSearch() {
   const isBanned = profile?.ban != null && profile.ban > 0;
   const medals = profile?.userMedalList ?? [];
   const wearProps = (profile?.userWearPropList ?? []).filter(p => p.wear);
+  const cellCls = "border border-border px-3 py-2.5 text-sm";
+  const headCls = "border border-border px-3 py-2.5 text-sm font-semibold bg-muted text-right";
 
   const sourceBadge = profile?.source === "public_api_v5"
     ? { label: "API V5", cls: "bg-blue-500/20 text-blue-600 border-blue-500/30" }
@@ -241,14 +243,16 @@ export default function DittoProfileSearch() {
     : null;
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 space-y-6">
       {/* Header */}
-      <div className="border-b pb-4">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Search className="w-6 h-6 text-primary" />
-          بحث عن ملف مستخدم Ditto
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1">بحث بالـ UID أو الاسم أو رقم الـ ID</p>
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-lg bg-primary/10">
+          <Search className="h-6 w-6 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold">بحث Ditto</h1>
+          <p className="text-sm text-muted-foreground">البحث عن المستخدمين بالـ UID أو الاسم أو رقم الـ ID</p>
+        </div>
       </div>
 
       {/* Mode tabs */}
@@ -316,35 +320,41 @@ export default function DittoProfileSearch() {
       {/* Name search results */}
       {!loading && searchResult && searchResult.ok && mode === "name" && (
         <Card>
-          <CardHeader className="pb-3 border-b">
+          <CardHeader className="space-y-1">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Users className="w-4 h-4 text-primary" />
-                نتائج البحث
-              </CardTitle>
-              <span className="text-xs text-muted-foreground">{searchResult.users.length} نتيجة</span>
+              <div>
+                <CardTitle>نتائج البحث</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {searchResult.users.length} مستخدم مطابق للبحث
+                </p>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="p-0">
             {searchResult.users.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground text-sm">لم يتم العثور على نتائج</div>
+              <div className="text-center py-16 text-muted-foreground">
+                <Users className="h-16 w-16 mx-auto mb-4 opacity-30" />
+                <h3 className="text-lg font-medium mb-2">لا توجد نتائج</h3>
+                <p>لم يتم العثور على مستخدمين يطابقون البحث</p>
+              </div>
             ) : (
               <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/40">
-                      <TableHead className="text-right">المستخدم</TableHead>
-                      <TableHead className="text-right">UID</TableHead>
-                      <TableHead className="text-right">رقم الـ ID</TableHead>
-                      <TableHead className="text-right">المتابعون</TableHead>
-                      <TableHead className="text-right">المستوى</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr>
+                      <th className={headCls}>#</th>
+                      <th className={headCls}>المستخدم</th>
+                      <th className={headCls}>UID</th>
+                      <th className={headCls}>رقم الـ ID</th>
+                      <th className={headCls}>المتابعون</th>
+                      <th className={headCls}>المستوى</th>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {searchResult.users.map((u, i) => (
-                      <TableRow
+                      <tr
                         key={String(u.uid ?? i)}
-                        className="cursor-pointer hover:bg-muted/30"
+                        className="cursor-pointer hover:bg-muted/40 transition-colors"
                         onClick={() => drillIntoUid(u.uid)}
                         onKeyDown={event => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -357,20 +367,32 @@ export default function DittoProfileSearch() {
                         title="اضغط لفتح الملف"
                         aria-label={`فتح ملف ${u.nickname ?? u.uid ?? "المستخدم"}`}
                       >
-                        <TableCell>
-                          <div className="flex min-w-[180px] items-center gap-3">
-                            <Avatar src={u.avatar} size={10} />
-                            <span className="font-semibold">{u.nickname ?? "—"}</span>
+                        <td className={`${cellCls} text-muted-foreground text-center w-10`}>{i + 1}</td>
+                        <td className={cellCls}>
+                          <div className="flex min-w-[160px] items-center gap-2">
+                            <Avatar src={u.avatar} size={8} />
+                            <div className="min-w-0">
+                              <p className="font-semibold truncate">{u.nickname ?? "—"}</p>
+                              <p className="text-xs text-muted-foreground font-mono" dir="ltr">
+                                {String(u.uid ?? "—")}
+                              </p>
+                            </div>
                           </div>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm" dir="ltr">{String(u.uid ?? "—")}</TableCell>
-                        <TableCell className="font-mono text-sm">{u.erbanNo ?? "—"}</TableCell>
-                        <TableCell>{u.fansNum != null ? u.fansNum.toLocaleString() : "—"}</TableCell>
-                        <TableCell className="text-primary">{u.level != null ? `Lv ${u.level}` : "—"}</TableCell>
-                      </TableRow>
+                        </td>
+                        <td className={`${cellCls} font-mono whitespace-nowrap`} dir="ltr">{String(u.uid ?? "—")}</td>
+                        <td className={`${cellCls} font-mono whitespace-nowrap`}>{u.erbanNo ?? "—"}</td>
+                        <td className={`${cellCls} whitespace-nowrap`}>
+                          {u.fansNum != null ? u.fansNum.toLocaleString("ar-EG") : <span className="text-muted-foreground">—</span>}
+                        </td>
+                        <td className={cellCls}>
+                          {u.level != null
+                            ? <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Lv {u.level}</Badge>
+                            : <span className="text-muted-foreground">—</span>}
+                        </td>
+                      </tr>
                     ))}
-                  </TableBody>
-                </Table>
+                  </tbody>
+                </table>
               </div>
             )}
           </CardContent>
