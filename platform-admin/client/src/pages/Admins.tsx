@@ -138,12 +138,15 @@ export default function Admins() {
   async function onSubmit(data: AddAdminFormData) {
     setIsSubmitting(true);
     try {
-      const response = await fetch('/api/auth/register', {
+      const response = await fetch('/api/users/generated-password', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
         body: JSON.stringify({
           username: data.username,
-          password: data.password,
+          requested_password: data.password,
           full_name: data.full_name,
           phone: data.phone || null,
           platform_id: data.platform_id || null,
@@ -151,7 +154,7 @@ export default function Admins() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message);
-      setCreatedCredentials({ username: data.username, password: data.password });
+      setCreatedCredentials({ username: data.username, password: result.password });
       setCredentialsDialogOpen(true);
       toast({ title: 'تم إضافة المشرف', description: 'تم إرسال طلب التسجيل ويمكنك مراجعة بيانات الدخول الآن.' });
       form.reset();

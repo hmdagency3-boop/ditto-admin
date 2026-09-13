@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
 import bcrypt from "bcryptjs";
+import { randomBytes } from "node:crypto";
 import jwt from "jsonwebtoken";
 import multer from "multer";
 import dittoRouter from "./dittoRoutes";
@@ -27,6 +28,41 @@ import {
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET;
 if (!JWT_SECRET) {
   throw new Error("[SECURITY] JWT_SECRET or SESSION_SECRET environment variable is required but not set. Set it in Replit Secrets.");
+}
+
+const GENERATED_PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+
+function generateServerPassword(length = 18) {
+  const bytes = randomBytes(length);
+  return Array.from(bytes, byte => GENERATED_PASSWORD_ALPHABET[byte % GENERATED_PASSWORD_ALPHABET.length]).join("");
+}
+
+async function generateUniquePassword(preferredPassword?: string) {
+  const { data: users, error } = await storage.supabase
+    .from("users")
+    .select("password");
+
+  if (error) {
+    throw new Error(`تعذر التحقق من تفرّد كلمة المرور: ${error.message}`);
+  }
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const candidate = attempt === 0 && preferredPassword && preferredPassword.length >= 6
+      ? preferredPassword
+      : generateServerPassword();
+
+    let alreadyUsed = false;
+    for (const user of users || []) {
+      if (user.password && await bcrypt.compare(candidate, user.password)) {
+        alreadyUsed = true;
+        break;
+      }
+    }
+
+    if (!alreadyUsed) return candidate;
+  }
+
+  throw new Error("تعذر إنشاء كلمة مرور فريدة، حاول مرة أخرى");
 }
 
 interface JWTPayload {
@@ -792,6 +828,54 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       console.error("Create user error:", error);
+      res.status(500).json({ message: error.message || "حدث خطأ أثناء إنشاء المشرف" });
+    }
+  });
+
+  app.post("/api/users/generated-password", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const { username, full_name, phone, platform_id, requested_password } = req.body;
+
+      if (!username || !full_name) {
+        return res.status(400).json({ message: "اسم المستخدم والاسم الكامل مطلوبان" });
+      }
+      if (username.length < 3) {
+        return res.status(400).json({ message: "اسم المستخدم يجب أن يكون 3 أحرف على الأقل" });
+      }
+
+      const existing = await storage.getUserByUsername(username);
+      if (existing) {
+        return res.status(400).json({ message: "اسم المستخدم موجود مسبقاً" });
+      }
+
+      const password = await generateUniquePassword(
+        typeof requested_password === "string" ? requested_password : undefined,
+      );
+      const ip_address = req.headers["x-forwarded-for"]?.toString().split(",")[0]
+        || req.socket.remoteAddress
+        || "unknown";
+
+      const user = await storage.createUser({
+        username,
+        password,
+        full_name,
+        phone: phone || null,
+        platform_id: platform_id || null,
+        ip_address,
+      });
+
+      invalidateCache("users:");
+      res.status(201).json({
+        id: user.id,
+        username: user.username,
+        full_name: user.full_name,
+        phone: user.phone || null,
+        platform_id: user.platform_id || null,
+        status: user.status,
+        password,
+      });
+    } catch (error: any) {
+      console.error("Create user with generated password error:", error);
       res.status(500).json({ message: error.message || "حدث خطأ أثناء إنشاء المشرف" });
     }
   });
