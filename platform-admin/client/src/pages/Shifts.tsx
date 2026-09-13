@@ -7,7 +7,8 @@ import {
   Shield,
   UserX,
   Trash2,
-  WalletCards
+  WalletCards,
+  Pencil
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -59,16 +60,27 @@ type ShiftWithUser = Shift & { user?: UserInfo };
 
 interface FixedSalaryGroup {
   id: string;
-  girl_one_id: string;
-  girl_two_id: string;
-  girl_one_shift: number;
-  girl_two_shift: number;
-  shared_shift: number;
-  girl_one_salary: number | string;
-  girl_two_salary: number | string;
+  girl_one_id: string | null;
+  girl_two_id: string | null;
+  girl_one_shift: number | null;
+  girl_two_shift: number | null;
+  shared_shift: number | null;
+  girl_one_salary: number | string | null;
+  girl_two_salary: number | string | null;
+  is_complete?: boolean;
   girl_one?: UserInfo;
   girl_two?: UserInfo;
 }
+
+const emptyFixedForm = {
+  girlOneId: '',
+  girlTwoId: '',
+  girlOneShift: '',
+  girlTwoShift: '',
+  sharedShift: '',
+  girlOneSalary: '',
+  girlTwoSalary: '',
+};
 
 export default function Shifts() {
   const { token, isSuperAdmin } = useAuth();
@@ -82,15 +94,8 @@ export default function Shifts() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [fixedDialogOpen, setFixedDialogOpen] = useState(false);
   const [fixedGroups, setFixedGroups] = useState<FixedSalaryGroup[]>([]);
-  const [fixedForm, setFixedForm] = useState({
-    girlOneId: '',
-    girlTwoId: '',
-    girlOneShift: '',
-    girlTwoShift: '',
-    sharedShift: '',
-    girlOneSalary: '',
-    girlTwoSalary: '',
-  });
+  const [fixedForm, setFixedForm] = useState(emptyFixedForm);
+  const [editingFixedGroupId, setEditingFixedGroupId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -175,10 +180,6 @@ export default function Shifts() {
       girlTwoSalary,
     } = fixedForm;
 
-    if (!girlOneId || !girlTwoId || !girlOneShift || !girlTwoShift || !sharedShift) {
-      toast({ title: 'بيانات ناقصة', description: 'اختار البنتين والشيفتات الثلاثة', variant: 'destructive' });
-      return;
-    }
     if (girlOneId === girlTwoId) {
       toast({ title: 'اختيار غير صحيح', description: 'لازم تختار بنتين مختلفتين', variant: 'destructive' });
       return;
@@ -186,8 +187,12 @@ export default function Shifts() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/fixed-salary/groups', {
-        method: 'POST',
+      const res = await fetch(
+        editingFixedGroupId
+          ? `/api/fixed-salary/groups/${editingFixedGroupId}`
+          : '/api/fixed-salary/groups',
+        {
+        method: editingFixedGroupId ? 'PATCH' : 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -195,25 +200,19 @@ export default function Shifts() {
         body: JSON.stringify({
           girl_one_id: girlOneId,
           girl_two_id: girlTwoId,
-          girl_one_shift: Number(girlOneShift),
-          girl_two_shift: Number(girlTwoShift),
-          shared_shift: Number(sharedShift),
-          girl_one_salary: Number(girlOneSalary || 0),
-          girl_two_salary: Number(girlTwoSalary || 0),
+          girl_one_shift: girlOneShift || null,
+          girl_two_shift: girlTwoShift || null,
+          shared_shift: sharedShift || null,
+          girl_one_salary: girlOneSalary || null,
+          girl_two_salary: girlTwoSalary || null,
         }),
-      });
+        },
+      );
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       toast({ title: 'تم الحفظ', description: data.message });
-      setFixedForm({
-        girlOneId: '',
-        girlTwoId: '',
-        girlOneShift: '',
-        girlTwoShift: '',
-        sharedShift: '',
-        girlOneSalary: '',
-        girlTwoSalary: '',
-      });
+      setFixedForm(emptyFixedForm);
+      setEditingFixedGroupId(null);
       setFixedDialogOpen(false);
       fetchData();
     } catch (error: any) {
@@ -221,6 +220,26 @@ export default function Shifts() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function openNewFixedGroup() {
+    setEditingFixedGroupId(null);
+    setFixedForm(emptyFixedForm);
+    setFixedDialogOpen(true);
+  }
+
+  function editFixedSalaryGroup(group: FixedSalaryGroup) {
+    setEditingFixedGroupId(group.id);
+    setFixedForm({
+      girlOneId: group.girl_one_id || '',
+      girlTwoId: group.girl_two_id || '',
+      girlOneShift: group.girl_one_shift ? String(group.girl_one_shift) : '',
+      girlTwoShift: group.girl_two_shift ? String(group.girl_two_shift) : '',
+      sharedShift: group.shared_shift ? String(group.shared_shift) : '',
+      girlOneSalary: group.girl_one_salary === null || group.girl_one_salary === undefined ? '' : String(group.girl_one_salary),
+      girlTwoSalary: group.girl_two_salary === null || group.girl_two_salary === undefined ? '' : String(group.girl_two_salary),
+    });
+    setFixedDialogOpen(true);
   }
 
   async function removeFixedSalaryGroup(groupId: string) {
@@ -319,17 +338,9 @@ export default function Shifts() {
                   بنتان، شيفت كامل لكل واحدة، وشيفت ثالث مشترك ساعة لكل واحدة
                 </p>
               </div>
-              <Dialog open={fixedDialogOpen} onOpenChange={setFixedDialogOpen}>
+                <Dialog open={fixedDialogOpen} onOpenChange={setFixedDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button onClick={() => setFixedForm({
-                    girlOneId: '',
-                    girlTwoId: '',
-                    girlOneShift: '',
-                    girlTwoShift: '',
-                    sharedShift: '',
-                    girlOneSalary: '',
-                    girlTwoSalary: '',
-                  })}>
+                  <Button onClick={openNewFixedGroup}>
                     <Plus className="h-4 w-4 ml-2" />
                     إضافة مجموعة
                   </Button>
@@ -338,7 +349,7 @@ export default function Shifts() {
                   <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                       <WalletCards className="h-5 w-5" />
-                      إعداد مجموعة راتب ثابت
+                      {editingFixedGroupId ? 'استكمال مجموعة راتب ثابت' : 'إعداد مجموعة راتب ثابت'}
                     </DialogTitle>
                   </DialogHeader>
                   <div className="space-y-4 py-2">
@@ -429,26 +440,45 @@ export default function Shifts() {
             {fixedGroups.length === 0 ? (
               <p className="text-sm text-muted-foreground">لم تتم إضافة مجموعة راتب ثابت بعد.</p>
             ) : (
-              fixedGroups.map((group) => (
+                 fixedGroups.map((group) => (
                 <div key={group.id} className="rounded-lg border bg-background p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-5 gap-y-2 text-sm">
                       <div>
                         <p className="font-semibold">{group.girl_one?.full_name || 'البنت الأولى'}</p>
-                        <p className="text-xs text-muted-foreground">#{group.girl_one_shift} — {getSlotLabel(group.girl_one_shift)} · {Number(group.girl_one_salary).toLocaleString('ar-EG')} شهرياً</p>
+                           <p className="text-xs text-muted-foreground">
+                             {group.girl_one_shift ? `#${group.girl_one_shift} — ${getSlotLabel(group.girl_one_shift)}` : 'الشيفت غير محدد'}
+                             {' · '}
+                             {group.girl_one_salary === null || group.girl_one_salary === undefined ? 'الراتب غير محدد' : `${Number(group.girl_one_salary).toLocaleString('ar-EG')} شهرياً`}
+                           </p>
                       </div>
                       <div>
                         <p className="font-semibold">{group.girl_two?.full_name || 'البنت الثانية'}</p>
-                        <p className="text-xs text-muted-foreground">#{group.girl_two_shift} — {getSlotLabel(group.girl_two_shift)} · {Number(group.girl_two_salary).toLocaleString('ar-EG')} شهرياً</p>
+                           <p className="text-xs text-muted-foreground">
+                             {group.girl_two_shift ? `#${group.girl_two_shift} — ${getSlotLabel(group.girl_two_shift)}` : 'الشيفت غير محدد'}
+                             {' · '}
+                             {group.girl_two_salary === null || group.girl_two_salary === undefined ? 'الراتب غير محدد' : `${Number(group.girl_two_salary).toLocaleString('ar-EG')} شهرياً`}
+                           </p>
                       </div>
                       <div>
                         <p className="font-semibold text-amber-700 dark:text-amber-400">الشيفت المشترك</p>
-                        <p className="text-xs text-muted-foreground">#{group.shared_shift} — {getSlotLabel(group.shared_shift)} · ساعة لكل واحدة</p>
+                           <p className="text-xs text-muted-foreground">
+                             {group.shared_shift ? `#${group.shared_shift} — ${getSlotLabel(group.shared_shift)}` : 'الشيفت غير محدد'}
+                             {' · ساعة لكل واحدة'}
+                           </p>
                       </div>
                     </div>
-                    <Button variant="ghost" size="icon" className="text-destructive shrink-0" title="إلغاء المجموعة" onClick={() => removeFixedSalaryGroup(group.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                     <div className="flex items-center gap-1 shrink-0">
+                       {!group.is_complete && (
+                         <Badge variant="outline" className="text-amber-700 border-amber-300">مسودة</Badge>
+                       )}
+                       <Button variant="ghost" size="icon" title="تعديل واستكمال" onClick={() => editFixedSalaryGroup(group)}>
+                         <Pencil className="h-4 w-4" />
+                       </Button>
+                       <Button variant="ghost" size="icon" className="text-destructive" title="إلغاء المجموعة" onClick={() => removeFixedSalaryGroup(group.id)}>
+                         <Trash2 className="h-4 w-4" />
+                       </Button>
+                     </div>
                   </div>
                 </div>
               ))

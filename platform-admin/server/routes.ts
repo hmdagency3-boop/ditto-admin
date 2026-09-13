@@ -81,13 +81,13 @@ function resetLoginRateLimit(ip: string) {
 
 type FixedSalaryGroup = {
   id: string;
-  girl_one_id: string;
-  girl_two_id: string;
-  girl_one_shift: number;
-  girl_two_shift: number;
-  shared_shift: number;
-  girl_one_salary: number | string;
-  girl_two_salary: number | string;
+  girl_one_id: string | null;
+  girl_two_id: string | null;
+  girl_one_shift: number | null;
+  girl_two_shift: number | null;
+  shared_shift: number | null;
+  girl_one_salary: number | string | null;
+  girl_two_salary: number | string | null;
   active: boolean;
   created_at?: string;
 };
@@ -102,13 +102,65 @@ type FixedShiftAssignment = {
   salary: number | string;
 };
 
+function isCompleteFixedSalaryGroup(group: FixedSalaryGroup): boolean {
+  const shifts = [group.girl_one_shift, group.girl_two_shift, group.shared_shift];
+  const salaries = [group.girl_one_salary, group.girl_two_salary];
+  return Boolean(
+    group.girl_one_id &&
+    group.girl_two_id &&
+    group.girl_one_id !== group.girl_two_id &&
+    shifts.every((shift) => Number.isInteger(Number(shift)) && Number(shift) >= 1 && Number(shift) <= 12) &&
+    new Set(shifts.map(Number)).size === 3 &&
+    salaries.every((salary) => salary !== null && salary !== undefined && Number.isFinite(Number(salary)) && Number(salary) >= 0),
+  );
+}
+
 function fixedShiftAssignments(group: FixedSalaryGroup): FixedShiftAssignment[] {
+  if (!isCompleteFixedSalaryGroup(group)) return [];
   return [
-    { groupId: group.id, userId: group.girl_one_id, shiftNumber: group.girl_one_shift, assignmentType: "primary", scheduledMinutes: 120, startOffsetMinutes: 0, salary: group.girl_one_salary },
-    { groupId: group.id, userId: group.girl_one_id, shiftNumber: group.shared_shift, assignmentType: "shared", scheduledMinutes: 60, startOffsetMinutes: 0, salary: group.girl_one_salary },
-    { groupId: group.id, userId: group.girl_two_id, shiftNumber: group.girl_two_shift, assignmentType: "primary", scheduledMinutes: 120, startOffsetMinutes: 0, salary: group.girl_two_salary },
-    { groupId: group.id, userId: group.girl_two_id, shiftNumber: group.shared_shift, assignmentType: "shared", scheduledMinutes: 60, startOffsetMinutes: 60, salary: group.girl_two_salary },
+    { groupId: group.id, userId: group.girl_one_id!, shiftNumber: Number(group.girl_one_shift), assignmentType: "primary", scheduledMinutes: 120, startOffsetMinutes: 0, salary: group.girl_one_salary! },
+    { groupId: group.id, userId: group.girl_one_id!, shiftNumber: Number(group.shared_shift), assignmentType: "shared", scheduledMinutes: 60, startOffsetMinutes: 0, salary: group.girl_one_salary! },
+    { groupId: group.id, userId: group.girl_two_id!, shiftNumber: Number(group.girl_two_shift), assignmentType: "primary", scheduledMinutes: 120, startOffsetMinutes: 0, salary: group.girl_two_salary! },
+    { groupId: group.id, userId: group.girl_two_id!, shiftNumber: Number(group.shared_shift), assignmentType: "shared", scheduledMinutes: 60, startOffsetMinutes: 60, salary: group.girl_two_salary! },
   ];
+}
+
+function parseOptionalShift(value: unknown): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 12 ? parsed : Number.NaN;
+}
+
+function parseOptionalSalary(value: unknown): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : Number.NaN;
+}
+
+function getFixedSalaryGroupPayload(body: any) {
+  const shifts = [
+    parseOptionalShift(body.girl_one_shift),
+    parseOptionalShift(body.girl_two_shift),
+    parseOptionalShift(body.shared_shift),
+  ];
+  const salaries = [
+    parseOptionalSalary(body.girl_one_salary),
+    parseOptionalSalary(body.girl_two_salary),
+  ];
+  const providedShifts = shifts.filter((shift): shift is number => shift !== null);
+
+  return {
+    girl_one_id: body.girl_one_id || null,
+    girl_two_id: body.girl_two_id || null,
+    girl_one_shift: shifts[0],
+    girl_two_shift: shifts[1],
+    shared_shift: shifts[2],
+    girl_one_salary: salaries[0],
+    girl_two_salary: salaries[1],
+    hasInvalidShift: shifts.some((shift) => Number.isNaN(shift)),
+    hasInvalidSalary: salaries.some((salary) => Number.isNaN(salary)),
+    hasDuplicateShift: new Set(providedShifts).size !== providedShifts.length,
+  };
 }
 
 function isValidDateString(value: unknown): value is string {
@@ -1003,7 +1055,7 @@ export async function registerRoutes(
       const ids = [...new Set((groups || []).flatMap((group: FixedSalaryGroup) => [
         group.girl_one_id,
         group.girl_two_id,
-      ]))];
+      ].filter((id): id is string => Boolean(id))))];
       let users: any[] = [];
       if (ids.length > 0) {
         const { data: userData, error: usersError } = await storage.supabase
@@ -1017,6 +1069,7 @@ export async function registerRoutes(
       const usersById = new Map(users.map((user) => [user.id, user]));
       res.json((groups || []).map((group: FixedSalaryGroup) => ({
         ...group,
+        is_complete: isCompleteFixedSalaryGroup(group),
         girl_one: usersById.get(group.girl_one_id) || null,
         girl_two: usersById.get(group.girl_two_id) || null,
       })));
@@ -1028,58 +1081,94 @@ export async function registerRoutes(
 
   app.post("/api/fixed-salary/groups", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      const {
-        girl_one_id,
-        girl_two_id,
-        girl_one_shift,
-        girl_two_shift,
-        shared_shift,
-        girl_one_salary,
-        girl_two_salary,
-      } = req.body;
-      const shiftValues = [girl_one_shift, girl_two_shift, shared_shift].map(Number);
-      const salaries = [girl_one_salary, girl_two_salary].map(Number);
-
-      if (!girl_one_id || !girl_two_id || girl_one_id === girl_two_id) {
-        return res.status(400).json({ message: "يجب اختيار بنتين مختلفتين" });
+      const payload = getFixedSalaryGroupPayload(req.body);
+      if (payload.hasInvalidShift || payload.hasDuplicateShift) {
+        return res.status(400).json({ message: "كل شيفت مُدخل يجب أن يكون من 1 إلى 12 وبدون تكرار" });
       }
-      if (shiftValues.some((value) => !Number.isInteger(value) || value < 1 || value > 12) ||
-          new Set(shiftValues).size !== 3) {
-        return res.status(400).json({ message: "اختار 3 شيفتات مختلفة من الشيفتات الـ12" });
-      }
-      if (salaries.some((value) => !Number.isFinite(value) || value < 0)) {
+      if (payload.hasInvalidSalary) {
         return res.status(400).json({ message: "قيمة الراتب يجب أن تكون رقماً صحيحاً أو صفراً" });
       }
+      if (payload.girl_one_id && payload.girl_two_id && payload.girl_one_id === payload.girl_two_id) {
+        return res.status(400).json({ message: "لازم تختار بنتين مختلفتين" });
+      }
 
-      const { data: existingGroups, error: existingError } = await storage.supabase
-        .from('fixed_salary_groups')
-        .select('id')
-        .eq('active', true)
-        .or(`and(girl_one_id.eq.${girl_one_id},girl_two_id.eq.${girl_two_id}),and(girl_one_id.eq.${girl_two_id},girl_two_id.eq.${girl_one_id})`);
-      if (existingError) throw existingError;
-      if ((existingGroups || []).length > 0) {
-        return res.status(400).json({ message: "هذه البنتان مسجلتان بالفعل في مجموعة راتب ثابت" });
+      if (payload.girl_one_id && payload.girl_two_id) {
+        const { data: existingGroups, error: existingError } = await storage.supabase
+          .from('fixed_salary_groups')
+          .select('id')
+          .eq('active', true)
+          .or(`and(girl_one_id.eq.${payload.girl_one_id},girl_two_id.eq.${payload.girl_two_id}),and(girl_one_id.eq.${payload.girl_two_id},girl_two_id.eq.${payload.girl_one_id})`);
+        if (existingError) throw existingError;
+        if ((existingGroups || []).length > 0) {
+          return res.status(400).json({ message: "هذه البنتان مسجلتان بالفعل في مجموعة راتب ثابت" });
+        }
       }
 
       const { data, error } = await storage.supabase
         .from('fixed_salary_groups')
         .insert({
-          girl_one_id,
-          girl_two_id,
-          girl_one_shift: shiftValues[0],
-          girl_two_shift: shiftValues[1],
-          shared_shift: shiftValues[2],
-          girl_one_salary: salaries[0],
-          girl_two_salary: salaries[1],
+          girl_one_id: payload.girl_one_id,
+          girl_two_id: payload.girl_two_id,
+          girl_one_shift: payload.girl_one_shift,
+          girl_two_shift: payload.girl_two_shift,
+          shared_shift: payload.shared_shift,
+          girl_one_salary: payload.girl_one_salary,
+          girl_two_salary: payload.girl_two_salary,
           created_by: req.user!.userId,
         })
         .select()
         .single();
       if (error) throw error;
-      res.status(201).json({ message: "تم حفظ مجموعة الراتب الثابت", data });
+      res.status(201).json({
+        message: isCompleteFixedSalaryGroup(data as FixedSalaryGroup)
+          ? "تم حفظ مجموعة الراتب الثابت"
+          : "تم حفظ المسودة، ويمكنك إكمالها لاحقاً",
+        data,
+      });
     } catch (error) {
       console.error("Create fixed salary group error:", error);
       res.status(500).json({ message: "حدث خطأ أثناء حفظ مجموعة الراتب الثابت" });
+    }
+  });
+
+  app.patch("/api/fixed-salary/groups/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
+    try {
+      const payload = getFixedSalaryGroupPayload(req.body);
+      if (payload.hasInvalidShift || payload.hasDuplicateShift) {
+        return res.status(400).json({ message: "كل شيفت مُدخل يجب أن يكون من 1 إلى 12 وبدون تكرار" });
+      }
+      if (payload.hasInvalidSalary) {
+        return res.status(400).json({ message: "قيمة الراتب يجب أن تكون رقماً صحيحاً أو صفراً" });
+      }
+      if (payload.girl_one_id && payload.girl_two_id && payload.girl_one_id === payload.girl_two_id) {
+        return res.status(400).json({ message: "لازم تختار بنتين مختلفتين" });
+      }
+
+      const { data, error } = await storage.supabase
+        .from('fixed_salary_groups')
+        .update({
+          girl_one_id: payload.girl_one_id,
+          girl_two_id: payload.girl_two_id,
+          girl_one_shift: payload.girl_one_shift,
+          girl_two_shift: payload.girl_two_shift,
+          shared_shift: payload.shared_shift,
+          girl_one_salary: payload.girl_one_salary,
+          girl_two_salary: payload.girl_two_salary,
+        })
+        .eq('id', req.params.id)
+        .eq('active', true)
+        .select()
+        .single();
+      if (error) throw error;
+      res.json({
+        message: isCompleteFixedSalaryGroup(data as FixedSalaryGroup)
+          ? "تم إكمال مجموعة الراتب الثابت"
+          : "تم تحديث المسودة",
+        data,
+      });
+    } catch (error) {
+      console.error("Update fixed salary group error:", error);
+      res.status(500).json({ message: "حدث خطأ أثناء تحديث مجموعة الراتب الثابت" });
     }
   });
 
@@ -1110,7 +1199,7 @@ export async function registerRoutes(
         .eq('active', true);
       if (groupsError) throw groupsError;
 
-      const activeGroups = (groups || []) as FixedSalaryGroup[];
+      const activeGroups = ((groups || []) as FixedSalaryGroup[]).filter(isCompleteFixedSalaryGroup);
       if (activeGroups.length === 0) return res.json([]);
 
       const groupIds = activeGroups.map((group) => group.id);
@@ -1192,6 +1281,9 @@ export async function registerRoutes(
       if (groupError || !group) {
         return res.status(404).json({ message: "مجموعة الراتب الثابت غير موجودة" });
       }
+      if (!isCompleteFixedSalaryGroup(group as FixedSalaryGroup)) {
+        return res.status(400).json({ message: "يجب إكمال بيانات مجموعة الراتب أولاً" });
+      }
 
       const assignment = fixedShiftAssignments(group as FixedSalaryGroup).find(
         (item) => item.userId === user_id && item.shiftNumber === Number(shift_number),
@@ -1271,7 +1363,7 @@ export async function registerRoutes(
         .select('*')
         .eq('active', true);
       if (groupsError) throw groupsError;
-      const activeGroups = (groups || []) as FixedSalaryGroup[];
+      const activeGroups = ((groups || []) as FixedSalaryGroup[]).filter(isCompleteFixedSalaryGroup);
       if (activeGroups.length === 0) return res.json([]);
 
       const groupIds = activeGroups.map((group) => group.id);
@@ -1350,7 +1442,7 @@ export async function registerRoutes(
           ...(allShifts || [])
             .filter((s: any) => s.user_id === currentUserId)
             .map((s: any) => s.shift_number),
-          ...((fixedGroups || []) as FixedSalaryGroup[])
+          ...((fixedGroups || []) as FixedSalaryGroup[]).filter(isCompleteFixedSalaryGroup)
             .flatMap((group) => fixedShiftAssignments(group))
             .filter((assignment) => assignment.userId === currentUserId)
             .map((assignment) => assignment.shiftNumber),
@@ -1365,7 +1457,7 @@ export async function registerRoutes(
         ...(allShifts || [])
           .filter((s: any) => s.shift_number === targetShiftNum)
           .map((s: any) => s.user_id as string),
-        ...((fixedGroups || []) as FixedSalaryGroup[])
+        ...((fixedGroups || []) as FixedSalaryGroup[]).filter(isCompleteFixedSalaryGroup)
           .flatMap((group) => fixedShiftAssignments(group))
           .filter((assignment) => assignment.shiftNumber === targetShiftNum)
           .map((assignment) => assignment.userId),
@@ -1501,7 +1593,7 @@ export async function registerRoutes(
           scheduledMinutes: 120,
           startOffsetMinutes: 0,
         })),
-        ...((fixedGroups || []) as FixedSalaryGroup[]).flatMap((group) =>
+        ...((fixedGroups || []) as FixedSalaryGroup[]).filter(isCompleteFixedSalaryGroup).flatMap((group) =>
           fixedShiftAssignments(group)
             .filter((assignment) => assignment.userId === user_id)
             .map((assignment) => ({
@@ -1755,7 +1847,7 @@ export async function registerRoutes(
       if (shiftsError) throw shiftsError;
       if (fixedError) throw fixedError;
 
-      const fixedAssignments = ((fixedGroups || []) as FixedSalaryGroup[]).flatMap((group) =>
+      const fixedAssignments = ((fixedGroups || []) as FixedSalaryGroup[]).filter(isCompleteFixedSalaryGroup).flatMap((group) =>
         fixedShiftAssignments(group)
           .filter((assignment) => assignment.userId === userId)
           .map((assignment) => ({

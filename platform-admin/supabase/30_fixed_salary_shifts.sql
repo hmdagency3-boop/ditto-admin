@@ -84,3 +84,13 @@ CREATE TRIGGER fixed_salary_groups_updated_at
   BEFORE UPDATE ON public.fixed_salary_groups
   FOR EACH ROW
   EXECUTE FUNCTION public.fixed_salary_groups_set_updated_at();
+
+-- تسمح بحفظ مسودة ناقصة واستكمالها لاحقاً من شاشة الشيفتات.
+ALTER TABLE public.fixed_salary_groups
+  ALTER COLUMN girl_one_id DROP NOT NULL,
+  ALTER COLUMN girl_two_id DROP NOT NULL,
+  ALTER COLUMN girl_one_shift DROP NOT NULL,
+  ALTER COLUMN girl_two_shift DROP NOT NULL,
+  ALTER COLUMN shared_shift DROP NOT NULL,
+  ALTER COLUMN girl_one_salary DROP NOT NULL,
+  ALTER COLUMN girl_two_salary DROP NOT NULL;
