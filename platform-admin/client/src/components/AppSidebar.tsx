@@ -57,51 +57,65 @@ export function AppSidebar() {
     {
       key: 'nav.overview',
       items: [
-        { key: 'nav.dashboard', url: '/', icon: LayoutDashboard },
-        { key: 'nav.search', url: '/search', icon: Search },
-        { key: 'nav.pending', url: '/pending-requests', icon: UserCheck },
+        { key: 'nav.dashboard', url: '/', icon: LayoutDashboard, permission: 'dashboard.view' },
+        { key: 'nav.search', url: '/search', icon: Search, permission: 'search.view' },
+        { key: 'nav.pending', url: '/pending-requests', icon: UserCheck, permission: 'pendingRequests.manage' },
       ],
     },
     {
       key: 'nav.adminManagement',
       items: [
-        { key: 'nav.admins', url: '/admins', icon: Users },
-        { key: 'nav.attendance', url: '/attendance', icon: Clock },
-        { key: 'nav.shifts', url: '/shifts', icon: Calendar },
+        { key: 'nav.admins', url: '/admins', icon: Users, permission: 'admins.manage' },
+        { key: 'nav.attendance', url: '/attendance', icon: Clock, permission: 'attendance.view' },
+        { key: 'nav.shifts', url: '/shifts', icon: Calendar, permission: 'shifts.view' },
       ],
     },
     {
       key: 'nav.operations',
       items: [
-        { key: 'nav.ratings', url: '/ratings', icon: Star },
-        { key: 'nav.warnings', url: '/warnings', icon: AlertTriangle },
-        { key: 'nav.tasks', url: '/tasks', icon: ClipboardList },
-        { key: 'nav.events', url: '/events', icon: Megaphone },
-        { key: 'nav.workManagement', url: '/work-management', icon: Briefcase },
-        { key: 'nav.agencies', url: '/agencies', icon: Building2 },
-        { key: 'nav.supporters', url: '/supporters', icon: HeartHandshake },
+        { key: 'nav.ratings', url: '/ratings', icon: Star, permission: 'ratings.view' },
+        { key: 'nav.warnings', url: '/warnings', icon: AlertTriangle, permission: 'warnings.view' },
+        { key: 'nav.tasks', url: '/tasks', icon: ClipboardList, permission: 'tasks.view' },
+        { key: 'nav.events', url: '/events', icon: Megaphone, permission: 'events.view' },
+        { key: 'nav.workManagement', url: '/work-management', icon: Briefcase, permission: 'workManagement.view' },
+        { key: 'nav.agencies', url: '/agencies', icon: Building2, permission: 'agencies.manage' },
+        { key: 'nav.supporters', url: '/supporters', icon: HeartHandshake, permission: 'supporters.manage' },
       ],
     },
     {
       key: 'nav.tools',
       items: [
-        { key: 'nav.dittoCenter', url: '/ditto-center', icon: Activity },
-        { key: 'nav.dittoRooms', url: '/ditto-rooms', icon: LayoutGrid },
-        { key: 'nav.dittoSearch', url: '/ditto-search', icon: UserSearch },
-        { key: 'nav.whatsapp', url: '/whatsapp', icon: MessageCircle },
-        { key: 'nav.settings', url: '/settings', icon: Settings },
+        { key: 'nav.dittoCenter', url: '/ditto-center', icon: Activity, permission: 'dittoCenter.view' },
+        { key: 'nav.dittoRooms', url: '/ditto-rooms', icon: LayoutGrid, permission: 'dittoRooms.view' },
+        { key: 'nav.dittoSearch', url: '/ditto-search', icon: UserSearch, permission: 'dittoSearch.view' },
+        { key: 'nav.whatsapp', url: '/whatsapp', icon: MessageCircle, permission: 'whatsapp.manage' },
+        { key: 'nav.settings', url: '/settings', icon: Settings, permission: 'settings.view' },
       ],
     },
     {
       key: 'nav.reports',
       items: [
-        { key: 'nav.changeLogs', url: '/change-logs', icon: History },
-        { key: 'nav.recordings', url: '/recordings', icon: Video },
-        { key: 'nav.absences', url: '/absences', icon: CalendarX },
-        { key: 'nav.salaryComplaints', url: '/salary-complaints', icon: FileWarning },
-        { key: 'nav.systemDownComplaints', url: '/system-down-complaints', icon: ArrowDownCircle },
+        { key: 'nav.changeLogs', url: '/change-logs', icon: History, permission: 'changeLogs.view' },
+        { key: 'nav.recordings', url: '/recordings', icon: Video, permission: 'recordings.view' },
+        { key: 'nav.absences', url: '/absences', icon: CalendarX, permission: 'absences.view' },
+        { key: 'nav.salaryComplaints', url: '/salary-complaints', icon: FileWarning, permission: 'salaryComplaints.manage' },
+        { key: 'nav.systemDownComplaints', url: '/system-down-complaints', icon: ArrowDownCircle, permission: 'systemDownComplaints.manage' },
       ],
     },
+  ];
+
+  const assistantSections = [
+    {
+      key: 'nav.myAccount',
+      items: [
+        { key: 'nav.dashboard', url: '/', icon: LayoutDashboard, permission: 'dashboard.view' },
+        { key: 'nav.myTasks', url: '/my-tasks', icon: ClipboardList, permission: 'tasks.view' },
+        { key: 'nav.myAttendance', url: '/my-attendance', icon: Clock, permission: 'attendance.view' },
+        { key: 'nav.myShifts', url: '/my-shifts', icon: Calendar, permission: 'shifts.view' },
+        { key: 'nav.settings', url: '/settings', icon: Settings, permission: 'settings.view' },
+      ],
+    },
+    ...superAdminSections,
   ];
 
   const adminSections = [
@@ -117,7 +131,17 @@ export function AppSidebar() {
     },
   ];
 
-  const menuSections = isSuperAdmin ? superAdminSections : adminSections;
+  const menuSections = isSuperAdmin
+    ? superAdminSections
+    : user?.role === 'assistant'
+      ? assistantSections
+      : adminSections;
+  const visibleSections = menuSections
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => !item.permission || isSuperAdmin || hasPermission(item.permission)),
+    }))
+    .filter(section => section.items.length > 0);
 
   const getInitials = (name: string) =>
     name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
@@ -143,7 +167,7 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="px-2 py-3 group-data-[collapsible=icon]:px-1">
-        {menuSections.map((section, sectionIndex) => (
+        {visibleSections.map((section, sectionIndex) => (
           <SidebarGroup
             key={section.key}
             className={sectionIndex > 0

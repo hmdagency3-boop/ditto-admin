@@ -19,12 +19,14 @@ import {
   UserCheck,
   StickyNote,
   Copy,
-  RefreshCw
+  RefreshCw,
+  ShieldCheck
 } from 'lucide-react';
 import { AdminNotesDialog } from '@/components/AdminNotesDialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { fetchUserProfile } from '@/lib/userProfileService';
@@ -36,6 +38,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
+import { ASSISTANT_DEFAULT_PERMISSIONS, PERMISSION_DEFINITIONS } from '../../../shared/permissions';
 
 const PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
 
@@ -51,6 +54,7 @@ const addAdminSchema = z.object({
   full_name: z.string().min(2, 'الاسم يجب أن يكون حرفين على الأقل'),
   phone: z.string().optional(),
   platform_id: z.string().optional(),
+  role: z.enum(['admin', 'assistant']),
 });
 
 const editAdminSchema = z.object({
@@ -58,6 +62,7 @@ const editAdminSchema = z.object({
   phone: z.string().optional(),
   platform_id: z.string().optional(),
   password: z.string().optional(),
+  role: z.enum(['admin', 'assistant']),
 });
 
 type AddAdminFormData = z.infer<typeof addAdminSchema>;
@@ -74,6 +79,7 @@ interface UserInfo {
   platform_id?: string;
   created_at: string;
   employment_status?: string;
+  permissions?: string[];
   externalImage?: string;
   externalName?: string;
 }
@@ -93,15 +99,19 @@ export default function Admins() {
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
   const [credentialsDialogOpen, setCredentialsDialogOpen] = useState(false);
   const [createdCredentials, setCreatedCredentials] = useState<{ username: string; password: string } | null>(null);
+  const [permissionsDialogOpen, setPermissionsDialogOpen] = useState(false);
+  const [permissionsAdmin, setPermissionsAdmin] = useState<UserInfo | null>(null);
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
+  const [savingPermissions, setSavingPermissions] = useState(false);
 
   const form = useForm<AddAdminFormData>({
     resolver: zodResolver(addAdminSchema),
-    defaultValues: { username: '', password: generateRandomPassword(), full_name: '', phone: '', platform_id: '' },
+    defaultValues: { username: '', password: generateRandomPassword(), full_name: '', phone: '', platform_id: '', role: 'admin' },
   });
 
   const editForm = useForm<EditAdminFormData>({
     resolver: zodResolver(editAdminSchema),
-    defaultValues: { full_name: '', phone: '', platform_id: '', password: '' },
+    defaultValues: { full_name: '', phone: '', platform_id: '', password: '', role: 'admin' },
   });
 
   useEffect(() => { fetchAdmins(); }, []);

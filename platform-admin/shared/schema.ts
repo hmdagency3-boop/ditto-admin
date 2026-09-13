@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -11,6 +11,7 @@ export const users = pgTable("users", {
   name: text("name"),
   platform_id: text("platform_id"),
   role: text("role").notNull().default("admin"),
+  permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
   status: text("status").notNull().default("pending"),
   phone: text("phone"),
   avatar_url: text("avatar_url"),
@@ -94,5 +95,5 @@ export const registerSchema = z.object({
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
-export type UserRole = "super_admin" | "admin";
+export type UserRole = "super_admin" | "admin" | "assistant";
 export type UserStatus = "pending" | "approved" | "rejected";

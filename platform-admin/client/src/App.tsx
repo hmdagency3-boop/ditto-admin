@@ -43,8 +43,16 @@ import SalaryComplaints from "@/pages/SalaryComplaints";
 import SystemDownComplaints from "@/pages/SystemDownComplaints";
 import WhatsApp from "@/pages/WhatsApp";
 
-function ProtectedRoute({ component: Component, superAdminOnly = false }: { component: React.ComponentType; superAdminOnly?: boolean }) {
-  const { user, loading, isSuperAdmin } = useAuth();
+function ProtectedRoute({
+  component: Component,
+  superAdminOnly = false,
+  permission,
+}: {
+  component: React.ComponentType;
+  superAdminOnly?: boolean;
+  permission?: string;
+}) {
+  const { user, loading, isSuperAdmin, hasPermission } = useAuth();
 
   if (loading) {
     return (
@@ -59,7 +67,9 @@ function ProtectedRoute({ component: Component, superAdminOnly = false }: { comp
   }
 
   if (!user) return <Redirect to="/login" />;
-  if (superAdminOnly && !isSuperAdmin) return <Redirect to="/" />;
+  if (user.role === 'assistant' && permission && !hasPermission(permission)) return <Redirect to="/" />;
+  if (superAdminOnly && !isSuperAdmin && user.role !== 'assistant') return <Redirect to="/" />;
+  if (superAdminOnly && user.role === 'assistant' && !permission) return <Redirect to="/" />;
 
   return <Component />;
 }
@@ -123,85 +133,85 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/pending-approval" component={PendingApproval} />
       <Route path="/">
-        <ProtectedRoute component={Dashboard} />
+        <ProtectedRoute component={Dashboard} permission="dashboard.view" />
       </Route>
       <Route path="/search">
-        <ProtectedRoute component={SearchPage} superAdminOnly />
+        <ProtectedRoute component={SearchPage} superAdminOnly permission="search.view" />
       </Route>
       <Route path="/admins">
-        <ProtectedRoute component={Admins} superAdminOnly />
+        <ProtectedRoute component={Admins} superAdminOnly permission="admins.manage" />
       </Route>
       <Route path="/attendance">
-        <ProtectedRoute component={Attendance} superAdminOnly />
+        <ProtectedRoute component={Attendance} superAdminOnly permission="attendance.view" />
       </Route>
       <Route path="/shifts">
-        <ProtectedRoute component={Shifts} />
+        <ProtectedRoute component={Shifts} permission="shifts.view" />
       </Route>
       <Route path="/ratings">
-        <ProtectedRoute component={Ratings} superAdminOnly />
+        <ProtectedRoute component={Ratings} superAdminOnly permission="ratings.view" />
       </Route>
       <Route path="/warnings">
-        <ProtectedRoute component={Warnings} superAdminOnly />
+        <ProtectedRoute component={Warnings} superAdminOnly permission="warnings.view" />
       </Route>
       <Route path="/pending-requests">
-        <ProtectedRoute component={PendingRequests} superAdminOnly />
+        <ProtectedRoute component={PendingRequests} superAdminOnly permission="pendingRequests.manage" />
       </Route>
       <Route path="/my-attendance">
-        <ProtectedRoute component={MyAttendance} />
+        <ProtectedRoute component={MyAttendance} permission="attendance.view" />
       </Route>
       <Route path="/my-shifts">
-        <ProtectedRoute component={MyShifts} />
+        <ProtectedRoute component={MyShifts} permission="shifts.view" />
       </Route>
       <Route path="/settings">
-        <ProtectedRoute component={Settings} />
+        <ProtectedRoute component={Settings} permission="settings.view" />
       </Route>
       <Route path="/change-logs">
-        <ProtectedRoute component={ChangeLogs} superAdminOnly />
+        <ProtectedRoute component={ChangeLogs} superAdminOnly permission="changeLogs.view" />
       </Route>
       <Route path="/tasks">
-        <ProtectedRoute component={Tasks} superAdminOnly />
+        <ProtectedRoute component={Tasks} superAdminOnly permission="tasks.view" />
       </Route>
       <Route path="/my-tasks">
-        <ProtectedRoute component={MyTasks} />
+        <ProtectedRoute component={MyTasks} permission="tasks.view" />
       </Route>
       <Route path="/events">
-        <ProtectedRoute component={Events} superAdminOnly />
+        <ProtectedRoute component={Events} superAdminOnly permission="events.view" />
       </Route>
       <Route path="/work-management">
-        <ProtectedRoute component={WorkManagement} superAdminOnly />
+        <ProtectedRoute component={WorkManagement} superAdminOnly permission="workManagement.view" />
       </Route>
       <Route path="/agencies">
-        <ProtectedRoute component={AgenciesPage} superAdminOnly />
+        <ProtectedRoute component={AgenciesPage} superAdminOnly permission="agencies.manage" />
       </Route>
       <Route path="/supporters">
-        <ProtectedRoute component={SupportersPage} superAdminOnly />
+        <ProtectedRoute component={SupportersPage} superAdminOnly permission="supporters.manage" />
       </Route>
       <Route path="/admins/:id">
         <ProtectedRoute component={AdminProfile} superAdminOnly />
       </Route>
       <Route path="/ditto-center">
-        <ProtectedRoute component={DittoCommandCenter} superAdminOnly />
+        <ProtectedRoute component={DittoCommandCenter} superAdminOnly permission="dittoCenter.view" />
       </Route>
       <Route path="/ditto-rooms">
-        <ProtectedRoute component={DittoRooms} superAdminOnly />
+        <ProtectedRoute component={DittoRooms} superAdminOnly permission="dittoRooms.view" />
       </Route>
       <Route path="/ditto-search">
-        <ProtectedRoute component={DittoProfileSearch} superAdminOnly />
+        <ProtectedRoute component={DittoProfileSearch} superAdminOnly permission="dittoSearch.view" />
       </Route>
       <Route path="/recordings">
-        <ProtectedRoute component={Recordings} superAdminOnly />
+        <ProtectedRoute component={Recordings} superAdminOnly permission="recordings.view" />
       </Route>
       <Route path="/absences">
-        <ProtectedRoute component={Absences} superAdminOnly />
+        <ProtectedRoute component={Absences} superAdminOnly permission="absences.view" />
       </Route>
       <Route path="/salary-complaints">
-        <ProtectedRoute component={SalaryComplaints} superAdminOnly />
+        <ProtectedRoute component={SalaryComplaints} superAdminOnly permission="salaryComplaints.manage" />
       </Route>
       <Route path="/system-down-complaints">
-        <ProtectedRoute component={SystemDownComplaints} superAdminOnly />
+        <ProtectedRoute component={SystemDownComplaints} superAdminOnly permission="systemDownComplaints.manage" />
       </Route>
       <Route path="/whatsapp">
-        <ProtectedRoute component={WhatsApp} superAdminOnly />
+        <ProtectedRoute component={WhatsApp} superAdminOnly permission="whatsapp.manage" />
       </Route>
       <Route component={NotFound} />
     </Switch>

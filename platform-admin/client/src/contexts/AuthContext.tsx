@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { fetchUserProfile } from '@/lib/userProfileService';
+import { hasPermission as checkPermission } from '../../../shared/permissions';
 
-export type UserRole = 'super_admin' | 'admin';
+export type UserRole = 'super_admin' | 'admin' | 'assistant';
 export type UserStatus = 'pending' | 'approved' | 'rejected';
 
 export interface User {
@@ -10,6 +11,7 @@ export interface User {
   full_name: string;
   role: UserRole;
   status: UserStatus;
+  permissions?: string[];
   phone?: string;
   avatar_url?: string;
   platform_id?: string;
@@ -24,6 +26,7 @@ interface AuthContextType {
   signUp: (username: string, password: string, fullName: string, deviceFingerprint?: string) => Promise<{ error: Error | null; success?: boolean; username?: string }>;
   signOut: () => void;
   isSuperAdmin: boolean;
+  hasPermission: (permission: string) => boolean;
   token: string | null;
 }
 
@@ -154,6 +157,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const isSuperAdmin = user?.role === 'super_admin';
+  const hasPermission = (permission: string) =>
+    isSuperAdmin || (user?.role === 'assistant' && checkPermission(user.permissions, permission));
 
   return (
     <AuthContext.Provider value={{
@@ -163,6 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp,
       signOut,
       isSuperAdmin,
+       hasPermission,
       token,
     }}>
       {children}

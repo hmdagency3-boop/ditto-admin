@@ -24,6 +24,7 @@ import {
   listWhatsAppAIMedia,
   saveWhatsAppAISettings,
 } from "./whatsappAiService";
+import { hasPermission, normalizePermissions, type PermissionKey } from "../shared/permissions";
 
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET;
 if (!JWT_SECRET) {
@@ -69,6 +70,7 @@ interface JWTPayload {
   userId: string;
   username: string;
   role: string;
+  permissions?: string[];
 }
 
 // ── Simple in-memory cache ────────────────────────────────────────────────────
@@ -244,20 +246,62 @@ function authenticateToken(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ message: "غير مصرح - يرجى تسجيل الدخول" });
   }
 
-  jwt.verify(token, JWT_SECRET!, (err, decoded) => {
+  jwt.verify(token, JWT_SECRET!, async (err, decoded) => {
     if (err) {
       return res.status(403).json({ message: "الجلسة منتهية - يرجى تسجيل الدخول مرة أخرى" });
     }
-    req.user = decoded as JWTPayload;
-    next();
+    try {
+      const payload = decoded as JWTPayload;
+      const currentUser = await storage.getUser(payload.userId);
+      if (!currentUser) {
+        return res.status(401).json({ message: "المستخدم غير موجود" });
+      }
+      req.user = {
+        ...payload,
+        role: currentUser.role,
+        permissions: normalizePermissions((currentUser as any).permissions),
+      };
+      next();
+    } catch {
+      return res.status(500).json({ message: "تعذر التحقق من الجلسة" });
+    }
   });
 }
 
 function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
+  if (req.user?.role === "super_admin") {
+    return next();
+  }
+  const permission = permissionForRequest(req);
+  if (req.user?.role === "assistant" && permission && hasPermission(req.user.permissions, permission)) {
+    return next();
+  }
   if (req.user?.role !== "super_admin") {
     return res.status(403).json({ message: "غير مصرح - يتطلب صلاحيات المسؤول الأعلى" });
   }
-  next();
+}
+
+function permissionForRequest(req: Request): PermissionKey | null {
+  const path = req.path;
+  const method = req.method;
+
+  if (path.startsWith("/api/users")) return "admins.manage";
+  if (path.startsWith("/api/whatsapp")) return "whatsapp.manage";
+  if (path.startsWith("/api/fixed-salary")) return "fixedSalary.manage";
+  if (path.startsWith("/api/ratings")) return "ratings.view";
+  if (path.startsWith("/api/warnings")) return "warnings.view";
+  if (path.startsWith("/api/tasks")) return method === "GET" ? "tasks.view" : "tasks.manage";
+  if (path.startsWith("/api/events")) return method === "GET" ? "events.view" : "events.manage";
+  if (path.startsWith("/api/work-management")) return "workManagement.manage";
+  if (path.startsWith("/api/agencies")) return "agencies.manage";
+  if (path.startsWith("/api/supporters")) return "supporters.manage";
+  if (path.startsWith("/api/ditto")) return "dittoCenter.view";
+  if (path.startsWith("/api/recordings")) return "recordings.view";
+  if (path.startsWith("/api/absences")) return "absences.view";
+  if (path.startsWith("/api/salary-complaints")) return "salaryComplaints.manage";
+  if (path.startsWith("/api/system-down-complaints")) return "systemDownComplaints.manage";
+  if (path.startsWith("/api/change-logs")) return "changeLogs.view";
+  return null;
 }
 
 interface PlatformProfile {
@@ -724,7 +768,7 @@ export async function registerRoutes(
       resetLoginRateLimit(ip);
 
       const token = jwt.sign(
-        { userId: user.id, username: user.username, role: user.role },
+        { userId: user.id, username: user.username, role: user.role, permissions: normalizePermissions((user as any).permissions) },
         JWT_SECRET!,
         { expiresIn: "24h" }
       );
@@ -736,6 +780,7 @@ export async function registerRoutes(
           username: user.username,
           full_name: user.full_name,
           role: user.role,
+           permissions: normalizePermissions((user as any).permissions),
           status: user.status,
           phone: user.phone,
           avatar_url: user.avatar_url,
@@ -764,6 +809,7 @@ export async function registerRoutes(
         username: user.username,
         full_name: user.full_name,
         role: user.role,
+          permissions: normalizePermissions((user as any).permissions),
         status: user.status,
         phone: user.phone,
         avatar_url: user.avatar_url,
@@ -834,7 +880,7 @@ export async function registerRoutes(
 
   app.post("/api/users/generated-password", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
-      const { username, full_name, phone, platform_id, requested_password } = req.body;
+      const { username, full_name, phone, platform_id, requested_password, role, permissions } = req.body;
 
       if (!username || !full_name) {
         return res.status(400).json({ message: "اسم المستخدم والاسم الكامل مطلوبان" });
@@ -862,6 +908,8 @@ export async function registerRoutes(
         phone: phone || null,
         platform_id: platform_id || null,
         ip_address,
+        role: role === "assistant" ? "assistant" : "admin",
+        permissions: role === "assistant" ? normalizePermissions(permissions) : [],
       });
 
       invalidateCache("users:");
@@ -872,6 +920,8 @@ export async function registerRoutes(
         phone: user.phone || null,
         platform_id: user.platform_id || null,
         status: user.status,
+        role: user.role,
+        permissions: normalizePermissions((user as any).permissions),
         password,
       });
     } catch (error: any) {
@@ -896,6 +946,7 @@ export async function registerRoutes(
         platform_id: u.platform_id || null,
         created_at: u.created_at,
         employment_status: u.employment_status || 'active',
+        permissions: normalizePermissions(u.permissions),
       }));
       setCache('users:all', result, 2 * 60 * 1000);
       res.json(result);
@@ -1021,7 +1072,7 @@ export async function registerRoutes(
   app.patch("/api/users/:id", authenticateToken, requireSuperAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const { full_name, phone, platform_id, password, employment_status } = req.body;
+      const { full_name, phone, platform_id, password, employment_status, role, permissions } = req.body;
 
       const { data: currentUser } = await storage.supabase
         .from('users')
@@ -1034,6 +1085,10 @@ export async function registerRoutes(
       if (phone             !== undefined)   updates.phone = phone;
       if (platform_id       !== undefined)   updates.platform_id = platform_id;
       if (employment_status !== undefined)   updates.employment_status = employment_status;
+      if (role === 'admin' || role === 'assistant') {
+        updates.role = role;
+        updates.permissions = role === 'assistant' ? normalizePermissions(permissions) : [];
+      }
 
       if (password && password.trim().length > 0) {
         const bcryptLib = await import('bcryptjs');

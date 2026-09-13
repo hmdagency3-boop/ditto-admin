@@ -155,6 +155,8 @@ export class SupabaseStorage implements IStorage {
   async createUser(insertUser: InsertUser & {
     full_name: string;
     name?: string | null;
+    role?: "admin" | "assistant";
+    permissions?: string[];
     device_fingerprint?: string | null;
     ip_address?: string | null;
     phone?: string | null;
@@ -171,7 +173,8 @@ export class SupabaseStorage implements IStorage {
       name: insertUser.username,
       phone: insertUser.phone || null,
       platform_id: insertUser.platform_id || null,
-      role: "admin",
+      role: insertUser.role || "admin",
+      permissions: insertUser.permissions || [],
       status: "pending",
     };
 
