@@ -17,7 +17,9 @@ import {
   Link,
   UserX,
   UserCheck,
-  StickyNote
+  StickyNote,
+  Copy,
+  RefreshCw
 } from 'lucide-react';
 import { AdminNotesDialog } from '@/components/AdminNotesDialog';
 import { Card, CardContent } from '@/components/ui/card';
@@ -34,6 +36,14 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
+
+const PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+
+function generateRandomPassword(length = 12) {
+  const values = new Uint32Array(length);
+  crypto.getRandomValues(values);
+  return Array.from(values, value => PASSWORD_ALPHABET[value % PASSWORD_ALPHABET.length]).join('');
+}
 
 const addAdminSchema = z.object({
   username: z.string().min(3, 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل'),
@@ -81,10 +91,12 @@ export default function Admins() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notesAdmin, setNotesAdmin] = useState<UserInfo | null>(null);
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
+  const [credentialsDialogOpen, setCredentialsDialogOpen] = useState(false);
+  const [createdCredentials, setCreatedCredentials] = useState<{ username: string; password: string } | null>(null);
 
   const form = useForm<AddAdminFormData>({
     resolver: zodResolver(addAdminSchema),
-    defaultValues: { username: '', password: '', full_name: '', phone: '', platform_id: '' },
+    defaultValues: { username: '', password: generateRandomPassword(), full_name: '', phone: '', platform_id: '' },
   });
 
   const editForm = useForm<EditAdminFormData>({
@@ -139,7 +151,9 @@ export default function Admins() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message);
-      toast({ title: 'تم إضافة المشرف', description: 'تم إرسال طلب التسجيل. يمكنك الموافقة عليه من صفحة طلبات التسجيل.' });
+      setCreatedCredentials({ username: data.username, password: data.password });
+      setCredentialsDialogOpen(true);
+      toast({ title: 'تم إضافة المشرف', description: 'تم إرسال طلب التسجيل ويمكنك مراجعة بيانات الدخول الآن.' });
       form.reset();
       setDialogOpen(false);
     } catch (error: any) {
@@ -277,7 +291,21 @@ export default function Admins() {
           <p className="text-muted-foreground mt-1">إدارة جميع المشرفين في النظام</p>
         </div>
         
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog
+          open={dialogOpen}
+          onOpenChange={(open) => {
+            setDialogOpen(open);
+            if (open) {
+              form.reset({
+                username: '',
+                password: generateRandomPassword(),
+                full_name: '',
+                phone: '',
+                platform_id: '',
+              });
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button data-testid="button-add-admin">
               <Plus className="h-4 w-4 ml-2" />
@@ -324,8 +352,45 @@ export default function Admins() {
                 )} />
                 <FormField control={form.control} name="password" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>كلمة المرور</FormLabel>
-                    <FormControl><Input type="password" placeholder="••••••••" data-testid="input-admin-password" {...field} /></FormControl>
+                    <FormLabel>كلمة المرور التلقائية</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input
+                          type="text"
+                          readOnly
+                          dir="ltr"
+                          className="pl-20 font-mono tracking-wider"
+                          data-testid="input-admin-password"
+                          {...field}
+                        />
+                        <div className="absolute left-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="توليد كلمة مرور جديدة"
+                            onClick={() => form.setValue('password', generateRandomPassword(), { shouldValidate: true })}
+                          >
+                            <RefreshCw className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="نسخ كلمة المرور"
+                            onClick={async () => {
+                              await navigator.clipboard.writeText(form.getValues('password'));
+                              toast({ title: 'تم النسخ', description: 'تم نسخ كلمة المرور إلى الحافظة.' });
+                            }}
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">يتم إنشاؤها عشوائيًا ويمكنك نسخها لإرسالها للمشرف.</p>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -337,6 +402,46 @@ export default function Admins() {
                 </div>
               </form>
             </Form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={credentialsDialogOpen} onOpenChange={setCredentialsDialogOpen}>
+          <DialogContent className="sm:max-w-md" dir="rtl">
+            <DialogHeader>
+              <DialogTitle>بيانات دخول المشرف</DialogTitle>
+              <DialogDescription>
+                احفظ هذه البيانات وأرسلها للمشرف. كلمة المرور لن تظهر في قائمة المشرفين.
+              </DialogDescription>
+            </DialogHeader>
+            {createdCredentials && (
+              <div className="space-y-3 rounded-lg border bg-muted/40 p-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">اسم المستخدم</p>
+                  <p className="font-medium" dir="ltr">{createdCredentials.username}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">كلمة المرور</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 rounded bg-background px-3 py-2 font-mono text-base tracking-wider" dir="ltr">
+                      {createdCredentials.password}
+                    </code>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      title="نسخ بيانات الدخول"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(createdCredentials.password);
+                        toast({ title: 'تم النسخ', description: 'تم نسخ كلمة المرور إلى الحافظة.' });
+                      }}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+            <Button type="button" onClick={() => setCredentialsDialogOpen(false)}>تم</Button>
           </DialogContent>
         </Dialog>
       </div>
