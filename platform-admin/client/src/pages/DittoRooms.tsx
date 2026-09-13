@@ -92,6 +92,7 @@ export default function DittoRooms() {
   const {
     activeSession, setActiveSession,
     setAgoraPublisherUids, setIsMicMuted, stopSession,
+    playAudioTrack,
   } = useDittoSession();
 
   const { data: roomList, isLoading } = useQuery<RoomsData>({
@@ -183,7 +184,7 @@ export default function DittoRooms() {
         setAgoraPublisherUids(prev => [...new Set([...prev, user.uid as number])]);
         if (mediaType === "audio") {
           const track = await client.subscribe(user, mediaType);
-          audioTracks.push(track); track.play();
+          audioTracks.push(track); playAudioTrack(track);
           setActiveSession(prev => prev ? { ...prev, audioTracks: [...prev.audioTracks, track] } : prev);
         } else if (mediaType === "video") {
           const track = await client.subscribe(user, "video") as IRemoteVideoTrack;
@@ -203,7 +204,7 @@ export default function DittoRooms() {
 
       for (const u of client.remoteUsers) {
         setAgoraPublisherUids(prev => [...new Set([...prev, u.uid as number])]);
-        if (u.hasAudio) { try { const t = await client.subscribe(u, "audio"); audioTracks.push(t); t.play(); } catch {} }
+        if (u.hasAudio) { try { const t = await client.subscribe(u, "audio"); audioTracks.push(t); playAudioTrack(t); } catch {} }
         if (u.hasVideo) { try { const t = await client.subscribe(u, "video") as IRemoteVideoTrack; videoTracks.push(t); } catch {} }
       }
       setActiveSession({
@@ -225,7 +226,7 @@ export default function DittoRooms() {
         setAgoraPublisherUids(prev => [...new Set([...prev, user.uid as number])]);
         if (mediaType === "audio") {
           const track = await client.subscribe(user, mediaType);
-          audioTracks.push(track); track.play();
+          audioTracks.push(track); playAudioTrack(track);
           setActiveSession(prev => prev ? { ...prev, audioTracks: [...prev.audioTracks, track] } : prev);
         } else if (mediaType === "video") {
           const track = await client.subscribe(user, "video") as IRemoteVideoTrack;
@@ -242,7 +243,7 @@ export default function DittoRooms() {
 
       for (const u of client.remoteUsers) {
         setAgoraPublisherUids(prev => [...new Set([...prev, u.uid as number])]);
-        if (u.hasAudio) { try { const t = await client.subscribe(u, "audio"); audioTracks.push(t); t.play(); } catch {} }
+        if (u.hasAudio) { try { const t = await client.subscribe(u, "audio"); audioTracks.push(t); playAudioTrack(t); } catch {} }
         if (u.hasVideo) { try { const t = await client.subscribe(u, "video") as IRemoteVideoTrack; videoTracks.push(t); } catch {} }
       }
       await client.publish([localTrack]);
