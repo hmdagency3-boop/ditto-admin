@@ -3,9 +3,13 @@ export type PermissionKey =
   | 'search.view'
   | 'admins.manage'
   | 'attendance.view'
+  | 'attendance.manage'
   | 'shifts.view'
+  | 'shifts.manage'
   | 'ratings.view'
+  | 'ratings.manage'
   | 'warnings.view'
+  | 'warnings.manage'
   | 'pendingRequests.manage'
   | 'tasks.view'
   | 'tasks.manage'
@@ -22,8 +26,11 @@ export type PermissionKey =
   | 'whatsapp.manage'
   | 'settings.view'
   | 'changeLogs.view'
+  | 'changeLogs.manage'
   | 'recordings.view'
+  | 'recordings.manage'
   | 'absences.view'
+  | 'absences.manage'
   | 'salaryComplaints.manage'
   | 'systemDownComplaints.manage';
 
@@ -39,9 +46,13 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { key: 'search.view', label: 'البحث', description: 'البحث في بيانات المشرفين', group: 'الصفحات الأساسية' },
   { key: 'admins.manage', label: 'إدارة المشرفين', description: 'عرض وتعديل وحذف وإدارة المشرفين', group: 'إدارة المشرفين' },
   { key: 'attendance.view', label: 'الحضور', description: 'عرض بيانات الحضور', group: 'إدارة المشرفين' },
+  { key: 'attendance.manage', label: 'إدارة الحضور', description: 'تسجيل وتعديل بيانات الحضور', group: 'إدارة المشرفين' },
   { key: 'shifts.view', label: 'الشيفتات', description: 'عرض الشيفتات والزملاء', group: 'إدارة المشرفين' },
+  { key: 'shifts.manage', label: 'إدارة الشيفتات', description: 'إضافة وحذف المشرفين من الشيفتات', group: 'إدارة المشرفين' },
   { key: 'ratings.view', label: 'التقييمات', description: 'عرض التقييمات', group: 'التشغيل' },
+  { key: 'ratings.manage', label: 'إدارة التقييمات', description: 'إضافة وحذف التقييمات', group: 'التشغيل' },
   { key: 'warnings.view', label: 'الإنذارات', description: 'عرض الإنذارات', group: 'التشغيل' },
+  { key: 'warnings.manage', label: 'إدارة الإنذارات', description: 'إضافة وحذف الإنذارات', group: 'التشغيل' },
   { key: 'pendingRequests.manage', label: 'طلبات التسجيل', description: 'مراجعة وقبول ورفض الطلبات', group: 'التشغيل' },
   { key: 'tasks.view', label: 'المهام', description: 'عرض المهام', group: 'التشغيل' },
   { key: 'tasks.manage', label: 'إدارة المهام', description: 'إنشاء وتعديل وحذف المهام', group: 'التشغيل' },
@@ -58,8 +69,11 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { key: 'whatsapp.manage', label: 'WhatsApp', description: 'إدارة جلسة WhatsApp والردود الذكية', group: 'أدوات Ditto' },
   { key: 'settings.view', label: 'الإعدادات', description: 'عرض الإعدادات الشخصية', group: 'أدوات Ditto' },
   { key: 'changeLogs.view', label: 'سجل التغييرات', description: 'عرض سجل التغييرات', group: 'التقارير' },
+  { key: 'changeLogs.manage', label: 'فحص التغييرات', description: 'تشغيل فحص تغييرات المنصة', group: 'التقارير' },
   { key: 'recordings.view', label: 'التسجيلات', description: 'عرض وإدارة تسجيلات الغرف', group: 'التقارير' },
+  { key: 'recordings.manage', label: 'إدارة التسجيلات', description: 'رفع وحذف التسجيلات', group: 'التقارير' },
   { key: 'absences.view', label: 'الغياب', description: 'عرض تقارير الغياب', group: 'التقارير' },
+  { key: 'absences.manage', label: 'إدارة الغياب', description: 'تسجيل وتعديل وحذف مخالفات الغياب', group: 'التقارير' },
   { key: 'salaryComplaints.manage', label: 'شكاوى الراتب', description: 'عرض وإدارة شكاوى الراتب', group: 'التقارير' },
   { key: 'systemDownComplaints.manage', label: 'شكاوى تعطل النظام', description: 'عرض وإدارة شكاوى تعطل النظام', group: 'التقارير' },
 ];

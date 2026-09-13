@@ -128,7 +128,7 @@ export default function Shifts() {
 
         setShifts(shiftsWithUsers);
         // فقط المشرفون (بدون super_admin)
-        setAdmins(adminsWithImages.filter((u) => u.role !== 'super_admin'));
+        setAdmins(adminsWithImages.filter((u) => u.role !== 'super_admin' && u.role !== 'assistant'));
       }
       if (fixedRes.ok) {
         setFixedGroups(await fixedRes.json());

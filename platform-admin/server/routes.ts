@@ -281,6 +281,22 @@ function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+function requireAssistantPermission(permission: PermissionKey) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (req.user?.role !== "assistant" || hasPermission(req.user.permissions, permission)) {
+      return next();
+    }
+    return res.status(403).json({ message: "غير مصرح - لا تملك صلاحية هذه الصفحة" });
+  };
+}
+
+function requireTaskMutationPermission(req: Request, res: Response, next: NextFunction) {
+  if (req.user?.role !== "assistant" || hasPermission(req.user.permissions, "tasks.manage")) {
+    return next();
+  }
+  return res.status(403).json({ message: "غير مصرح - لا تملك صلاحية إدارة المهام" });
+}
+
 function permissionForRequest(req: Request): PermissionKey | null {
   const path = req.path;
   const method = req.method;
@@ -288,19 +304,22 @@ function permissionForRequest(req: Request): PermissionKey | null {
   if (path.startsWith("/api/users")) return "admins.manage";
   if (path.startsWith("/api/whatsapp")) return "whatsapp.manage";
   if (path.startsWith("/api/fixed-salary")) return "fixedSalary.manage";
-  if (path.startsWith("/api/ratings")) return "ratings.view";
-  if (path.startsWith("/api/warnings")) return "warnings.view";
+  if (path.startsWith("/api/ratings")) return method === "GET" ? "ratings.view" : "ratings.manage";
+  if (path.startsWith("/api/warnings")) return method === "GET" ? "warnings.view" : "warnings.manage";
   if (path.startsWith("/api/tasks")) return method === "GET" ? "tasks.view" : "tasks.manage";
   if (path.startsWith("/api/events")) return method === "GET" ? "events.view" : "events.manage";
-  if (path.startsWith("/api/work-management")) return "workManagement.manage";
+  if (path.startsWith("/api/work-management")) return method === "GET" ? "workManagement.view" : "workManagement.manage";
+  if (path.startsWith("/api/work-report")) return "workManagement.view";
   if (path.startsWith("/api/agencies")) return "agencies.manage";
   if (path.startsWith("/api/supporters")) return "supporters.manage";
+  if (path.startsWith("/api/shifts")) return method === "GET" ? "shifts.view" : "shifts.manage";
+  if (path.startsWith("/api/attendance")) return method === "GET" ? "attendance.view" : "attendance.manage";
   if (path.startsWith("/api/ditto")) return "dittoCenter.view";
-  if (path.startsWith("/api/recordings")) return "recordings.view";
-  if (path.startsWith("/api/absences")) return "absences.view";
+  if (path.startsWith("/api/recordings")) return method === "GET" ? "recordings.view" : "recordings.manage";
+  if (path.startsWith("/api/absences")) return method === "GET" ? "absences.view" : "absences.manage";
   if (path.startsWith("/api/salary-complaints")) return "salaryComplaints.manage";
   if (path.startsWith("/api/system-down-complaints")) return "systemDownComplaints.manage";
-  if (path.startsWith("/api/change-logs")) return "changeLogs.view";
+  if (path.startsWith("/api/change-logs")) return method === "GET" ? "changeLogs.view" : "changeLogs.manage";
   return null;
 }
 
@@ -1166,7 +1185,7 @@ export async function registerRoutes(
   });
 
   // Shifts endpoints
-  app.get("/api/shifts", authenticateToken, async (req, res) => {
+  app.get("/api/shifts", authenticateToken, requireAssistantPermission("shifts.view"), async (req, res) => {
     try {
       const { data, error } = await storage.supabase
         .from('shifts')
@@ -1560,7 +1579,7 @@ export async function registerRoutes(
 
   // مشرفو شيفت معيّن — متاح لكل الأدمنز (بدون super_admin)
   // يقبل ?shift_number=N للحصول على مشرفي شيفت محدد
-  app.get("/api/shifts/colleagues", authenticateToken, async (req, res) => {
+  app.get("/api/shifts/colleagues", authenticateToken, requireAssistantPermission("shifts.view"), async (req, res) => {
     try {
       const currentUserId = req.user!.userId;
       const shiftNumParam = req.query.shift_number ? parseInt(req.query.shift_number as string) : null;
@@ -1679,7 +1698,7 @@ export async function registerRoutes(
   });
 
   // Attendance endpoints
-  app.get("/api/attendance", authenticateToken, async (req, res) => {
+  app.get("/api/attendance", authenticateToken, requireAssistantPermission("attendance.view"), async (req, res) => {
     try {
       const { data, error } = await storage.supabase
         .from('attendance')
@@ -1694,7 +1713,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/attendance", authenticateToken, async (req, res) => {
+  app.post("/api/attendance", authenticateToken, requireAssistantPermission("attendance.view"), async (req, res) => {
     try {
       const currentUserId = req.user!.userId;
       const currentUserRole = req.user!.role;
@@ -1800,7 +1819,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/attendance/:id", authenticateToken, async (req, res) => {
+  app.patch("/api/attendance/:id", authenticateToken, requireAssistantPermission("attendance.view"), async (req, res) => {
     try {
       const currentUserId = req.user!.userId;
       const currentUserRole = req.user!.role;
@@ -1835,7 +1854,7 @@ export async function registerRoutes(
   });
 
   // Ratings endpoints
-  app.get("/api/ratings", authenticateToken, async (req, res) => {
+  app.get("/api/ratings", authenticateToken, requireAssistantPermission("ratings.view"), async (req, res) => {
     try {
       const { data, error } = await storage.supabase
         .from('ratings')
@@ -1869,7 +1888,7 @@ export async function registerRoutes(
   });
 
   // Warnings endpoints
-  app.get("/api/warnings", authenticateToken, async (req, res) => {
+  app.get("/api/warnings", authenticateToken, requireAssistantPermission("warnings.view"), async (req, res) => {
     try {
       const { data, error } = await storage.supabase
         .from('warnings')
@@ -2202,7 +2221,7 @@ export async function registerRoutes(
 
   // ── Tasks endpoints ─────────────────────────────────────────────────────────
 
-  app.get("/api/tasks", authenticateToken, async (req, res) => {
+  app.get("/api/tasks", authenticateToken, requireAssistantPermission("tasks.view"), async (req, res) => {
     try {
       const { data, error } = await storage.supabase
         .from('tasks')
@@ -2245,7 +2264,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/tasks/:id", authenticateToken, async (req, res) => {
+  app.patch("/api/tasks/:id", authenticateToken, requireTaskMutationPermission, async (req, res) => {
     try {
       const { id } = req.params;
       const { title, description, assigned_to, priority, due_date, status } = req.body;
@@ -2284,7 +2303,7 @@ export async function registerRoutes(
 
   // ── Events endpoints ─────────────────────────────────────────────────────────
 
-  app.get("/api/events", authenticateToken, async (req, res) => {
+  app.get("/api/events", authenticateToken, requireAssistantPermission("events.view"), async (req, res) => {
     try {
       const { data, error } = await storage.supabase
         .from('events')
@@ -2976,7 +2995,7 @@ export async function registerRoutes(
   // ── Absences & Tardiness ─────────────────────────────────────────────────────
 
   // GET /api/absences — super admin sees all, admin sees own
-  app.get("/api/absences", authenticateToken, async (req, res) => {
+  app.get("/api/absences", authenticateToken, requireAssistantPermission("absences.view"), async (req, res) => {
     try {
       const { role, userId } = req.user!;
       let query = storage.supabase
@@ -2998,10 +3017,12 @@ export async function registerRoutes(
   });
 
   // POST /api/absences — super admin only
-  app.post("/api/absences", authenticateToken, async (req, res) => {
+  app.post("/api/absences", authenticateToken, requireAssistantPermission("absences.manage"), async (req, res) => {
     try {
       const { role, userId } = req.user!;
-      if (role !== 'super_admin') return res.status(403).json({ message: "غير مصرح" });
+      if (role !== 'super_admin' && !hasPermission(req.user?.permissions, 'absences.manage')) {
+        return res.status(403).json({ message: "غير مصرح" });
+      }
 
       const { user_id, date, shift_number, type, tardiness_minutes, excuse, has_proof, coverage_admin_id, notes, penalty_scheduled_date } = req.body;
 
@@ -3090,10 +3111,12 @@ export async function registerRoutes(
   });
 
   // PATCH /api/absences/:id — super admin only (update penalty_applied, notes, penalty_scheduled_date)
-  app.patch("/api/absences/:id", authenticateToken, async (req, res) => {
+  app.patch("/api/absences/:id", authenticateToken, requireAssistantPermission("absences.manage"), async (req, res) => {
     try {
       const { role } = req.user!;
-      if (role !== 'super_admin') return res.status(403).json({ message: "غير مصرح" });
+      if (role !== 'super_admin' && !hasPermission(req.user?.permissions, 'absences.manage')) {
+        return res.status(403).json({ message: "غير مصرح" });
+      }
 
       const { id } = req.params;
       const { penalty_applied, notes, penalty_scheduled_date, penalty } = req.body;
@@ -3119,10 +3142,12 @@ export async function registerRoutes(
   });
 
   // DELETE /api/absences/:id — super admin only
-  app.delete("/api/absences/:id", authenticateToken, async (req, res) => {
+  app.delete("/api/absences/:id", authenticateToken, requireAssistantPermission("absences.manage"), async (req, res) => {
     try {
       const { role } = req.user!;
-      if (role !== 'super_admin') return res.status(403).json({ message: "غير مصرح" });
+      if (role !== 'super_admin' && !hasPermission(req.user?.permissions, 'absences.manage')) {
+        return res.status(403).json({ message: "غير مصرح" });
+      }
 
       const { id } = req.params;
       const { error } = await storage.supabase.from('absences').delete().eq('id', id);

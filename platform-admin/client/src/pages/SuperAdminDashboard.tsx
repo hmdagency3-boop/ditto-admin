@@ -68,6 +68,7 @@ interface UserInfo {
   status: string;
   platform_id?: string;
   created_at: string;
+  employment_status?: string;
   externalName?: string;
   externalImage?: string;
 }
@@ -132,7 +133,10 @@ export default function SuperAdminDashboard() {
       // Users & shift members
       if (usersRes.ok) {
         const users: UserInfo[] = await usersRes.json();
-        const approvedUsers = users.filter(u => u.status === 'approved');
+         const approvedUsers = users.filter(u => u.status === 'approved');
+         const activeAdmins = approvedUsers.filter(u =>
+           u.role !== 'assistant' && u.employment_status !== 'dismissed'
+         );
         const usersMap = Object.fromEntries(approvedUsers.map(u => [u.id, u]));
 
         const usersWithImages = await Promise.all(
@@ -146,7 +150,7 @@ export default function SuperAdminDashboard() {
           })
         );
         setRecentUsers(usersWithImages.slice(0, 5));
-        setStats(prev => ({ ...prev, totalAdmins: approvedUsers.length }));
+         setStats(prev => ({ ...prev, totalAdmins: activeAdmins.length }));
 
         // Shift members
         if (shiftsRes.ok) {

@@ -47,7 +47,7 @@ import { useLang } from '@/contexts/LangContext';
 
 export function AppSidebar() {
   const [location] = useLocation();
-  const { user, signOut, isSuperAdmin } = useAuth();
+  const { user, signOut, isSuperAdmin, hasPermission } = useAuth();
   const { t, lang } = useLang();
   const { state } = useSidebar();
   const isCollapsed = state === 'collapsed';
@@ -122,11 +122,11 @@ export function AppSidebar() {
     {
       key: 'nav.myAccount',
       items: [
-        { key: 'nav.dashboard', url: '/', icon: LayoutDashboard },
-        { key: 'nav.myTasks', url: '/my-tasks', icon: ClipboardList },
-        { key: 'nav.myAttendance', url: '/my-attendance', icon: Clock },
-        { key: 'nav.myShifts', url: '/my-shifts', icon: Calendar },
-        { key: 'nav.settings', url: '/settings', icon: Settings },
+        { key: 'nav.dashboard', url: '/', icon: LayoutDashboard, permission: 'dashboard.view' },
+        { key: 'nav.myTasks', url: '/my-tasks', icon: ClipboardList, permission: 'tasks.view' },
+        { key: 'nav.myAttendance', url: '/my-attendance', icon: Clock, permission: 'attendance.view' },
+        { key: 'nav.myShifts', url: '/my-shifts', icon: Calendar, permission: 'shifts.view' },
+        { key: 'nav.settings', url: '/settings', icon: Settings, permission: 'settings.view' },
       ],
     },
   ];
@@ -139,7 +139,12 @@ export function AppSidebar() {
   const visibleSections = menuSections
     .map(section => ({
       ...section,
-      items: section.items.filter(item => !item.permission || isSuperAdmin || hasPermission(item.permission)),
+       items: section.items.filter(item =>
+         !item.permission ||
+         isSuperAdmin ||
+         user?.role !== 'assistant' ||
+         hasPermission(item.permission)
+       ),
     }))
     .filter(section => section.items.length > 0);
 
@@ -159,7 +164,11 @@ export function AppSidebar() {
             <div className="flex flex-col min-w-0">
               <span className="truncate text-sm font-bold text-sidebar-foreground">{t('app.name')}</span>
               <span className="mt-0.5 truncate text-[11px] text-sidebar-foreground/55">
-                {isSuperAdmin ? t('app.role.super') : t('app.role.admin')}
+                {isSuperAdmin
+                  ? t('app.role.super')
+                  : user?.role === 'assistant'
+                    ? 'مساعد المساعدين'
+                    : t('app.role.admin')}
               </span>
             </div>
           )}

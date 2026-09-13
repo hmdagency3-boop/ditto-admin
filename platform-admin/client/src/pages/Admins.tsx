@@ -27,6 +27,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { fetchUserProfile } from '@/lib/userProfileService';
@@ -83,6 +84,11 @@ interface UserInfo {
   externalImage?: string;
   externalName?: string;
 }
+
+const PERMISSION_GROUPS = PERMISSION_DEFINITIONS.reduce<Record<string, typeof PERMISSION_DEFINITIONS>>((groups, permission) => {
+  (groups[permission.group] ||= []).push(permission);
+  return groups;
+}, {});
 
 export default function Admins() {
   const [, navigate] = useLocation();
@@ -160,6 +166,8 @@ export default function Admins() {
           full_name: data.full_name,
           phone: data.phone || null,
           platform_id: data.platform_id || null,
+          role: data.role,
+          permissions: data.role === 'assistant' ? selectedPermissions : [],
         }),
       });
       const result = await response.json();
@@ -178,11 +186,13 @@ export default function Admins() {
 
   function openEditDialog(admin: UserInfo) {
     setEditingAdmin(admin);
+    setSelectedPermissions(admin.permissions || ASSISTANT_DEFAULT_PERMISSIONS);
     editForm.reset({
       full_name: admin.full_name,
       phone: admin.phone || '',
       platform_id: admin.platform_id || '',
       password: '',
+      role: admin.role === 'assistant' ? 'assistant' : 'admin',
     });
     setEditDialogOpen(true);
   }
@@ -195,6 +205,8 @@ export default function Admins() {
         full_name: data.full_name,
         phone: data.phone || null,
         platform_id: data.platform_id || null,
+        role: data.role,
+        permissions: data.role === 'assistant' ? selectedPermissions : [],
       };
       if (data.password && data.password.trim().length > 0) {
         body.password = data.password;
@@ -215,6 +227,43 @@ export default function Admins() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function openPermissionsDialog(admin: UserInfo) {
+    setPermissionsAdmin(admin);
+    setSelectedPermissions(admin.permissions || ASSISTANT_DEFAULT_PERMISSIONS);
+    setPermissionsDialogOpen(true);
+  }
+
+  async function savePermissions() {
+    if (!permissionsAdmin) return;
+    setSavingPermissions(true);
+    try {
+      const response = await fetch(`/api/users/${permissionsAdmin.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ role: 'assistant', permissions: selectedPermissions }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message);
+      setAdmins(prev => prev.map(admin => admin.id === permissionsAdmin.id
+        ? { ...admin, role: 'assistant', permissions: selectedPermissions }
+        : admin
+      ));
+      setPermissionsDialogOpen(false);
+      toast({ title: 'تم حفظ الصلاحيات', description: 'تم تحديث صلاحيات المساعد بنجاح.' });
+    } catch (error: any) {
+      toast({ title: 'خطأ', description: error.message || 'تعذر حفظ الصلاحيات', variant: 'destructive' });
+    } finally {
+      setSavingPermissions(false);
+    }
+  }
+
+  function togglePermission(permission: string, checked: boolean) {
+    setSelectedPermissions(prev => checked
+      ? Array.from(new Set([...prev, permission]))
+      : prev.filter(item => item !== permission)
+    );
   }
 
   async function deleteUser(userId: string) {
@@ -271,6 +320,8 @@ export default function Admins() {
       return aD - bD;
     });
 
+  const addingRole = form.watch('role');
+
   const getInitials = (name: string) =>
     name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase();
 
@@ -315,7 +366,9 @@ export default function Admins() {
                 full_name: '',
                 phone: '',
                 platform_id: '',
+                role: 'admin',
               });
+              setSelectedPermissions(ASSISTANT_DEFAULT_PERMISSIONS);
             }
           }}
         >
@@ -363,6 +416,52 @@ export default function Admins() {
                     <FormMessage />
                   </FormItem>
                 )} />
+                <FormField control={form.control} name="role" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>رتبة الحساب</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={(value: AddAdminFormData['role']) => {
+                        field.onChange(value);
+                        if (value === 'assistant') setSelectedPermissions(ASSISTANT_DEFAULT_PERMISSIONS);
+                      }}
+                    >
+                      <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        <SelectItem value="admin">مشرف عادي</SelectItem>
+                        <SelectItem value="assistant">مساعد المساعدين</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                {addingRole === 'assistant' && (
+                  <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                    <div>
+                      <p className="text-sm font-semibold">صلاحيات المساعد</p>
+                      <p className="text-xs text-muted-foreground">حدد الصفحات والعمليات التي يستطيع الوصول إليها.</p>
+                    </div>
+                    <div className="max-h-64 space-y-4 overflow-y-auto pl-1">
+                      {Object.entries(PERMISSION_GROUPS).map(([group, permissions]) => (
+                        <div key={group} className="space-y-2">
+                          <p className="text-xs font-semibold text-muted-foreground">{group}</p>
+                          {permissions.map(permission => (
+                            <label key={permission.key} className="flex cursor-pointer items-start gap-2 rounded-md p-1.5 hover:bg-muted">
+                              <Checkbox
+                                checked={selectedPermissions.includes(permission.key)}
+                                onCheckedChange={checked => togglePermission(permission.key, checked === true)}
+                              />
+                              <span className="text-sm leading-5">
+                                <span className="block font-medium">{permission.label}</span>
+                                <span className="block text-xs text-muted-foreground">{permission.description}</span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <FormField control={form.control} name="password" render={({ field }) => (
                   <FormItem>
                     <FormLabel>كلمة المرور التلقائية</FormLabel>
@@ -494,6 +593,22 @@ export default function Admins() {
                   <FormMessage />
                 </FormItem>
               )} />
+              <FormField control={editForm.control} name="role" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>رتبة الحساب</FormLabel>
+                  <Select
+                    value={field.value}
+                    onValueChange={(value: EditAdminFormData['role']) => field.onChange(value)}
+                  >
+                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      <SelectItem value="admin">مشرف عادي</SelectItem>
+                      <SelectItem value="assistant">مساعد المساعدين</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
               <FormField control={editForm.control} name="password" render={({ field }) => (
                 <FormItem>
                   <FormLabel>كلمة مرور جديدة (اتركها فارغة للإبقاء على القديمة)</FormLabel>
@@ -512,6 +627,44 @@ export default function Admins() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={permissionsDialogOpen} onOpenChange={setPermissionsDialogOpen}>
+        <DialogContent className="max-h-[85vh] sm:max-w-2xl" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>صلاحيات مساعد المساعدين</DialogTitle>
+            <DialogDescription>
+              اختر الصفحات والعمليات التي يستطيع {permissionsAdmin?.full_name || 'المساعد'} استخدامها.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[55vh] space-y-5 overflow-y-auto pr-1">
+            {Object.entries(PERMISSION_GROUPS).map(([group, permissions]) => (
+              <div key={group} className="space-y-2">
+                <h3 className="text-sm font-semibold text-muted-foreground">{group}</h3>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {permissions.map(permission => (
+                    <label key={permission.key} className="flex cursor-pointer items-start gap-2 rounded-lg border p-3 transition-colors hover:bg-muted/50">
+                      <Checkbox
+                        checked={selectedPermissions.includes(permission.key)}
+                        onCheckedChange={checked => togglePermission(permission.key, checked === true)}
+                      />
+                      <span className="text-sm leading-5">
+                        <span className="block font-medium">{permission.label}</span>
+                        <span className="block text-xs text-muted-foreground">{permission.description}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 pt-2">
+            <Button type="button" onClick={savePermissions} disabled={savingPermissions} className="flex-1">
+              {savingPermissions ? 'جاري الحفظ...' : 'حفظ الصلاحيات'}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setPermissionsDialogOpen(false)}>إلغاء</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -526,7 +679,7 @@ export default function Admins() {
         <Badge variant="secondary" className="text-sm">{filteredAdmins.length} مشرف</Badge>
         <Badge variant="outline" className="text-sm text-green-600 border-green-300 bg-green-50 dark:bg-green-950/30">
           <UserCheck className="h-3.5 w-3.5 ml-1" />
-          {filteredAdmins.filter(a => a.employment_status !== 'dismissed').length} فعّال
+          {filteredAdmins.filter(a => a.role !== 'assistant' && a.employment_status !== 'dismissed').length} أدمن فعّال
         </Badge>
       </div>
 
@@ -613,6 +766,8 @@ export default function Admins() {
                           <Badge variant={admin.role === 'super_admin' ? 'default' : 'secondary'}>
                             {admin.role === 'super_admin' ? (
                               <><Shield className="ml-1 h-3 w-3" />مدير رئيسي</>
+                            ) : admin.role === 'assistant' ? (
+                              <><ShieldCheck className="ml-1 h-3 w-3" />مساعد المساعدين</>
                             ) : (
                               <><UserCog className="ml-1 h-3 w-3" />مشرف</>
                             )}
@@ -652,6 +807,12 @@ export default function Admins() {
                                 </DropdownMenuItem>
                                 {isSuperAdmin && (
                                   <>
+                                     {admin.role === 'assistant' && (
+                                       <DropdownMenuItem onClick={() => openPermissionsDialog(admin)}>
+                                         <ShieldCheck className="h-4 w-4 ml-2" />
+                                         تعديل الصلاحيات
+                                       </DropdownMenuItem>
+                                     )}
                                     <DropdownMenuItem onClick={() => { setNotesAdmin(admin); setNotesDialogOpen(true); }}>
                                       <StickyNote className="h-4 w-4 ml-2" />
                                       الملاحظات السرية

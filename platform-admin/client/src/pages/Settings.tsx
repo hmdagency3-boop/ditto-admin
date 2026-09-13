@@ -159,7 +159,11 @@ export default function Settings() {
             <span className="text-sm text-muted-foreground">{t('settings.role')}</span>
             <Badge variant={user?.role === 'super_admin' ? 'destructive' : 'secondary'}>
               <Shield className="h-3 w-3 mr-1" />
-              {user?.role === 'super_admin' ? t('settings.super_admin') : t('settings.admin')}
+              {user?.role === 'super_admin'
+                ? t('settings.super_admin')
+                : user?.role === 'assistant'
+                  ? 'مساعد المساعدين'
+                  : t('settings.admin')}
             </Badge>
           </div>
         </CardContent>
