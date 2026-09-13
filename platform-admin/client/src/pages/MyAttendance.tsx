@@ -93,7 +93,7 @@ export default function MyAttendance() {
 
   const totalHoursWorked = attendance.reduce((acc, record) => {
     if (record.check_out) {
-      const diff = new Date(record.check_out).getTime() - new Date(record.check_in).getTime();
+      const diff = new Date(record.check_out).getTime() - new Date(record.check_in!).getTime();
       return acc + diff / (1000 * 60 * 60);
     }
     return acc;

@@ -24,6 +24,10 @@ interface ShiftRecord {
   id: string;
   user_id: string;
   shift_number: number;
+  scheduled_minutes?: number;
+  start_offset_minutes?: number;
+  assignment_type?: 'primary' | 'shared';
+  fixed_salary_group_id?: string;
 }
 
 const typeStyles: Record<string, string> = {
@@ -125,7 +129,13 @@ export default function MyShifts() {
                     </div>
                     <div>
                       <CardTitle className="text-xl" dir="ltr">{slot.labelAr}</CardTitle>
-                      <CardDescription className="mt-0.5">يومياً — كل أيام الأسبوع</CardDescription>
+                      <CardDescription className="mt-0.5">
+                        {shift.assignment_type === 'shared'
+                          ? `شيفت مشترك — ساعة ${shift.start_offset_minutes === 60 ? 'ثانية' : 'أولى'}`
+                          : shift.fixed_salary_group_id
+                            ? 'شيفت كامل — ساعتان'
+                            : 'يومياً — كل أيام الأسبوع'}
+                      </CardDescription>
                     </div>
                   </div>
                 </CardContent>

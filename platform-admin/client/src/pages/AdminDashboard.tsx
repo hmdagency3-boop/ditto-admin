@@ -76,6 +76,10 @@ interface Shift {
   id: string;
   user_id: string;
   shift_number: number;
+  scheduled_minutes?: number;
+  start_offset_minutes?: number;
+  assignment_type?: 'primary' | 'shared';
+  fixed_salary_group_id?: string;
   created_by: string;
   created_at?: string;
 }
@@ -143,11 +147,10 @@ export default function AdminDashboard() {
       const monthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd');
       const monthlyAttendance = allAttendance.filter((a: Attendance) => a.user_id === user.id && a.date >= monthStart && a.date <= monthEnd);
 
-      const shiftsRes = await fetch('/api/shifts', {
+      const shiftsRes = await fetch('/api/me/shifts', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      const allShifts = await shiftsRes.json();
-      const shifts = allShifts.filter((s: Shift) => s.user_id === user.id).slice(0, 5);
+      const shifts: Shift[] = (await shiftsRes.json()).slice(0, 5);
 
       // حساب الشيفت الحالي والقادم
       const currShift = getCurrentShiftNumber();
@@ -201,8 +204,8 @@ export default function AdminDashboard() {
       let canNow = false;
       let nextTime: string | null = null;
       for (const s of shifts) {
-        const start = (s.shift_number - 1) * 120;
-        const end   = s.shift_number * 120;
+        const start = (s.shift_number - 1) * 120 + (s.start_offset_minutes || 0);
+        const end   = start + (s.scheduled_minutes || 120);
         if (nowMins >= start - 2 && nowMins < end) { canNow = true; break; }
         if (start - 2 > nowMins && !nextTime) {
           const h = Math.floor((start - 2) / 60);

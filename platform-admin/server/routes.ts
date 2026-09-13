@@ -1334,29 +1334,42 @@ export async function registerRoutes(
       const currentUserId = req.user!.userId;
       const shiftNumParam = req.query.shift_number ? parseInt(req.query.shift_number as string) : null;
 
-      // جلب كل الشيفتات
-      const { data: allShifts, error } = await storage.supabase
-        .from('shifts')
-        .select('*')
-        .order('shift_number', { ascending: true });
+      // جلب الشيفتات العادية ومجموعات الراتب الثابت
+      const [{ data: allShifts, error }, { data: fixedGroups, error: fixedError }] = await Promise.all([
+        storage.supabase.from('shifts').select('*').order('shift_number', { ascending: true }),
+        storage.supabase.from('fixed_salary_groups').select('*').eq('active', true),
+      ]);
       if (error) throw error;
+      if (fixedError) throw fixedError;
 
       // تحديد رقم الشيفت المطلوب
       let targetShiftNum = shiftNumParam;
       if (!targetShiftNum) {
         // لو مفيش param — رجّع زملاء نفس شيفت المستخدم
-        const myNums = (allShifts || [])
-          .filter((s: any) => s.user_id === currentUserId)
-          .map((s: any) => s.shift_number);
+        const myNums = [
+          ...(allShifts || [])
+            .filter((s: any) => s.user_id === currentUserId)
+            .map((s: any) => s.shift_number),
+          ...((fixedGroups || []) as FixedSalaryGroup[])
+            .flatMap((group) => fixedShiftAssignments(group))
+            .filter((assignment) => assignment.userId === currentUserId)
+            .map((assignment) => assignment.shiftNumber),
+        ];
         targetShiftNum = myNums[0] ?? null;
       }
 
       if (!targetShiftNum) return res.json([]);
 
       // جميع المستخدمين في الشيفت المطلوب (بما فيهم المستخدم الحالي)
-      const targetIds = (allShifts || [])
-        .filter((s: any) => s.shift_number === targetShiftNum)
-        .map((s: any) => s.user_id as string);
+      const targetIds = [
+        ...(allShifts || [])
+          .filter((s: any) => s.shift_number === targetShiftNum)
+          .map((s: any) => s.user_id as string),
+        ...((fixedGroups || []) as FixedSalaryGroup[])
+          .flatMap((group) => fixedShiftAssignments(group))
+          .filter((assignment) => assignment.shiftNumber === targetShiftNum)
+          .map((assignment) => assignment.userId),
+      ];
 
       const uniqueIds = [...new Set<string>(targetIds)];
       console.log(`[colleagues] shift=${targetShiftNum}, userIds=${JSON.stringify(uniqueIds)}`);
@@ -1750,6 +1763,7 @@ export async function registerRoutes(
             user_id: userId,
             shift_number: assignment.shiftNumber,
             scheduled_minutes: assignment.scheduledMinutes,
+            start_offset_minutes: assignment.startOffsetMinutes,
             assignment_type: assignment.assignmentType,
             fixed_salary_group_id: assignment.groupId,
           })),
