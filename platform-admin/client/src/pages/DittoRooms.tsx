@@ -201,6 +201,7 @@ export default function DittoRooms() {
       });
 
       await client.join(AGORA_APP_ID, roomIdStr, token, SESSION_UID);
+      try { await AgoraRTC.resumeAudioContext(); } catch {}
 
       for (const u of client.remoteUsers) {
         setAgoraPublisherUids(prev => [...new Set([...prev, u.uid as number])]);
@@ -251,22 +252,26 @@ export default function DittoRooms() {
       });
 
       try {
-        await client.setClientRole("host");
         await client.join(AGORA_APP_ID, roomIdStr, token, SESSION_UID);
+        await client.setClientRole("host");
+        try { await AgoraRTC.resumeAudioContext(); } catch {}
 
-        for (const u of client.remoteUsers) {
-          setAgoraPublisherUids(prev => [...new Set([...prev, u.uid as number])]);
-          if (u.hasAudio) { try { const t = await client.subscribe(u, "audio"); audioTracks.push(t); playAudioTrack(t); } catch {} }
-          if (u.hasVideo) { try { const t = await client.subscribe(u, "video") as IRemoteVideoTrack; videoTracks.push(t); } catch {} }
-        }
-
+        // Publish first so joining as a speaker does not wait for existing
+        // remote video/audio subscriptions to finish.
         localTrack = await AgoraRTC.createMicrophoneAudioTrack({
           encoderConfig: "music_standard",
           AEC: true,
           ANS: true,
           AGC: true,
         });
+        await localTrack.setMuted(false);
         await client.publish([localTrack]);
+
+        for (const u of client.remoteUsers) {
+          setAgoraPublisherUids(prev => [...new Set([...prev, u.uid as number])]);
+          if (u.hasAudio) { try { const t = await client.subscribe(u, "audio"); audioTracks.push(t); playAudioTrack(t); } catch {} }
+          if (u.hasVideo) { try { const t = await client.subscribe(u, "video") as IRemoteVideoTrack; videoTracks.push(t); } catch {} }
+        }
       } catch (error) {
         localTrack?.stop();
         localTrack?.close();

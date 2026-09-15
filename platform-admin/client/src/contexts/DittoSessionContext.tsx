@@ -56,9 +56,11 @@ interface DittoSessionContextValue {
   setAgoraPublisherUids: React.Dispatch<React.SetStateAction<number[]>>;
   chatMessages:         ChatMessage[];
   chatStatus:           "idle"|"connecting"|"connected"|"failed"|"no_credentials";
+  audioAutoplayBlocked: boolean;
   videoContainerRef:    React.RefObject<HTMLDivElement>;
   chatEndRef:           React.RefObject<HTMLDivElement>;
   stopSession:          () => Promise<void>;
+  resumeAudio:          () => Promise<void>;
   playAudioTrack:       (track: IRemoteAudioTrack) => void;
   toggleMute:           () => void;
   toggleMic:            () => Promise<void>;
@@ -86,10 +88,23 @@ export function DittoSessionProvider({ children }: { children: ReactNode }) {
   const [agoraPublisherUids, setAgoraPublisherUids] = useState<number[]>([]);
   const [chatMessages,  setChatMessages]  = useState<ChatMessage[]>([]);
   const [chatStatus,    setChatStatus]    = useState<"idle"|"connecting"|"connected"|"failed"|"no_credentials">("idle");
+  const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
 
   const nimChatroomRef    = useRef<unknown>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const chatEndRef        = useRef<HTMLDivElement>(null);
+
+  // Browsers can block a remote audio element when a room is switched from
+  // listening to speaking. Keep the user-facing recovery path explicit.
+  useEffect(() => {
+    const handleAutoplayFailed = () => setAudioAutoplayBlocked(true);
+    AgoraRTC.onAutoplayFailed = handleAutoplayFailed;
+    return () => {
+      if (AgoraRTC.onAutoplayFailed === handleAutoplayFailed) {
+        AgoraRTC.onAutoplayFailed = undefined;
+      }
+    };
+  }, []);
 
   // ── Video: auto-open panel when video track arrives ─────────────────────────
   useEffect(() => {
@@ -288,6 +303,14 @@ export function DittoSessionProvider({ children }: { children: ReactNode }) {
     track.play();
   }, [isMuted]);
 
+  const resumeAudio = useCallback(async () => {
+    await AgoraRTC.resumeAudioContext();
+    if (activeSession && !isMuted) {
+      activeSession.audioTracks.forEach(track => track.play());
+    }
+    setAudioAutoplayBlocked(false);
+  }, [activeSession, isMuted]);
+
   const toggleMic = useCallback(async () => {
     if (!activeSession?.localTrack) return;
     const newMicMuted = !isMicMuted;
@@ -315,9 +338,9 @@ export function DittoSessionProvider({ children }: { children: ReactNode }) {
       chatOpen, setChatOpen,
       members, setMembers, membersLoading,
       agoraPublisherUids, setAgoraPublisherUids,
-      chatMessages, chatStatus,
+       chatMessages, chatStatus, audioAutoplayBlocked,
       videoContainerRef, chatEndRef,
-       stopSession, playAudioTrack, toggleMute, toggleMic,
+       stopSession, resumeAudio, playAudioTrack, toggleMute, toggleMic,
       setIsMicMuted,
     }}>
       {children}

@@ -7,13 +7,14 @@ import {
 export function DittoSessionBar() {
   const {
     activeSession, isMuted, isMicMuted,
+    audioAutoplayBlocked,
     videoOpen, setVideoOpen,
     membersOpen, setMembersOpen,
     chatOpen, setChatOpen,
     members, membersLoading, agoraPublisherUids,
     chatMessages, chatStatus,
     videoContainerRef, chatEndRef,
-    stopSession, toggleMute, toggleMic,
+    stopSession, resumeAudio, toggleMute, toggleMic,
   } = useDittoSession();
 
   if (!activeSession) return null;
@@ -38,6 +39,12 @@ export function DittoSessionBar() {
           </span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {audioAutoplayBlocked && (
+            <button onClick={resumeAudio}
+              className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold tracking-widest border border-yellow-500/60 text-yellow-400 hover:bg-yellow-500/10 transition-colors">
+              <Volume2 className="w-3 h-3" /> تشغيل الصوت
+            </button>
+          )}
           {activeSession.isTalking && (
             <button onClick={toggleMic}
               className={`flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold tracking-widest border transition-colors ${isMicMuted ? "border-destructive/50 text-destructive hover:bg-destructive/10" : "border-green-500/50 text-green-400 hover:bg-green-500/10"}`}>
