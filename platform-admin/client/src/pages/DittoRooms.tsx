@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -217,8 +217,12 @@ export default function DittoRooms() {
 
     const onTalk = async (token: string) => {
       await stopSession();
+
+      // Join as a host before publishing. Creating the microphone track after
+      // joining also makes cleanup deterministic when the browser denies mic
+      // permission or the publish request fails.
       const client = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
-      await client.setClientRole("host");
+      let localTrack: Awaited<ReturnType<typeof AgoraRTC.createMicrophoneAudioTrack>> | null = null;
       const audioTracks: IRemoteAudioTrack[] = [];
       const videoTracks: IRemoteVideoTrack[]  = [];
 
@@ -234,19 +238,42 @@ export default function DittoRooms() {
           setActiveSession(prev => prev ? { ...prev, videoTracks: [...prev.videoTracks, track] } : prev);
         }
       });
+      client.on("user-unpublished", (user, mediaType) => {
+        if (mediaType === "audio") {
+          setAgoraPublisherUids(prev => prev.filter(id => id !== (user.uid as number)));
+        }
+        if (mediaType === "video") {
+          setActiveSession(prev => prev ? { ...prev, videoTracks: [] } : prev);
+        }
+      });
       client.on("user-left", user => {
         setAgoraPublisherUids(prev => prev.filter(id => id !== (user.uid as number)));
       });
 
-      const localTrack = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: "music_standard", AEC: true, ANS: true, AGC: true });
-      await client.join(AGORA_APP_ID, roomIdStr, token, SESSION_UID);
+      try {
+        await client.setClientRole("host");
+        await client.join(AGORA_APP_ID, roomIdStr, token, SESSION_UID);
 
-      for (const u of client.remoteUsers) {
-        setAgoraPublisherUids(prev => [...new Set([...prev, u.uid as number])]);
-        if (u.hasAudio) { try { const t = await client.subscribe(u, "audio"); audioTracks.push(t); playAudioTrack(t); } catch {} }
-        if (u.hasVideo) { try { const t = await client.subscribe(u, "video") as IRemoteVideoTrack; videoTracks.push(t); } catch {} }
+        for (const u of client.remoteUsers) {
+          setAgoraPublisherUids(prev => [...new Set([...prev, u.uid as number])]);
+          if (u.hasAudio) { try { const t = await client.subscribe(u, "audio"); audioTracks.push(t); playAudioTrack(t); } catch {} }
+          if (u.hasVideo) { try { const t = await client.subscribe(u, "video") as IRemoteVideoTrack; videoTracks.push(t); } catch {} }
+        }
+
+        localTrack = await AgoraRTC.createMicrophoneAudioTrack({
+          encoderConfig: "music_standard",
+          AEC: true,
+          ANS: true,
+          AGC: true,
+        });
+        await client.publish([localTrack]);
+      } catch (error) {
+        localTrack?.stop();
+        localTrack?.close();
+        try { await client.leave(); } catch {}
+        throw error;
       }
-      await client.publish([localTrack]);
+
       setActiveSession({
         roomId: roomIdStr, roomName: room.nick ?? room.roomName ?? "",
         cover: room.cover ?? null,
@@ -461,9 +488,9 @@ function RoomCard({ room, isActiveRoom, isTalking, onListen, onTalk, onStop, isS
   const roomId = room.roomId != null ? String(room.roomId) : null;
 
   // Reset card state when this room is no longer active
-  useState(() => {
+  useEffect(() => {
     if (!isActiveRoom) { setListenState("idle"); setTalkState("idle"); }
-  });
+  }, [isActiveRoom]);
 
   async function fetchToken(type: "1" | "0") {
     if (!roomId) return null;
@@ -522,13 +549,13 @@ function RoomCard({ room, isActiveRoom, isTalking, onListen, onTalk, onStop, isS
     : listenState === "fetching"   ? "TOKEN..."
     : listenState === "connecting" ? "JOINING..."
     : listenState === "error"      ? "ERROR"
-    : "INTERCEPT";
+    : "استماع";
 
   const talkLabel = isActiveRoom && isTalking ? "ON_AIR"
     : talkState === "fetching"   ? "TOKEN..."
     : talkState === "connecting" ? "JOINING..."
     : talkState === "error"      ? "ERROR"
-    : "TALK";
+    : "تحدث";
 
   const busy = listenState === "fetching" || listenState === "connecting"
             || talkState   === "fetching" || talkState   === "connecting";
@@ -575,8 +602,8 @@ function RoomCard({ room, isActiveRoom, isTalking, onListen, onTalk, onStop, isS
                   : <Headphones className="w-2.5 h-2.5" />}
               {listenLabel}
             </button>
-            {/* TALK */}
-            <button onClick={handleTalk} disabled={busy}
+            {/* TALK — join as a host and publish the microphone */}
+            <button onClick={handleTalk} disabled={busy} title="التحدث داخل الغرفة"
               className={`flex items-center gap-1 border text-[10px] font-bold tracking-widest uppercase px-2 py-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${isActiveRoom && isTalking ? "bg-green-500/20 border-green-500 text-green-400" : talkState === "error" ? "bg-destructive/20 border-destructive text-destructive" : "bg-black/70 border-green-500/40 text-green-400 hover:bg-green-500/20 hover:border-green-500"}`}>
               {talkState === "fetching" || talkState === "connecting" ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
                 : isActiveRoom && isTalking

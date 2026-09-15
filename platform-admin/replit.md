@@ -162,6 +162,9 @@ From the Ditto command center (`/ditto-center`), upload an exported Ditto flow f
 
 The `ditto_sessions` migration (`supabase/29_ditto_sessions.sql`) must be applied in Supabase before importing a flow. A stable `SESSION_SECRET` (or the existing JWT secret fallback) is required to encrypt and decrypt stored credentials.
 
+### Ditto room audio
+From the live rooms page, `استماع` joins the Agora channel as an audience member. The `تحدث` button joins as a host, requests browser microphone permission, and publishes the microphone to the room. While talking, the session bar provides a microphone mute/unmute control; disconnecting always closes the local microphone track.
+
 ## Design System
 See `design_guidelines.md` for complete design specifications including:
 - Typography system (Cairo font for Arabic)
